@@ -1,0 +1,188 @@
+/* src/index.css */
+
+/* 1. استدعاء مكتبة Tailwind الأساسية - ضروري لظهور الألوان والتنسيقات */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 2. استيراد الخط العربي وإعدادات الصفحة العامة */
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
+
+:root {
+  font-family: 'Tajawal', sans-serif;
+  direction: rtl;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #1a0b2e; /* الخلفية البنفسجية العميقة المطلوبة */
+  color: white;
+  overflow-x: hidden; /* منع التمرير الأفقي بسبب الحروف المتساقطة */
+}
+
+/* 3. محرك الحروف المتساقطة (Matrix Letters Effect) */
+@keyframes fall {
+  0% { 
+    transform: translateY(-10vh) rotate(0deg); 
+    opacity: 0; 
+  }
+  10% { 
+    opacity: 0.4; 
+  }
+  90% { 
+    opacity: 0.4; 
+  }
+  100% { 
+    transform: translateY(110vh) rotate(360deg); 
+    opacity: 0; 
+  }
+}
+
+.animate-letter {
+  animation: fall linear infinite;
+}
+
+/* 4. إعدادات البطاقات التفاعلية 3D (Flip Cards) */
+/* ضرورية لكي يعمل "أوبجيكت" التصنيف ويدور عند النقر عليه */
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  .transform-style-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+}
+
+/* 5. تنسيق الشبكة السداسية (Hexagon Shape) */
+.hexagon-shape {
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hexagon-shape:hover {
+  filter: brightness(1.2);
+  transform: scale(1.05);
+}
+
+/* ========== أنيميشنز واجهة AuthGate الأسطورية ========== */
+
+/* أنيميشن تساقط الحروف المحسّن للـ AuthGate */
+@keyframes letter-fall {
+  0% {
+    transform: translateY(-100vh) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* أنيميشن الطفو البطيء للجزيئات */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+  }
+  33% {
+    transform: translateY(-20px) translateX(10px);
+  }
+  66% {
+    transform: translateY(-10px) translateX(-10px);
+  }
+}
+
+/* أنيميشن النبض البطيء */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* أنيميشن التدرج المتحرك */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* أنيميشن التلألؤ (للنصوص المتوهجة) */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* أنيميشن الاهتزاز (عند الخطأ) */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+  20%, 40%, 60%, 80% { transform: translateX(10px); }
+}
+
+/* تطبيق الأنيميشنز */
+.animate-letter-fall {
+  animation: letter-fall linear infinite;
+}
+
+.animate-float-slow {
+  animation: float-slow ease-in-out infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+.animate-gradient-shift {
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+}
+
+.animate-shimmer {
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* تحسينات إضافية للـ AuthGate */
+.backdrop-blur-3xl {
+  backdrop-filter: blur(60px);
+  -webkit-backdrop-filter: blur(60px);
+}
+
+/* تأثير Glow للنصوص */
+.text-glow {
+  text-shadow: 0 0 20px currentColor, 0 0 40px currentColor;
+}
+
+/* تأثير الحدود المتوهجة */
+.border-glow {
+  box-shadow: 0 0 20px currentColor, inset 0 0 20px currentColor;
+}
