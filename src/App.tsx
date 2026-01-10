@@ -1,69 +1,40 @@
-// src/App.tsx
+// App.tsx - التصحيح
 
-import { useState } from 'react';
-
-import { AuthGate } from './components/AuthGate';
-
+import React, { useState } from 'react';
 import { LandingPage } from './components/LandingPage';
-
+import { GameSettings } from './components/GameSettings';
+import type { GameSettingsData } from './components/GameSettings';  // ← هنا!
 import { GameBoard } from './components/GameBoard';
 
-import { AnimatedBackground } from './components/AnimatedBackground';
-
-import { useGameStore } from './store/useGameStore';
-
-
+type Screen = 'landing' | 'settings' | 'game';
 
 function App() {
-
-  const [currentScreen, setCurrentScreen] = useState<'auth' | 'landing' | 'game'>('auth');
-
-  const winner = useGameStore((state) => state.winner);
-
-
+  const [currentScreen, setCurrentScreen] = useState<Screen>('landing');
+  const [gameSettings, setGameSettings] = useState<GameSettingsData | null>(null);
 
   return (
+    <div>
+      {currentScreen === 'landing' && (
+        <LandingPage 
+          onOpenSettings={() => setCurrentScreen('settings')} 
+        />
+      )}
 
-    <div className="min-h-screen relative font-tajawal direction-rtl text-right">
+      {currentScreen === 'settings' && (
+        <GameSettings
+          onBack={() => setCurrentScreen('landing')}
+          onStartGame={(settings) => {
+            setGameSettings(settings);
+            setCurrentScreen('game');
+          }}
+        />
+      )}
 
-      {/* الخلفية العائمة لكل التطبيق */}
-
-      <div className="fixed inset-0 bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] -z-10"></div>
-
-      <AnimatedBackground />
-
-
-
-      {/* المحتوى الرئيسي */}
-
-      <main className="relative z-10 min-h-screen flex items-center justify-center">
-
-        {currentScreen === 'auth' && (
-
-          <AuthGate onVerified={() => setCurrentScreen('landing')} />
-
-        )}
-
-
-
-        {currentScreen === 'landing' && (
-
-          <LandingPage onStartGame={() => setCurrentScreen('game')} />
-
-        )}
-
-
-
-        {currentScreen === 'game' && <GameBoard />}
-
-      </main>
-
+      {currentScreen === 'game' && gameSettings && (
+        <GameBoard settings={gameSettings} />
+      )}
     </div>
-
   );
-
 }
-
-
 
 export default App;

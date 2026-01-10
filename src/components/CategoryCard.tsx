@@ -1,165 +1,410 @@
 // src/components/CategoryCard.tsx
-// كومبوننت كارد الكاتيجوري - بنسب ورق البلوت الحقيقية
+// كارد الكاتيجوري - نمط carson.grind
 
 import React, { useState } from 'react';
 import type { Category } from '../core/types';
+import { X, Star } from 'lucide-react';
 
 interface CategoryCardProps {
   category: Category;
 }
 
 export const CategoryCard: React.FC<CategoryCardProps> = ({ category }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
 
+  const handleCardClick = () => {
+    setIsModalOpen(true);
+    setIsFlipped(false);
+  };
+
+  const handleClose = () => {
+    setIsModalOpen(false);
+    setTimeout(() => setIsFlipped(false), 300);
+  };
+
+  const handleFlip = () => {
+    setIsFlipped(!isFlipped);
+  };
+
   return (
-    <div
-      className="perspective-card cursor-pointer"
-      style={{
-        perspective: '1000px',
-        aspectRatio: '2.5 / 3.5', // نسبة ورق البلوت الحقيقية
-      }}
-      onClick={() => setIsFlipped(!isFlipped)}
-    >
+    <>
+      {/* البطاقة الصغيرة */}
       <div
-        className="relative w-full h-full transition-transform duration-700 transform-style-3d"
+        onClick={handleCardClick}
         style={{
-          transformStyle: 'preserve-3d',
-          transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+          width: '100%',
+          borderRadius: '1.5rem',
+          background: category.color,
+          padding: '1.5rem',
+          cursor: 'pointer',
+          transition: 'all 0.3s ease',
+          border: '3px solid rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 8px 20px rgba(0, 0, 0, 0.3)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-8px)';
+          e.currentTarget.style.boxShadow = '0 12px 30px rgba(0, 0, 0, 0.4)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = '0 8px 20px rgba(0, 0, 0, 0.3)';
         }}
       >
-        
-        {/* الواجهة الأمامية */}
-        <div
-          className="absolute inset-0 rounded-2xl p-6 flex flex-col items-center justify-center text-white font-bold shadow-2xl backface-hidden border-4"
-          style={{
-            backgroundColor: category.color,
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            boxShadow: `0 15px 50px ${category.color}60, 0 0 30px ${category.color}40`,
-            borderColor: `${category.color}40`,
-            background: `linear-gradient(135deg, ${category.color} 0%, ${category.color}dd 100%)`,
-          }}
-        >
-          {/* نمط الكارد */}
-          <div className="absolute top-4 right-4 text-4xl opacity-20">
-            {category.icon}
-          </div>
-          <div className="absolute bottom-4 left-4 text-4xl opacity-20 transform rotate-180">
-            {category.icon}
-          </div>
-
-          {/* المحتوى */}
-          <div className="text-center z-10">
-            <div className="text-7xl mb-4 drop-shadow-2xl animate-bounce-slow">
-              {category.icon}
-            </div>
-            <h3 className="text-3xl font-black tracking-tight drop-shadow-lg">
-              {category.name}
-            </h3>
-          </div>
-
-          {/* تأثير اللمعان */}
-          <div 
-            className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-transparent rounded-2xl opacity-50"
-            style={{ mixBlendMode: 'overlay' }}
-          />
+        {/* الأيقونة والعنوان */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '0.75rem',
+          marginBottom: '0.75rem',
+        }}>
+          <span style={{ fontSize: '2rem' }}>{category.icon}</span>
+          <h3 style={{ 
+            fontSize: '1.5rem', 
+            fontWeight: 900,
+            color: 'white',
+            margin: 0,
+          }}>
+            {category.name}
+          </h3>
         </div>
 
-        {/* الواجهة الخلفية */}
-        <div
-          className="absolute inset-0 rounded-2xl p-5 flex flex-col justify-between text-white shadow-2xl backface-hidden border-4"
-          style={{
-            backgroundColor: category.color,
-            backfaceVisibility: 'hidden',
-            WebkitBackfaceVisibility: 'hidden',
-            transform: 'rotateY(180deg)',
-            boxShadow: `0 15px 50px ${category.color}60, 0 0 30px ${category.color}40`,
-            borderColor: `${category.color}40`,
-            background: `linear-gradient(135deg, ${category.color}ee 0%, ${category.color} 100%)`,
-          }}
+        {/* الوصف القصير */}
+        <p style={{ 
+          color: 'rgba(255, 255, 255, 0.9)',
+          fontSize: '0.875rem',
+          marginBottom: '1rem',
+          lineHeight: '1.4',
+        }}>
+          {category.description.substring(0, 60)}...
+        </p>
+
+        {/* Tags */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+          marginBottom: '1rem',
+        }}>
+          <span style={{
+            background: 'rgba(255, 255, 255, 0.25)',
+            padding: '0.25rem 0.75rem',
+            borderRadius: '1rem',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            color: 'white',
+          }}>
+            {category.questionsCount} سؤال
+          </span>
+          <span style={{
+            background: 'rgba(255, 255, 255, 0.25)',
+            padding: '0.25rem 0.75rem',
+            borderRadius: '1rem',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+          }}>
+            <Star size={12} fill="currentColor" />
+            {category.rating}
+          </span>
+        </div>
+
+        {/* زر Play Now */}
+        <button style={{
+          width: '100%',
+          background: '#fbbf24',
+          border: 'none',
+          borderRadius: '0.75rem',
+          padding: '0.75rem',
+          fontSize: '1rem',
+          fontWeight: 900,
+          color: '#000',
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+          boxShadow: '0 4px 0 #d97706',
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.transform = 'translateY(2px)';
+          e.currentTarget.style.boxShadow = '0 2px 0 #d97706';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = '0 4px 0 #d97706';
+        }}
         >
-          {/* العنوان */}
-          <div className="text-right">
-            <div className="flex items-center justify-between mb-3 border-b-2 border-white/30 pb-2">
-              <span className="text-5xl">{category.icon}</span>
-              <h3 className="text-2xl font-black">{category.name}</h3>
-            </div>
-            
-            {/* الوصف */}
-            <p className="text-sm leading-relaxed opacity-95 font-semibold">
-              {category.description}
-            </p>
-          </div>
+          اعرف المزيد
+        </button>
 
-          {/* المعلومات السفلية */}
-          <div className="space-y-3 bg-black/20 rounded-xl p-3 backdrop-blur-sm">
-            {/* عدد الأسئلة */}
-            <div className="flex items-center justify-between text-sm">
-              <span className="opacity-90 font-bold">عدد الأسئلة:</span>
-              <span className="font-black text-2xl bg-white/20 px-3 py-1 rounded-lg">
-                {category.questionsCount}
-              </span>
-            </div>
+        {/* تأثير اللمعان */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '50%',
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%)',
+          pointerEvents: 'none',
+        }} />
+      </div>
 
-            {/* التقييم */}
-            <div className="flex items-center justify-between">
-              <span className="text-sm opacity-90 font-bold">التقييم:</span>
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <span
-                    key={star}
-                    className="text-xl"
-                    style={{
-                      color: star <= category.rating ? '#fbbf24' : '#ffffff30',
-                      filter: star <= category.rating ? 'drop-shadow(0 0 4px #fbbf24)' : 'none',
-                    }}
-                  >
-                    ⭐
-                  </span>
-                ))}
-                <span className="text-lg font-black mr-2 bg-white/20 px-2 py-0.5 rounded">
-                  {category.rating}
-                </span>
+      {/* المودال - البطاقة الكبيرة */}
+      {isModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem',
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(10px)',
+            animation: 'fadeIn 0.3s ease',
+          }}
+          onClick={handleClose}
+        >
+          {/* البطاقة المركزية */}
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              handleFlip();
+            }}
+            style={{
+              maxWidth: '500px',
+              width: '100%',
+              aspectRatio: '3 / 4',
+              perspective: '1000px',
+              cursor: 'pointer',
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                position: 'relative',
+                transformStyle: 'preserve-3d',
+                transition: 'transform 0.6s ease',
+                transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0)',
+              }}
+            >
+              {/* الواجهة الأمامية */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backfaceVisibility: 'hidden',
+                  borderRadius: '2rem',
+                  background: category.color,
+                  padding: '3rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  border: '4px solid rgba(0, 0, 0, 0.2)',
+                  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                }}
+              >
+                {/* العنوان والأيقونة */}
+                <div>
+                  <div style={{ fontSize: '5rem', marginBottom: '1rem', textAlign: 'center' }}>
+                    {category.icon}
+                  </div>
+                  <h2 style={{
+                    fontSize: '3rem',
+                    fontWeight: 900,
+                    color: 'white',
+                    textAlign: 'center',
+                    margin: 0,
+                  }}>
+                    {category.name}
+                  </h2>
+                </div>
+
+                {/* التقييم */}
+                <div style={{ 
+                  display: 'flex',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      size={32}
+                      fill={star <= category.rating ? '#fbbf24' : 'none'}
+                      color={star <= category.rating ? '#fbbf24' : 'white'}
+                    />
+                  ))}
+                </div>
+
+                {/* نص التلميح */}
+                <p style={{
+                  textAlign: 'center',
+                  color: 'white',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  margin: 0,
+                }}>
+                  اضغط للقلب 🔄
+                </p>
+
+                {/* تأثير اللمعان */}
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '50%',
+                  background: 'linear-gradient(180deg, rgba(255,255,255,0.25) 0%, transparent 100%)',
+                  pointerEvents: 'none',
+                  borderRadius: '2rem 2rem 0 0',
+                }} />
+              </div>
+
+              {/* الواجهة الخلفية */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  backfaceVisibility: 'hidden',
+                  transform: 'rotateY(180deg)',
+                  borderRadius: '2rem',
+                  background: category.color,
+                  padding: '3rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  border: '4px solid rgba(0, 0, 0, 0.2)',
+                  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                  overflow: 'auto',
+                }}
+              >
+                {/* المحتوى */}
+                <div>
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    marginBottom: '2rem',
+                    paddingBottom: '1rem',
+                    borderBottom: '2px solid rgba(255, 255, 255, 0.3)',
+                  }}>
+                    <span style={{ fontSize: '3rem' }}>{category.icon}</span>
+                    <h3 style={{
+                      fontSize: '2rem',
+                      fontWeight: 900,
+                      color: 'white',
+                      margin: 0,
+                    }}>
+                      {category.name}
+                    </h3>
+                  </div>
+
+                  <p style={{
+                    color: 'white',
+                    fontSize: '1.125rem',
+                    lineHeight: '1.8',
+                    marginBottom: '2rem',
+                  }}>
+                    {category.description}
+                  </p>
+
+                  {/* المعلومات */}
+                  <div style={{
+                    background: 'rgba(0, 0, 0, 0.2)',
+                    borderRadius: '1rem',
+                    padding: '1.5rem',
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '1rem',
+                    }}>
+                      <span style={{ color: 'white', fontWeight: 700 }}>عدد الأسئلة:</span>
+                      <span style={{ 
+                        color: 'white', 
+                        fontSize: '1.5rem',
+                        fontWeight: 900,
+                      }}>
+                        {category.questionsCount}
+                      </span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}>
+                      <span style={{ color: 'white', fontWeight: 700 }}>التقييم:</span>
+                      <span style={{ 
+                        color: 'white', 
+                        fontSize: '1.5rem',
+                        fontWeight: 900,
+                      }}>
+                        {category.rating} ⭐
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <p style={{
+                  textAlign: 'center',
+                  color: 'white',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  margin: 0,
+                }}>
+                  اضغط للقلب مرة أخرى 🔄
+                </p>
               </div>
             </div>
           </div>
 
-          {/* تأثير اللمعان */}
-          <div 
-            className="absolute inset-0 bg-gradient-to-tl from-white/10 via-transparent to-transparent rounded-2xl pointer-events-none"
-            style={{ mixBlendMode: 'overlay' }}
-          />
+          {/* زر الإغلاق */}
+          <button
+            onClick={handleClose}
+            style={{
+              position: 'absolute',
+              top: '2rem',
+              right: '2rem',
+              width: '3rem',
+              height: '3rem',
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: '2px solid white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+            }}
+          >
+            <X size={24} color="white" />
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* CSS محلي */}
+      {/* CSS للأنيميشنز */}
       <style>{`
-        @keyframes bounce-slow {
-          0%, 100% {
-            transform: translateY(0);
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
           }
-          50% {
-            transform: translateY(-5px);
+          to {
+            opacity: 1;
           }
-        }
-
-        .animate-bounce-slow {
-          animation: bounce-slow 2s ease-in-out infinite;
-        }
-
-        .backface-hidden {
-          -webkit-backface-visibility: hidden;
-          backface-visibility: hidden;
-        }
-
-        .transform-style-3d {
-          transform-style: preserve-3d;
-        }
-
-        .perspective-card:hover .relative {
-          transform: scale(1.02);
         }
       `}</style>
-    </div>
+    </>
   );
 };

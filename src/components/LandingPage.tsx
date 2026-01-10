@@ -1,53 +1,89 @@
 // src/components/LandingPage.tsx
-// الصفحة الرئيسية بعد تسجيل الدخول
+// الصفحة الرئيسية - تصميم سموث واحترافي
 
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import { CategoryCard } from './CategoryCard';
 import { ActionCardComponent } from './ActionCardComponent';
 import { categories } from '../lib/categories';
 import { actionCards } from '../lib/actionCards';
-import { Sparkles, Play, Phone, ShoppingBag, Zap } from 'lucide-react';
+import { Play, Moon, Sun, Sparkles } from 'lucide-react';
+import { WelcomeModal } from './WelcomeModal';
 
 const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهويةئؤءآإ";
-const VIBRANT_COLORS = ['#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24'];
+const VIBRANT_COLORS = ['#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24', '#ec4899', '#14b8a6'];
 
 interface LandingPageProps {
-  onStartGame: () => void; // دالة للانتقال لصفحة اللعبة
+  onOpenSettings: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onStartGame }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    // التحقق من localStorage عند التحميل
+    const hideModal = localStorage.getItem('hideWelcomeModal');
+    return hideModal !== 'true'; // يظهر إذا ما كان محفوظ
+  });
+
   // توليد الحروف المتساقطة
-  const fallingLetters = useMemo(() => 
-    Array.from({ length: 50 }).map((_, i) => ({
+  const fallingLetters = React.useMemo(() => 
+    Array.from({ length: 30 }).map((_, i) => ({
       id: i,
       char: ARABIC_LETTERS[Math.floor(Math.random() * ARABIC_LETTERS.length)],
       color: VIBRANT_COLORS[Math.floor(Math.random() * VIBRANT_COLORS.length)],
       left: `${Math.random() * 100}%`,
-      duration: `${Math.random() * 12 + 15}s`,
-      delay: `${Math.random() * 20}s`,
-      size: `${Math.random() * 2.5 + 2}rem`,
+      duration: `${Math.random() * 15 + 20}s`, // أبطأ: 20-35 ثانية
+      delay: `${Math.random() * 10}s`,
+      size: `clamp(2rem, 3vw, 3.5rem)`, // حجم متوسط ومتناسق
     }))
   , []);
 
+  const colors = {
+    bg: isDarkMode ? '#0a0118' : '#f8f9fa',
+    bgGradient: isDarkMode 
+      ? 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)'
+      : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%)',
+    cardBg: isDarkMode ? 'rgba(26, 11, 46, 0.6)' : 'rgba(255, 255, 255, 0.9)',
+    text: isDarkMode ? '#ffffff' : '#1a0b2e',
+    textSecondary: isDarkMode ? '#e9d5ff' : '#7c3aed',
+    border: isDarkMode ? 'rgba(168, 85, 247, 0.25)' : 'rgba(124, 58, 237, 0.2)',
+    sectionBg: isDarkMode ? 'rgba(26, 11, 46, 0.4)' : 'rgba(255, 255, 255, 0.6)',
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0118] via-[#1a0b2e] to-[#2d1154] text-white relative overflow-hidden">
+    <div style={{
+      minHeight: '100vh',
+      background: colors.bgGradient,
+      color: colors.text,
+      transition: 'all 0.5s ease',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      
+      {/* مودال الترحيب */}
+      {showWelcome && <WelcomeModal onClose={() => setShowWelcome(false)} />}
       
       {/* طبقة الحروف المتساقطة */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        overflow: 'hidden',
+        pointerEvents: 'none',
+        zIndex: 1,
+      }}>
         {fallingLetters.map((letter) => (
           <div
             key={letter.id}
-            className="absolute animate-fall"
             style={{
+              position: 'absolute',
               left: letter.left,
               top: '-10%',
               fontSize: letter.size,
               color: letter.color,
-              animationDuration: letter.duration,
+              animation: `falling ${letter.duration} linear infinite`,
               animationDelay: letter.delay,
-              textShadow: `0 0 20px ${letter.color}, 0 0 40px ${letter.color}`,
-              fontWeight: 900,
-              opacity: 0.6,
+              textShadow: `0 0 15px ${letter.color}, 0 0 30px ${letter.color}`,
+              fontWeight: 700,
+              opacity: isDarkMode ? 0.4 : 0.25,
               fontFamily: 'Tajawal, sans-serif',
             }}
           >
@@ -55,214 +91,557 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartGame }) => {
           </div>
         ))}
       </div>
-
-      {/* المحتوى الرئيسي */}
-      <div className="relative z-10">
-        
-        {/* Hero Section */}
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-b from-purple-900/20 to-transparent" />
+      {/* Header - هيدر احترافي */}
+      <header style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 50,
+        background: isDarkMode 
+          ? 'linear-gradient(135deg, #1a0b2e 0%, #2d1154 100%)' 
+          : 'linear-gradient(135deg, #f97316 0%, #ec4899 100%)',
+        borderBottom: isDarkMode 
+          ? '3px solid rgba(168, 85, 247, 0.3)' 
+          : '3px solid rgba(255, 255, 255, 0.3)',
+        boxShadow: isDarkMode 
+          ? '0 4px 20px rgba(0, 0, 0, 0.5)' 
+          : '0 4px 20px rgba(249, 115, 22, 0.3)',
+      }}>
+        <div style={{
+          maxWidth: '1400px',
+          margin: '0 auto',
+          padding: '1rem 2rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
           
-          <div className="relative max-w-7xl mx-auto px-6 py-20 text-center">
-            
-            {/* الأيقونة المتحركة */}
-            <div className="inline-block mb-8 relative">
-              <div className="absolute inset-0 bg-gradient-to-tr from-orange-500 via-pink-500 to-purple-600 rounded-3xl blur-2xl opacity-70 animate-pulse-slow" />
-              <div className="relative w-28 h-28 bg-gradient-to-tr from-orange-500 via-pink-500 to-purple-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-purple-500/50 animate-float transform hover:scale-110 transition-transform duration-300">
-                <Sparkles size={56} className="text-white" strokeWidth={2.5} />
-                <Zap 
-                  className="absolute -top-2 -right-2 text-yellow-400 animate-bounce"
-                  size={24}
-                  style={{ filter: 'drop-shadow(0 0 10px #fbbf24)' }}
-                />
-              </div>
-            </div>
-
-            {/* العنوان الرئيسي */}
-            <h1 
-              className="text-7xl md:text-8xl font-black mb-6 leading-tight animate-fade-in"
-              style={{
-                background: 'linear-gradient(135deg, #f97316 0%, #ec4899 30%, #a855f7 60%, #3b82f6 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                letterSpacing: '-0.03em',
-                textShadow: '0 0 80px rgba(168, 85, 247, 0.5)',
-              }}
-            >
-              حرب الحروف
-            </h1>
-
-            {/* النبذة */}
-            <p className="text-2xl text-purple-200 mb-12 max-w-4xl mx-auto leading-relaxed font-semibold animate-fade-in-delay">
-              لعبة تنافسية ملحمية! اختبر ذكاءك، استخدم البطاقات الإستراتيجية،
-              <br />
-              <span className="text-orange-400">واهزم خصومك في معركة الحروف النهائية! ⚔️</span>
-            </p>
-
-            {/* زر إنشاء لعبة - عصري ومميز */}
-            <button
-              onClick={onStartGame}
-              className="group relative inline-flex items-center gap-4 px-12 py-6 text-2xl font-black text-white overflow-hidden rounded-3xl transition-all duration-500 hover:scale-105 hover:shadow-2xl"
-              style={{
-                background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
-                boxShadow: '0 20px 60px rgba(249, 115, 22, 0.4), 0 0 40px rgba(236, 72, 153, 0.3)',
-              }}
-            >
-              {/* توهج خلفي متحرك */}
-              <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
-              
-              {/* المحتوى */}
-              <div className="relative flex items-center gap-4">
-                <Play 
-                  size={32} 
-                  className="group-hover:translate-x-[-6px] transition-transform duration-300" 
-                  fill="currentColor"
-                />
-                <span>ابدأ اللعبة الآن</span>
-                <div className="w-3 h-3 bg-green-400 rounded-full animate-ping absolute -right-2 -top-2" />
-              </div>
-            </button>
-
-            {/* معلومة إضافية */}
-            <p className="mt-8 text-purple-400 text-sm font-semibold flex items-center justify-center gap-2">
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              متصل الآن - جاهز للعب!
-            </p>
-          </div>
-        </div>
-
-        {/* الخط الفاصل المتوهج */}
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div 
-            className="h-px relative"
-            style={{
-              background: 'linear-gradient(90deg, transparent, #a855f7, #ec4899, #f97316, transparent)',
-              boxShadow: '0 0 20px rgba(168, 85, 247, 0.5)',
-            }}
-          >
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-2 bg-[#1a0b2e] rounded-full border-2 border-purple-500/50">
-              <Sparkles size={20} className="text-purple-400" />
-            </div>
-          </div>
-        </div>
-
-        {/* Categories Section */}
-        <section className="max-w-7xl mx-auto px-6 py-16">
-          <div className="text-center mb-12">
-            <h2 className="text-5xl font-black mb-4 inline-block" style={{
-              background: 'linear-gradient(135deg, #f97316, #ec4899, #a855f7)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
+          {/* اللوجو والاسم */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '1rem',
+          }}>
+            <div style={{
+              width: '3.5rem',
+              height: '3.5rem',
+              borderRadius: '1rem',
+              background: isDarkMode 
+                ? 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)'
+                : 'rgba(255, 255, 255, 0.95)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+              flexShrink: 0,
             }}>
-              🎯 أنواع الأسئلة
-            </h2>
-            <p className="text-purple-300 text-lg font-semibold">اضغط على أي بطاقة لرؤية التفاصيل والإحصائيات</p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-8">
-            {categories.map((category) => (
-              <CategoryCard key={category.id} category={category} />
-            ))}
-          </div>
-        </section>
-
-        {/* الخط الفاصل المتوهج */}
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div 
-            className="h-px relative"
-            style={{
-              background: 'linear-gradient(90deg, transparent, #ec4899, #a855f7, #3b82f6, transparent)',
-              boxShadow: '0 0 20px rgba(236, 72, 153, 0.5)',
-            }}
-          >
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-2 bg-[#1a0b2e] rounded-full border-2 border-pink-500/50">
-              <Zap size={20} className="text-pink-400" />
+              <Sparkles 
+                size={28} 
+                color={isDarkMode ? 'white' : '#f97316'} 
+                strokeWidth={2.5} 
+              />
             </div>
-          </div>
-        </div>
-
-        {/* Action Cards Section */}
-        <section className="max-w-7xl mx-auto px-6 py-16">
-          <div className="text-center mb-12">
-            <h2 className="text-5xl font-black mb-4 inline-block" style={{
-              background: 'linear-gradient(135deg, #ec4899, #a855f7, #3b82f6)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}>
-              🃏 البطاقات الإستراتيجية
-            </h2>
-            <p className="text-purple-300 text-lg font-semibold">استخدم البطاقات بذكاء لتغيير مجرى المعركة!</p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-8">
-            {actionCards.map((card) => (
-              <ActionCardComponent key={card.id} card={card} />
-            ))}
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="relative mt-24 bg-black/30 backdrop-blur-lg border-t-2 border-purple-500/30">
-          <div className="max-w-7xl mx-auto px-6 py-10">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              
-              {/* اللوجو والنص */}
-              <div className="text-center md:text-right">
-                <h3 className="text-2xl font-black mb-2" style={{
-                  background: 'linear-gradient(135deg, #f97316, #ec4899)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}>
-                  حرب الحروف
-                </h3>
-                <p className="text-purple-400 text-sm">اللعبة العربية الأولى للتحدي والمنافسة</p>
-              </div>
-
-              {/* الروابط */}
-              <div className="flex items-center gap-8">
-                <a
-                  href="#"
-                  className="group flex items-center gap-3 px-6 py-3 bg-purple-600/20 hover:bg-purple-600/40 rounded-xl border-2 border-purple-500/30 hover:border-purple-500/60 transition-all duration-300 hover:scale-105"
-                >
-                  <ShoppingBag size={22} className="text-purple-300 group-hover:text-white transition-colors" />
-                  <span className="font-bold text-purple-300 group-hover:text-white transition-colors">المتجر</span>
-                </a>
-                <a
-                  href="#"
-                  className="group flex items-center gap-3 px-6 py-3 bg-pink-600/20 hover:bg-pink-600/40 rounded-xl border-2 border-pink-500/30 hover:border-pink-500/60 transition-all duration-300 hover:scale-105"
-                >
-                  <Phone size={22} className="text-pink-300 group-hover:text-white transition-colors" />
-                  <span className="font-bold text-pink-300 group-hover:text-white transition-colors">تواصل معنا</span>
-                </a>
-              </div>
-            </div>
-
-            {/* حقوق النشر */}
-            <div className="mt-8 pt-6 border-t border-purple-500/20 text-center">
-              <p className="text-purple-400 text-sm">
-                © 2025 حرب الحروف. جميع الحقوق محفوظة. | صُنع بـ <span className="text-red-500">❤️</span> في السعودية
+            <div>
+              <h1 style={{
+                fontSize: 'clamp(1.5rem, 3vw, 2rem)',
+                fontWeight: 900,
+                margin: 0,
+                color: isDarkMode ? 'white' : 'white',
+                letterSpacing: '-0.02em',
+                lineHeight: 1,
+              }}>
+                حرب الحروف
+              </h1>
+              <p style={{
+                fontSize: '0.875rem',
+                margin: '0.25rem 0 0 0',
+                color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
+                fontWeight: 600,
+              }}>
+                معركة المعرفة والذكاء 🎯
               </p>
             </div>
           </div>
+
+          {/* القائمة والزر */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            
+            {/* روابط التنقل */}
+            <nav style={{ 
+              display: 'flex', 
+              gap: '1.5rem',
+              alignItems: 'center',
+            }}>
+              <a style={{
+                color: isDarkMode ? 'white' : 'white',
+                fontSize: '1rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                padding: '0.5rem 1rem',
+                borderRadius: '0.5rem',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDarkMode 
+                  ? 'rgba(255, 255, 255, 0.1)' 
+                  : 'rgba(255, 255, 255, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+              >
+                الرئيسية
+              </a>
+              <a style={{
+                color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
+                fontSize: '1rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                padding: '0.5rem 1rem',
+                borderRadius: '0.5rem',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDarkMode 
+                  ? 'rgba(255, 255, 255, 0.1)' 
+                  : 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.color = 'white';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
+              }}
+              >
+                الأسئلة
+              </a>
+              <a style={{
+                color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
+                fontSize: '1rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                padding: '0.5rem 1rem',
+                borderRadius: '0.5rem',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDarkMode 
+                  ? 'rgba(255, 255, 255, 0.1)' 
+                  : 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.color = 'white';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
+              }}
+              >
+                البطاقات
+              </a>
+            </nav>
+
+            {/* زر Dark Mode */}
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              style={{
+                width: '3rem',
+                height: '3rem',
+                borderRadius: '0.75rem',
+                background: isDarkMode 
+                  ? 'rgba(255, 255, 255, 0.1)' 
+                  : 'rgba(255, 255, 255, 0.2)',
+                border: isDarkMode 
+                  ? '2px solid rgba(255, 255, 255, 0.2)'
+                  : '2px solid rgba(255, 255, 255, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.1)';
+                e.currentTarget.style.background = isDarkMode 
+                  ? 'rgba(255, 255, 255, 0.15)' 
+                  : 'rgba(255, 255, 255, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.background = isDarkMode 
+                  ? 'rgba(255, 255, 255, 0.1)' 
+                  : 'rgba(255, 255, 255, 0.2)';
+              }}
+            >
+              {isDarkMode ? (
+                <Sun size={20} color="white" />
+              ) : (
+                <Moon size={20} color="white" />
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* المحتوى الرئيسي */}
+      <div style={{ paddingTop: '5.5rem' }}>
+        
+        {/* القسم الأول - الكارد المركزي */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '85vh',
+          padding: 'clamp(1rem, 3vw, 2rem)',
+        }}>
+          <div style={{ 
+            maxWidth: '600px', 
+            width: '100%', 
+            position: 'relative',
+          }}>
+            
+            {/* التوهج الخارجي */}
+            <div style={{
+              position: 'absolute',
+              inset: '-1rem',
+              borderRadius: '2.5rem',
+              filter: 'blur(50px)',
+              background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%)',
+              opacity: isDarkMode ? 0.25 : 0.15,
+              pointerEvents: 'none',
+            }} />
+
+            {/* الكارد */}
+            <div style={{
+              position: 'relative',
+              borderRadius: '2.5rem',
+              padding: 'clamp(2rem, 5vw, 3rem)',
+              border: `2px solid ${colors.border}`,
+              background: colors.cardBg,
+              backdropFilter: 'blur(30px)',
+              boxShadow: isDarkMode 
+                ? '0 0 60px rgba(168, 85, 247, 0.2), 0 20px 40px rgba(0, 0, 0, 0.3)' 
+                : '0 20px 60px rgba(124, 58, 237, 0.15)',
+              transition: 'all 0.3s ease',
+            }}>
+              
+              {/* الأيقونة */}
+              <div style={{ 
+                position: 'relative', 
+                width: 'clamp(4rem, 10vw, 5rem)', 
+                height: 'clamp(4rem, 10vw, 5rem)', 
+                margin: '0 auto clamp(1.5rem, 3vw, 2rem)' 
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  inset: '-0.5rem',
+                  borderRadius: '1.5rem',
+                  filter: 'blur(20px)',
+                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
+                  opacity: 0.4,
+                }} />
+                <div style={{
+                  position: 'relative',
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: '1.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
+                  boxShadow: '0 10px 30px rgba(168, 85, 247, 0.35)',
+                }}>
+                  <span style={{ fontSize: 'clamp(2rem, 5vw, 3rem)' }}>⚔️</span>
+                </div>
+              </div>
+
+              {/* العنوان */}
+              <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+                <h2 style={{
+                  fontSize: 'clamp(2rem, 6vw, 3rem)',
+                  fontWeight: 900,
+                  marginBottom: '0.5rem',
+                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  letterSpacing: '-0.02em',
+                }}>
+                  حرب الحروف
+                </h2>
+                <p style={{ 
+                  color: colors.textSecondary, 
+                  fontSize: 'clamp(1rem, 2.5vw, 1.125rem)', 
+                  fontWeight: 600,
+                  margin: 0,
+                }}>
+                  جاهز للتحدي؟ 🎯
+                </p>
+              </div>
+
+              {/* الخط الفاصل */}
+              <div style={{
+                height: '1px',
+                width: '100%',
+                marginBottom: '2rem',
+                background: isDarkMode 
+                  ? 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.4), transparent)'
+                  : 'linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.3), transparent)',
+              }} />
+
+              {/* زر ابدأ اللعبة */}
+              <button
+                onClick={onOpenSettings}
+                style={{
+                  width: '100%',
+                  padding: 'clamp(1rem, 2.5vw, 1.25rem)',
+                  borderRadius: '1.25rem',
+                  color: 'white',
+                  fontWeight: 900,
+                  fontSize: 'clamp(1.125rem, 3vw, 1.5rem)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.75rem',
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
+                  boxShadow: '0 8px 30px rgba(249, 115, 22, 0.4)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.boxShadow = '0 12px 40px rgba(249, 115, 22, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(249, 115, 22, 0.4)';
+                }}
+              >
+                <Play size={28} fill="currentColor" />
+                ابدأ اللعبة الآن
+              </button>
+
+              <p style={{
+                textAlign: 'center',
+                marginTop: '1.5rem',
+                color: isDarkMode ? 'rgba(233, 213, 255, 0.5)' : 'rgba(124, 58, 237, 0.5)',
+                fontWeight: 600,
+                fontSize: 'clamp(0.75rem, 2vw, 0.875rem)',
+                margin: '1.5rem 0 0 0',
+              }}>
+                اضغط لإنشاء لعبة جديدة ومشاركتها مع الأصدقاء 🎮
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* القسم الثاني - الكاتيجوريز */}
+        <section style={{ 
+          display: 'flex',
+          justifyContent: 'center',
+          padding: 'clamp(2rem, 3vw, 3rem) clamp(1.5rem, 4vw, 3rem)',
+        }}>
+          <div style={{ maxWidth: '1400px', width: '100%' }}>
+            
+            {/* العنوان */}
+            <div style={{ 
+              textAlign: 'center', 
+              marginBottom: 'clamp(2rem, 3vw, 2.5rem)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1rem',
+            }}>
+              <div style={{
+                fontSize: 'clamp(3rem, 7vw, 5rem)',
+                filter: 'drop-shadow(0 4px 10px rgba(249, 115, 22, 0.5))',
+              }}>
+                🎯
+              </div>
+              <h2 style={{
+                fontSize: 'clamp(2rem, 6vw, 3.5rem)',
+                fontWeight: 900,
+                margin: 0,
+                background: 'linear-gradient(135deg, #f97316, #ec4899, #a855f7)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                أنواع الأسئلة
+              </h2>
+              <p style={{ 
+                color: colors.textSecondary, 
+                fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
+                fontWeight: 600,
+                margin: 0,
+                textAlign: 'center',
+              }}>
+                اضغط على أي بطاقة لرؤية التفاصيل
+              </p>
+            </div>
+
+            {/* البطاقات - 4 في كل صف */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 'clamp(1.5rem, 2.5vw, 3rem)',
+            }}>
+              {categories.map((category) => (
+                <CategoryCard key={category.id} category={category} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* الخط الفاصل المتوهج */}
+        <div style={{ 
+          maxWidth: '1400px', 
+          margin: '0 auto', 
+          padding: '0 clamp(1.5rem, 4vw, 3rem)',
+        }}>
+          <div style={{
+            position: 'relative',
+            height: '1px',
+            background: isDarkMode 
+              ? 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.6), rgba(236, 72, 153, 0.6), rgba(249, 115, 22, 0.6), transparent)'
+              : 'linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.4), rgba(219, 39, 119, 0.4), rgba(234, 88, 12, 0.4), transparent)',
+            boxShadow: isDarkMode 
+              ? '0 0 20px rgba(168, 85, 247, 0.5)'
+              : '0 0 15px rgba(124, 58, 237, 0.3)',
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              padding: '0.75rem 1.5rem',
+              background: isDarkMode ? '#1a0b2e' : '#f8f9fa',
+              borderRadius: '2rem',
+              border: `2px solid ${isDarkMode ? 'rgba(168, 85, 247, 0.5)' : 'rgba(124, 58, 237, 0.3)'}`,
+              boxShadow: isDarkMode 
+                ? '0 4px 20px rgba(168, 85, 247, 0.3)'
+                : '0 4px 15px rgba(124, 58, 237, 0.2)',
+            }}>
+              <span style={{
+                fontSize: '1.5rem',
+                filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))',
+              }}>
+                ✨
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* القسم الثالث - البطاقات */}
+        <section style={{ 
+          display: 'flex',
+          justifyContent: 'center',
+          padding: 'clamp(2rem, 3vw, 3rem) clamp(1.5rem, 4vw, 3rem)',
+        }}>
+          <div style={{ maxWidth: '1400px', width: '100%' }}>
+            
+            {/* العنوان */}
+            <div style={{ 
+              textAlign: 'center', 
+              marginBottom: 'clamp(2rem, 3vw, 2.5rem)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '1rem',
+            }}>
+              <div style={{
+                fontSize: 'clamp(3rem, 7vw, 5rem)',
+                filter: 'drop-shadow(0 4px 10px rgba(236, 72, 153, 0.5))',
+              }}>
+                🃏
+              </div>
+              <h2 style={{
+                fontSize: 'clamp(2rem, 6vw, 3.5rem)',
+                fontWeight: 900,
+                margin: 0,
+                background: 'linear-gradient(135deg, #ec4899, #a855f7, #3b82f6)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}>
+                البطاقات الإستراتيجية
+              </h2>
+              <p style={{ 
+                color: colors.textSecondary, 
+                fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
+                fontWeight: 600,
+                margin: 0,
+                textAlign: 'center',
+              }}>
+                استخدم البطاقات بذكاء لتغيير مجرى المعركة
+              </p>
+            </div>
+
+            {/* البطاقات - 4 في كل صف */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 'clamp(1.5rem, 2.5vw, 3rem)',
+            }}>
+              {actionCards.map((card) => (
+                <ActionCardComponent key={card.id} card={card} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Media Query للشاشات الأصغر */}
+        <style>{`
+          @media (max-width: 1200px) {
+            section > div:last-child {
+              grid-template-columns: repeat(3, 1fr) !important;
+            }
+          }
+          @media (max-width: 900px) {
+            section > div:last-child {
+              grid-template-columns: repeat(2, 1fr) !important;
+            }
+          }
+          @media (max-width: 600px) {
+            section > div:last-child {
+              grid-template-columns: repeat(1, 1fr) !important;
+            }
+          }
+        `}</style>
+
+        {/* Footer */}
+        <footer style={{
+          marginTop: '2rem',
+          padding: '2rem',
+          background: isDarkMode 
+            ? 'rgba(0, 0, 0, 0.3)' 
+            : 'rgba(255, 255, 255, 0.5)',
+          backdropFilter: 'blur(10px)',
+          borderTop: `2px solid ${colors.border}`,
+          textAlign: 'center',
+        }}>
+          <p style={{ 
+            color: colors.textSecondary, 
+            fontSize: '0.875rem',
+            margin: 0,
+          }}>
+            © 2025 حرب الحروف • جميع الحقوق محفوظة
+          </p>
         </footer>
       </div>
 
       {/* CSS للأنيميشنز */}
       <style>{`
-        @keyframes fall {
+        @keyframes falling {
           0% {
             transform: translateY(-10vh) rotate(0deg);
             opacity: 0;
           }
           10% {
-            opacity: 0.6;
+            opacity: 0.4;
           }
           90% {
-            opacity: 0.6;
+            opacity: 0.4;
           }
           100% {
             transform: translateY(110vh) rotate(360deg);
@@ -270,64 +649,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartGame }) => {
           }
         }
 
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-15px);
-          }
-        }
-
-        @keyframes pulse-slow {
-          0%, 100% {
-            opacity: 0.7;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes fade-in-delay {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .animate-fall {
-          animation: fall linear infinite;
-        }
-
-        .animate-float {
-          animation: float 3s ease-in-out infinite;
-        }
-
-        .animate-pulse-slow {
-          animation: pulse-slow 3s ease-in-out infinite;
-        }
-
-        .animate-fade-in {
-          animation: fade-in 0.8s ease-out;
-        }
-
-        .animate-fade-in-delay {
-          animation: fade-in-delay 1s ease-out 0.3s both;
+        .falling-letter {
+          animation: falling linear infinite;
         }
       `}</style>
     </div>
