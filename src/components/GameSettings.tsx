@@ -1,8 +1,8 @@
 // src/components/GameSettings.tsx
-// صفحة إعدادات اللعبة الكاملة
+// صفحة إعدادات اللعبة الكاملة - النسخة المحدثة
 
 import React, { useState } from 'react';
-import { ArrowLeft, Users, Grid3x3, Target, Tv, Eye, EyeOff, Zap } from 'lucide-react';
+import { ArrowLeft, Target, Trophy, Dice5, Eye, EyeOff, Zap, Award, Users } from 'lucide-react';
 import { categories } from '../lib/categories';
 
 interface GameSettingsProps {
@@ -12,28 +12,92 @@ interface GameSettingsProps {
 
 export interface GameSettingsData {
   gameName: string;
-  gridSize: '5x5' | 'balanced'; // 5x5 أو متزنة (4-5-6-5-4)
-  cardDistributionMode: 'full-access' | 'starter-card' | 'zero-start';
-  gameMode: 'normal' | 'tv-show';
+  teamNames: { green: string; red: string };
+  
+  // آليات الفوز
+  winCondition: 'wall-to-wall' | 'five-connected' | 'most-letters' | 'all';
+  
+  // عدد الجولات
+  rounds: 3 | 5 | number | 'infinite';
+  
+  // نظام البطاقات
+  enableCards: boolean;
+  enableRandomLetter: boolean; // الحرف العشوائي
+  enableStreakReward: boolean; // سلسلة الإجابات
+  enableHiddenCards: boolean; // البطاقات المخبأة
+  hiddenCardsCount: number;
+  enableGoldenLetter: boolean; // الحرف الذهبي
+  cardDistribution: 'random' | 'manual';
+  showCardLocations: 'always' | 'on-press' | 'hidden';
+  cardTypes: {
+    freeze: boolean;
+    bomb: boolean;
+    battle: boolean;
+    shield: boolean;
+    demonShuffle: boolean;
+    speedUp: boolean;
+    luck: boolean;
+  };
+  
+  // مميزات خاصة
+  carryCardsToNextRound: boolean;
+  
+  // الكاتيجوريز
   selectedCategories: string[];
+  
+  // إعدادات المسابقة التلفزيونية
+  gameMode: 'normal' | 'tv-show';
   showQuestionsToTeams: boolean;
-  enablePowerCards: boolean;
+  
+  // الوقت
   timePerQuestion: number;
 }
 
 export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame }) => {
   const [settings, setSettings] = useState<GameSettingsData>({
     gameName: '',
-    gridSize: 'balanced',
-    cardDistributionMode: 'full-access',
-    gameMode: 'normal',
+    teamNames: { green: 'الفريق الأخضر', red: 'الفريق الأحمر' },
+    
+    // آليات الفوز
+    winCondition: 'all',
+    
+    // عدد الجولات
+    rounds: 3,
+    
+    // نظام البطاقات
+    enableCards: true,
+    enableRandomLetter: true,
+    enableStreakReward: true,
+    enableHiddenCards: true,
+    hiddenCardsCount: 5,
+    enableGoldenLetter: true,
+    cardDistribution: 'random',
+    showCardLocations: 'on-press',
+    cardTypes: {
+      freeze: true,
+      bomb: true,
+      battle: true,
+      shield: true,
+      demonShuffle: true,
+      speedUp: true,
+      luck: true,
+    },
+    
+    // مميزات خاصة
+    carryCardsToNextRound: false,
+    
+    // الكاتيجوريز
     selectedCategories: [],
+    
+    // إعدادات المسابقة التلفزيونية
+    gameMode: 'normal',
     showQuestionsToTeams: true,
-    enablePowerCards: true,
+    
+    // الوقت
     timePerQuestion: 30,
   });
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [customRounds, setCustomRounds] = useState<number>(7);
 
   const handleStart = () => {
     if (settings.gameName.trim() === '') {
@@ -67,6 +131,16 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     setSettings(prev => ({ ...prev, selectedCategories: [] }));
   };
 
+  const toggleCardType = (cardType: keyof typeof settings.cardTypes) => {
+    setSettings(prev => ({
+      ...prev,
+      cardTypes: {
+        ...prev.cardTypes,
+        [cardType]: !prev.cardTypes[cardType]
+      }
+    }));
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -75,6 +149,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
+      overflowY: 'auto',
     }}>
       
       {/* Header */}
@@ -188,7 +263,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           margin: '2rem 0',
         }} />
 
-        {/* حجم الشبكة */}
+        {/* أسماء الفرق */}
         <div style={{ marginBottom: '2rem' }}>
           <label style={{
             display: 'flex',
@@ -199,107 +274,97 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
             color: 'white',
             marginBottom: '1rem',
           }}>
-            <Grid3x3 size={24} color="#10b981" />
-            حجم الشبكة السداسية
+            <Users size={24} color="#ec4899" />
+            أسماء الفرق
           </label>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(2, 1fr)',
             gap: '1rem',
           }}>
-            {/* شبكة 5x5 */}
-            <button
-              onClick={() => setSettings({ ...settings, gridSize: '5x5' })}
-              style={{
-                padding: '2rem 1.5rem',
-                background: settings.gridSize === '5x5' 
-                  ? 'linear-gradient(135deg, #10b981, #14b8a6)'
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: settings.gridSize === '5x5'
-                  ? '3px solid #10b981'
-                  : '2px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '1rem',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '1rem',
-              }}
-              onMouseEnter={(e) => {
-                if (settings.gridSize !== '5x5') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                  e.currentTarget.style.transform = 'translateY(-5px)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (settings.gridSize !== '5x5') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }
-              }}
-            >
-              <div style={{ fontSize: '2rem' }}>⬡</div>
-              <div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, marginBottom: '0.5rem' }}>
-                  5×5
-                </div>
-                <div style={{ fontSize: '0.875rem', opacity: 0.9 }}>
-                  25 خلية سداسية
-                </div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.25rem' }}>
-                  (25 حرف من 28)
-                </div>
-              </div>
-            </button>
+            {/* الفريق الأخضر */}
+            <div>
+              <label style={{
+                display: 'block',
+                color: '#10b981',
+                fontSize: '0.875rem',
+                fontWeight: 700,
+                marginBottom: '0.5rem',
+              }}>
+                🟢 الفريق الأخضر
+              </label>
+              <input
+                type="text"
+                value={settings.teamNames.green}
+                onChange={(e) => setSettings({
+                  ...settings,
+                  teamNames: { ...settings.teamNames, green: e.target.value }
+                })}
+                placeholder="الفريق الأخضر"
+                style={{
+                  width: '100%',
+                  padding: '1rem 1.5rem',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  border: '2px solid rgba(16, 185, 129, 0.3)',
+                  borderRadius: '1rem',
+                  color: 'white',
+                  outline: 'none',
+                  transition: 'all 0.2s',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#10b981';
+                  e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                  e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)';
+                }}
+              />
+            </div>
 
-            {/* شبكة متزنة */}
-            <button
-              onClick={() => setSettings({ ...settings, gridSize: 'balanced' })}
-              style={{
-                padding: '2rem 1.5rem',
-                background: settings.gridSize === 'balanced' 
-                  ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: settings.gridSize === 'balanced'
-                  ? '3px solid #3b82f6'
-                  : '2px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '1rem',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '1rem',
-              }}
-              onMouseEnter={(e) => {
-                if (settings.gridSize !== 'balanced') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                  e.currentTarget.style.transform = 'translateY(-5px)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (settings.gridSize !== 'balanced') {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }
-              }}
-            >
-              <div style={{ fontSize: '2rem' }}>⬢</div>
-              <div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, marginBottom: '0.5rem' }}>
-                  متزنة
-                </div>
-                <div style={{ fontSize: '0.875rem', opacity: 0.9 }}>
-                  24 خلية سداسية
-                </div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.25rem' }}>
-                  (4-5-6-5-4 صفوف)
-                </div>
-              </div>
-            </button>
+            {/* الفريق الأحمر */}
+            <div>
+              <label style={{
+                display: 'block',
+                color: '#ef4444',
+                fontSize: '0.875rem',
+                fontWeight: 700,
+                marginBottom: '0.5rem',
+              }}>
+                🔴 الفريق الأحمر
+              </label>
+              <input
+                type="text"
+                value={settings.teamNames.red}
+                onChange={(e) => setSettings({
+                  ...settings,
+                  teamNames: { ...settings.teamNames, red: e.target.value }
+                })}
+                placeholder="الفريق الأحمر"
+                style={{
+                  width: '100%',
+                  padding: '1rem 1.5rem',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '2px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '1rem',
+                  color: 'white',
+                  outline: 'none',
+                  transition: 'all 0.2s',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#ef4444';
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -309,7 +374,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           margin: '2rem 0',
         }} />
 
-        {/* طريقة توزيع الكروت */}
+        {/* آلية الفوز */}
         <div style={{ marginBottom: '2rem' }}>
           <label style={{
             display: 'flex',
@@ -320,138 +385,584 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
             color: 'white',
             marginBottom: '1rem',
           }}>
-            <Zap size={24} color="#ec4899" />
-            طريقة الحصول على كروت الأكشن
+            <Trophy size={24} color="#fbbf24" />
+            آلية الفوز
           </label>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '1rem',
           }}>
-            {/* السيطرة الكاملة */}
-            <button
-              onClick={() => setSettings({ ...settings, cardDistributionMode: 'full-access' })}
-              style={{
-                padding: '1.5rem',
-                background: settings.cardDistributionMode === 'full-access'
-                  ? 'linear-gradient(135deg, #10b981, #14b8a6)'
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: settings.cardDistributionMode === 'full-access'
-                  ? '3px solid #10b981'
-                  : '2px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '1rem',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '0.75rem',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ fontSize: '2.5rem' }}>🎁</span>
-              <div style={{ fontSize: '1.125rem', fontWeight: 900 }}>
-                السيطرة الكاملة
-              </div>
-              <div style={{ fontSize: '0.875rem', opacity: 0.9, lineHeight: '1.5' }}>
-                جميع الفرق تملك كل الكروت من البداية
-              </div>
-            </button>
-
-            {/* البداية التدريجية */}
-            <button
-              onClick={() => setSettings({ ...settings, cardDistributionMode: 'starter-card' })}
-              style={{
-                padding: '1.5rem',
-                background: settings.cardDistributionMode === 'starter-card'
-                  ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: settings.cardDistributionMode === 'starter-card'
-                  ? '3px solid #f59e0b'
-                  : '2px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '1rem',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '0.75rem',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ fontSize: '2.5rem' }}>🎲</span>
-              <div style={{ fontSize: '1.125rem', fontWeight: 900 }}>
-                البداية التدريجية
-              </div>
-              <div style={{ fontSize: '0.875rem', opacity: 0.9, lineHeight: '1.5' }}>
-                كل فريق يبدأ بكرت عشوائي واحد فقط
-              </div>
-            </button>
-
-            {/* التنافس الصفري */}
-            <button
-              onClick={() => setSettings({ ...settings, cardDistributionMode: 'zero-start' })}
-              style={{
-                padding: '1.5rem',
-                background: settings.cardDistributionMode === 'zero-start'
-                  ? 'linear-gradient(135deg, #ef4444, #dc2626)'
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: settings.cardDistributionMode === 'zero-start'
-                  ? '3px solid #ef4444'
-                  : '2px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '1rem',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '0.75rem',
-                textAlign: 'center',
-              }}
-            >
-              <span style={{ fontSize: '2.5rem' }}>⚔️</span>
-              <div style={{ fontSize: '1.125rem', fontWeight: 900 }}>
-                التنافس الصفري
-              </div>
-              <div style={{ fontSize: '0.875rem', opacity: 0.9, lineHeight: '1.5' }}>
-                بدون كروت! الاعتماد على التنافس فقط
-              </div>
-            </button>
+            {[
+              { id: 'wall-to-wall', label: 'من الجدار للجدار', icon: '🧱' },
+              { id: 'five-connected', label: 'خمس خلايا متصلة', icon: '5️⃣' },
+              { id: 'most-letters', label: 'الأكثر حروفاً', icon: '📊' },
+              { id: 'all', label: 'الكل (بالترتيب)', icon: '🏆' },
+            ].map((option) => (
+              <button
+                key={option.id}
+                onClick={() => setSettings({ ...settings, winCondition: option.id as any })}
+                style={{
+                  padding: '1.25rem',
+                  background: settings.winCondition === option.id
+                    ? 'linear-gradient(135deg, #fbbf24, #f59e0b)'
+                    : 'rgba(255, 255, 255, 0.1)',
+                  border: settings.winCondition === option.id
+                    ? '3px solid #fbbf24'
+                    : '2px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '1rem',
+                  color: 'white',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <span style={{ fontSize: '2rem' }}>{option.icon}</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 700, textAlign: 'center' }}>
+                  {option.label}
+                </span>
+              </button>
+            ))}
           </div>
+        </div>
 
-          {/* شرح طرق الحصول على الكروت */}
-          {settings.cardDistributionMode !== 'full-access' && (
+        <div style={{
+          height: '1px',
+          background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
+          margin: '2rem 0',
+        }} />
+
+        {/* عدد الجولات */}
+        <div style={{ marginBottom: '2rem' }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            fontSize: '1.25rem',
+            fontWeight: 900,
+            color: 'white',
+            marginBottom: '1rem',
+          }}>
+            <Dice5 size={24} color="#3b82f6" />
+            عدد الجولات
+          </label>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+            gap: '1rem',
+          }}>
+            {[
+              { value: 3, label: '3 جولات' },
+              { value: 5, label: '5 جولات' },
+              { value: 'infinite', label: '♾️ مفتوح' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setSettings({ ...settings, rounds: option.value as any })}
+                style={{
+                  padding: '1rem',
+                  background: settings.rounds === option.value
+                    ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
+                    : 'rgba(255, 255, 255, 0.1)',
+                  border: settings.rounds === option.value
+                    ? '3px solid #3b82f6'
+                    : '2px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '1rem',
+                  color: 'white',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+            {/* عدد مخصص */}
             <div style={{
-              marginTop: '1rem',
-              padding: '1.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}>
+              <button
+                onClick={() => setSettings({ ...settings, rounds: customRounds })}
+                style={{
+                  padding: '1rem',
+                  background: typeof settings.rounds === 'number' && settings.rounds !== 3 && settings.rounds !== 5
+                    ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
+                    : 'rgba(255, 255, 255, 0.1)',
+                  border: typeof settings.rounds === 'number' && settings.rounds !== 3 && settings.rounds !== 5
+                    ? '3px solid #3b82f6'
+                    : '2px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '1rem',
+                  color: 'white',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                مخصص: {customRounds}
+              </button>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={customRounds}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 1;
+                  setCustomRounds(val);
+                  setSettings({ ...settings, rounds: val });
+                }}
+                style={{
+                  padding: '0.5rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '2px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '0.5rem',
+                  color: 'white',
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={{
+          height: '1px',
+          background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
+          margin: '2rem 0',
+        }} />
+
+        {/* نظام البطاقات */}
+        <div style={{ marginBottom: '2rem' }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '1.25rem',
+            fontWeight: 900,
+            color: 'white',
+            marginBottom: '1rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <Zap size={24} color="#ec4899" />
+              نظام البطاقات
+            </div>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              cursor: 'pointer',
+            }}>
+              <input
+                type="checkbox"
+                checked={settings.enableCards}
+                onChange={(e) => setSettings({ ...settings, enableCards: e.target.checked })}
+                style={{
+                  width: '1.5rem',
+                  height: '1.5rem',
+                  cursor: 'pointer',
+                  accentColor: '#ec4899',
+                }}
+              />
+              <span style={{ fontSize: '1rem', color: '#e9d5ff' }}>تفعيل</span>
+            </label>
+          </label>
+
+          {settings.enableCards && (
+            <div style={{
               background: 'rgba(236, 72, 153, 0.1)',
               border: '2px solid rgba(236, 72, 153, 0.3)',
               borderRadius: '1rem',
+              padding: '1.5rem',
             }}>
-              <h4 style={{
-                fontSize: '1rem',
-                fontWeight: 900,
-                color: '#ec4899',
-                marginBottom: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
+              {/* عدد البطاقات المخبأة */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{
+                  display: 'block',
+                  color: '#ec4899',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  marginBottom: '0.75rem',
+                }}>
+                  🎯 عدد البطاقات المخبأة في الأحرف:
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="15"
+                  value={settings.hiddenCardsCount}
+                  onChange={(e) => setSettings({ ...settings, hiddenCardsCount: parseInt(e.target.value) || 0 })}
+                  style={{
+                    width: '100px',
+                    padding: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '2px solid rgba(236, 72, 153, 0.3)',
+                    borderRadius: '0.75rem',
+                    color: 'white',
+                    fontSize: '1.25rem',
+                    fontWeight: 900,
+                    textAlign: 'center',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* طرق الحصول على البطاقات */}
+              <div style={{ 
+                marginBottom: '1.5rem',
+                background: 'rgba(251, 191, 36, 0.1)',
+                border: '2px solid rgba(251, 191, 36, 0.3)',
+                borderRadius: '1rem',
+                padding: '1.5rem',
               }}>
-                💎 طرق الحصول على الكروت:
-              </h4>
-              <ul style={{
-                color: '#e9d5ff',
-                fontSize: '0.875rem',
-                lineHeight: '1.8',
-                paddingRight: '1.5rem',
-                margin: 0,
-              }}>
-                <li><strong style={{ color: '#fbbf24' }}>الحرف الذهبي:</strong> عند الإجابة على حرف ذهبي (يحدده الحكم)</li>
-                <li><strong style={{ color: '#10b981' }}>مكافأة السلسلة:</strong> بعد 3 إجابات صحيحة متتالية</li>
-              </ul>
+                <h4 style={{
+                  fontSize: '1rem',
+                  fontWeight: 900,
+                  color: '#fbbf24',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}>
+                  💎 طرق الحصول على البطاقات:
+                </h4>
+
+                {/* الحرف العشوائي في بداية الجولة */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  marginBottom: '0.75rem',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>🎲</span>
+                    <div>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: '0.95rem' }}>
+                        الحرف العشوائي
+                      </div>
+                      <div style={{ color: '#e9d5ff', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                        الإجابة على الحرف العشوائي في بداية الجولة
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableRandomLetter}
+                    onChange={(e) => setSettings({ ...settings, enableRandomLetter: e.target.checked })}
+                    style={{
+                      width: '1.25rem',
+                      height: '1.25rem',
+                      cursor: 'pointer',
+                      accentColor: '#8b5cf6',
+                    }}
+                  />
+                </label>
+
+                {/* سلسلة الإجابات */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  marginBottom: '0.75rem',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>🔥</span>
+                    <div>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: '0.95rem' }}>
+                        سلسلة الإجابات
+                      </div>
+                      <div style={{ color: '#e9d5ff', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                        مكافأة بعد 3 إجابات صحيحة متتالية
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableStreakReward}
+                    onChange={(e) => setSettings({ ...settings, enableStreakReward: e.target.checked })}
+                    style={{
+                      width: '1.25rem',
+                      height: '1.25rem',
+                      cursor: 'pointer',
+                      accentColor: '#f97316',
+                    }}
+                  />
+                </label>
+
+                {/* البطاقات المخبأة في الأحرف */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  marginBottom: '0.75rem',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>🎁</span>
+                    <div>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: '0.95rem' }}>
+                        البطاقات المخبأة
+                      </div>
+                      <div style={{ color: '#e9d5ff', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                        من يجيب على حرف يحتوي بطاقة يحصل عليها
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="15"
+                      value={settings.hiddenCardsCount}
+                      onChange={(e) => setSettings({ ...settings, hiddenCardsCount: parseInt(e.target.value) || 0 })}
+                      disabled={!settings.enableHiddenCards}
+                      style={{
+                        width: '50px',
+                        padding: '0.25rem',
+                        background: settings.enableHiddenCards ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                        border: '2px solid rgba(236, 72, 153, 0.3)',
+                        borderRadius: '0.5rem',
+                        color: 'white',
+                        fontSize: '0.875rem',
+                        fontWeight: 700,
+                        textAlign: 'center',
+                        outline: 'none',
+                        opacity: settings.enableHiddenCards ? 1 : 0.5,
+                      }}
+                    />
+                    <input
+                      type="checkbox"
+                      checked={settings.enableHiddenCards}
+                      onChange={(e) => setSettings({ ...settings, enableHiddenCards: e.target.checked })}
+                      style={{
+                        width: '1.25rem',
+                        height: '1.25rem',
+                        cursor: 'pointer',
+                        accentColor: '#ec4899',
+                      }}
+                    />
+                  </div>
+                </label>
+
+                {/* الحرف الذهبي */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>✨</span>
+                    <div>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: '0.95rem' }}>
+                        الحرف الذهبي
+                      </div>
+                      <div style={{ color: '#e9d5ff', fontSize: '0.8rem', marginTop: '0.15rem' }}>
+                        يمنح بطاقة نادرة عند الإجابة عليه
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableGoldenLetter}
+                    onChange={(e) => setSettings({ ...settings, enableGoldenLetter: e.target.checked })}
+                    style={{
+                      width: '1.25rem',
+                      height: '1.25rem',
+                      cursor: 'pointer',
+                      accentColor: '#fbbf24',
+                    }}
+                  />
+                </label>
+              </div>
+
+              {/* توزيع البطاقات */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{
+                  display: 'block',
+                  color: '#ec4899',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  marginBottom: '0.75rem',
+                }}>
+                  🎲 توزيع البطاقات:
+                </label>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    onClick={() => setSettings({ ...settings, cardDistribution: 'random' })}
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      background: settings.cardDistribution === 'random'
+                        ? 'linear-gradient(135deg, #ec4899, #db2777)'
+                        : 'rgba(255, 255, 255, 0.1)',
+                      border: settings.cardDistribution === 'random'
+                        ? '2px solid #ec4899'
+                        : '2px solid rgba(255, 255, 255, 0.2)',
+                      borderRadius: '0.75rem',
+                      color: 'white',
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    🎲 عشوائي
+                  </button>
+                  <button
+                    onClick={() => setSettings({ ...settings, cardDistribution: 'manual' })}
+                    style={{
+                      flex: 1,
+                      padding: '1rem',
+                      background: settings.cardDistribution === 'manual'
+                        ? 'linear-gradient(135deg, #ec4899, #db2777)'
+                        : 'rgba(255, 255, 255, 0.1)',
+                      border: settings.cardDistribution === 'manual'
+                        ? '2px solid #ec4899'
+                        : '2px solid rgba(255, 255, 255, 0.2)',
+                      borderRadius: '0.75rem',
+                      color: 'white',
+                      fontSize: '0.95rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    ✋ يدوي
+                  </button>
+                </div>
+              </div>
+
+              {/* إظهار مواقع البطاقات */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{
+                  display: 'block',
+                  color: '#ec4899',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  marginBottom: '0.75rem',
+                }}>
+                  👁 إظهار مواقع البطاقات:
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                  {[
+                    { value: 'always', label: 'دائماً', icon: <Eye size={16} /> },
+                    { value: 'on-press', label: 'عند الضغط', icon: '⏱' },
+                    { value: 'hidden', label: 'مخفية', icon: <EyeOff size={16} /> },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setSettings({ ...settings, showCardLocations: option.value as any })}
+                      style={{
+                        padding: '0.75rem',
+                        background: settings.showCardLocations === option.value
+                          ? 'linear-gradient(135deg, #ec4899, #db2777)'
+                          : 'rgba(255, 255, 255, 0.1)',
+                        border: settings.showCardLocations === option.value
+                          ? '2px solid #ec4899'
+                          : '2px solid rgba(255, 255, 255, 0.2)',
+                        borderRadius: '0.75rem',
+                        color: 'white',
+                        fontSize: '0.875rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      {typeof option.icon === 'string' ? option.icon : option.icon}
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* أنواع البطاقات المفعلة */}
+              <div>
+                <label style={{
+                  display: 'block',
+                  color: '#ec4899',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  marginBottom: '0.75rem',
+                }}>
+                  ✅ أنواع البطاقات المتاحة:
+                </label>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                  gap: '0.75rem',
+                }}>
+                  {[
+                    { key: 'freeze', label: 'تجميد', icon: '🧊' },
+                    { key: 'bomb', label: 'قنبلة', icon: '💣' },
+                    { key: 'battle', label: 'معركة', icon: '⚔️' },
+                    { key: 'shield', label: 'درع', icon: '🛡️' },
+                    { key: 'demonShuffle', label: 'خلط شيطاني', icon: '😈' },
+                    { key: 'speedUp', label: 'تسريع', icon: '⏱' },
+                    { key: 'luck', label: 'حظ', icon: '🎲' },
+                  ].map((card) => (
+                    <label
+                      key={card.key}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.75rem',
+                        background: settings.cardTypes[card.key as keyof typeof settings.cardTypes]
+                          ? 'rgba(236, 72, 153, 0.2)'
+                          : 'rgba(255, 255, 255, 0.05)',
+                        border: `2px solid ${settings.cardTypes[card.key as keyof typeof settings.cardTypes]
+                          ? 'rgba(236, 72, 153, 0.5)'
+                          : 'rgba(255, 255, 255, 0.1)'}`,
+                        borderRadius: '0.75rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={settings.cardTypes[card.key as keyof typeof settings.cardTypes]}
+                        onChange={() => toggleCardType(card.key as keyof typeof settings.cardTypes)}
+                        style={{
+                          width: '1.25rem',
+                          height: '1.25rem',
+                          cursor: 'pointer',
+                          accentColor: '#ec4899',
+                        }}
+                      />
+                      <span style={{ fontSize: '1.25rem' }}>{card.icon}</span>
+                      <span style={{ color: 'white', fontSize: '0.875rem', fontWeight: 700 }}>
+                        {card.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -462,7 +973,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           margin: '2rem 0',
         }} />
 
-        {/* نمط اللعبة */}
+        {/* مميزات خاصة */}
         <div style={{ marginBottom: '2rem' }}>
           <label style={{
             display: 'flex',
@@ -473,200 +984,56 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
             color: 'white',
             marginBottom: '1rem',
           }}>
-            <Tv size={24} color="#3b82f6" />
-            نمط اللعبة
+            <Award size={24} color="#a855f7" />
+            مميزات خاصة
           </label>
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '1rem',
+            background: 'rgba(168, 85, 247, 0.1)',
+            border: '2px solid rgba(168, 85, 247, 0.3)',
+            borderRadius: '1rem',
+            padding: '1.5rem',
           }}>
-            <button
-              onClick={() => setSettings({ ...settings, gameMode: 'normal' })}
-              style={{
-                padding: '1.5rem',
-                background: settings.gameMode === 'normal'
-                  ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: settings.gameMode === 'normal'
-                  ? '2px solid #3b82f6'
-                  : '2px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '1rem',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎮</div>
-              <div style={{ fontSize: '1.125rem', fontWeight: 900, marginBottom: '0.5rem' }}>
-                عادي
+            {/* ترحيل البطاقات */}
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '1rem',
+              background: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: '0.75rem',
+              cursor: 'pointer',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.5rem' }}>🔁</span>
+                <div>
+                  <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>
+                    ترحيل البطاقات بين الجولات
+                  </div>
+                  <div style={{ color: '#e9d5ff', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                    البطاقات المتبقية تنتقل للجولة التالية
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>
-                كل اللاعبين يشاهدون الأسئلة ويتفاعلون
-              </div>
-            </button>
-
-            <button
-              onClick={() => setSettings({ ...settings, gameMode: 'tv-show' })}
-              style={{
-                padding: '1.5rem',
-                background: settings.gameMode === 'tv-show'
-                  ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                  : 'rgba(255, 255, 255, 0.1)',
-                border: settings.gameMode === 'tv-show'
-                  ? '2px solid #f59e0b'
-                  : '2px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '1rem',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📺</div>
-              <div style={{ fontSize: '1.125rem', fontWeight: 900, marginBottom: '0.5rem' }}>
-                مسابقة تلفزيونية
-              </div>
-              <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>
-                مقدم واحد يدير اللعبة والفرق يشاهدون فقط
-              </div>
-            </button>
+              <input
+                type="checkbox"
+                checked={settings.carryCardsToNextRound}
+                onChange={(e) => setSettings({ ...settings, carryCardsToNextRound: e.target.checked })}
+                style={{
+                  width: '1.5rem',
+                  height: '1.5rem',
+                  cursor: 'pointer',
+                  accentColor: '#3b82f6',
+                }}
+              />
+            </label>
           </div>
         </div>
 
-        {/* إعدادات المسابقة التلفزيونية */}
-        {settings.gameMode === 'tv-show' && (
-          <>
-            <div style={{
-              background: 'rgba(245, 158, 11, 0.1)',
-              border: '2px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: '1rem',
-              padding: '1.5rem',
-              marginBottom: '2rem',
-            }}>
-              <h3 style={{
-                fontSize: '1.125rem',
-                fontWeight: 900,
-                color: '#fbbf24',
-                marginBottom: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}>
-                <Tv size={20} />
-                إعدادات المسابقة التلفزيونية
-              </h3>
-
-              {/* إظهار الأسئلة للفرق */}
-              <label style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '1rem',
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '0.75rem',
-                marginBottom: '1rem',
-                cursor: 'pointer',
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                }}>
-                  {settings.showQuestionsToTeams ? (
-                    <Eye size={20} color="#10b981" />
-                  ) : (
-                    <EyeOff size={20} color="#ef4444" />
-                  )}
-                  <div>
-                    <div style={{
-                      color: 'white',
-                      fontWeight: 700,
-                      fontSize: '1rem',
-                    }}>
-                      إظهار الأسئلة للفرق
-                    </div>
-                    <div style={{
-                      color: '#e9d5ff',
-                      fontSize: '0.875rem',
-                      marginTop: '0.25rem',
-                    }}>
-                      {settings.showQuestionsToTeams 
-                        ? 'الفرق يشاهدون الأسئلة على شاشاتهم'
-                        : 'المقدم فقط يقرأ الأسئلة'
-                      }
-                    </div>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.showQuestionsToTeams}
-                  onChange={(e) => setSettings({ ...settings, showQuestionsToTeams: e.target.checked })}
-                  style={{
-                    width: '3rem',
-                    height: '1.5rem',
-                    cursor: 'pointer',
-                    accentColor: '#10b981',
-                  }}
-                />
-              </label>
-
-              {/* تفعيل البطاقات */}
-              <label style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '1rem',
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: '0.75rem',
-                cursor: 'pointer',
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                }}>
-                  <Zap size={20} color="#ec4899" />
-                  <div>
-                    <div style={{
-                      color: 'white',
-                      fontWeight: 700,
-                      fontSize: '1rem',
-                    }}>
-                      تفعيل البطاقات الإستراتيجية
-                    </div>
-                    <div style={{
-                      color: '#e9d5ff',
-                      fontSize: '0.875rem',
-                      marginTop: '0.25rem',
-                    }}>
-                      {settings.enablePowerCards
-                        ? 'المقدم فقط يستخدم البطاقات'
-                        : 'اللعب بدون بطاقات إستراتيجية'
-                      }
-                    </div>
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={settings.enablePowerCards}
-                  onChange={(e) => setSettings({ ...settings, enablePowerCards: e.target.checked })}
-                  style={{
-                    width: '3rem',
-                    height: '1.5rem',
-                    cursor: 'pointer',
-                    accentColor: '#ec4899',
-                  }}
-                />
-              </label>
-            </div>
-
-            <div style={{
-              height: '1px',
-              background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
-              margin: '2rem 0',
-            }} />
-          </>
-        )}
+        <div style={{
+          height: '1px',
+          background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
+          margin: '2rem 0',
+        }} />
 
         {/* الفئات */}
         <div style={{ marginBottom: '2rem' }}>

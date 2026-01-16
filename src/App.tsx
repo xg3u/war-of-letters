@@ -1,37 +1,71 @@
-// App.tsx - التصحيح
-
+// src/App.tsx
 import React, { useState } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { GameSettings } from './components/GameSettings';
-import type { GameSettingsData } from './components/GameSettings';  // ← هنا!
-import { GameBoard } from './components/GameBoard';
+import { HostScreen } from './components/HostScreen';
+import { PlayersScreen } from './components/PlayersScreen';
+import { WelcomeModal } from './components/WelcomeModal';
+import { AnimatedBackground } from './components/AnimatedBackground';
+import type { GameSettingsData } from './components/GameSettings';
 
-type Screen = 'landing' | 'settings' | 'game';
+type Screen = 'landing' | 'settings' | 'host' | 'players';
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('landing');
+  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
+    // التحقق من query parameter لتحديد الشاشة
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('screen') as Screen) || 'landing';
+  });
+  
   const [gameSettings, setGameSettings] = useState<GameSettingsData | null>(null);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
+    const hideModal = localStorage.getItem('hideWelcomeModal');
+    return hideModal !== 'true';
+  });
+
+  const handleCloseWelcome = () => {
+    setShowWelcomeModal(false);
+  };
 
   return (
-    <div>
+    <div style={{ position: 'relative', minHeight: '100vh' }}>
+      {/* الخلفية المتحركة */}
+      <AnimatedBackground />
+
+      {/* شاشة الهبوط */}
       {currentScreen === 'landing' && (
-        <LandingPage 
-          onOpenSettings={() => setCurrentScreen('settings')} 
-        />
+        <>
+          <LandingPage onOpenSettings={() => setCurrentScreen('settings')} />
+          {showWelcomeModal && <WelcomeModal onClose={handleCloseWelcome} />}
+        </>
       )}
 
+      {/* شاشة الإعدادات */}
       {currentScreen === 'settings' && (
         <GameSettings
           onBack={() => setCurrentScreen('landing')}
           onStartGame={(settings) => {
             setGameSettings(settings);
-            setCurrentScreen('game');
+            setCurrentScreen('host'); // مباشرة لشاشة المقدم
           }}
         />
       )}
 
-      {currentScreen === 'game' && gameSettings && (
-        <GameBoard settings={gameSettings} />
+      {/* شاشة المقدم */}
+      {currentScreen === 'host' && gameSettings && (
+        <HostScreen 
+          settings={gameSettings}
+          onBack={() => setCurrentScreen('settings')}
+        />
+      )}
+
+      {/* شاشة اللاعبين */}
+      {currentScreen === 'players' && gameSettings && (
+        <PlayersScreen
+          settings={gameSettings}
+          currentQuestion={null}
+          selectedCell={null}
+        />
       )}
     </div>
   );
