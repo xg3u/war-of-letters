@@ -71,7 +71,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({ settings }) => {
         {/* أدوات التحكم السفلية */}
         <div className="mt-8 flex gap-4 bg-white/10 backdrop-blur-md p-4 rounded-3xl">
            <ControlBtn icon={<Dice5 />} title="عشوائي" />
-           <ControlBtn icon={<Redo2 />} title="إعادة" onClick={() => initializeGrid(settings.gridSize)} />
+           <ControlBtn icon={<Redo2 />} title="إعادة" onClick={() => initializeGrid(settings)} />
            <ControlBtn icon={<Maximize />} title="ملء الشاشة" />
         </div>
       </div>
