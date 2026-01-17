@@ -17,7 +17,11 @@ interface GameStore {
     green: CardType[];
     red: CardType[];
   };
-  
+  winStreak: {
+    green: number;
+    red: number;
+  };
+
   initializeGrid: (settings?: GameSettings) => void;
   claimCell: (cellId: string, team: Team) => void;
   syncFromExternal: (cells: HexCell[]) => void;
@@ -34,6 +38,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   currentRound: 1,
   scores: { green: 0, red: 0 },
   teamCards: { green: [], red: [] },
+  winStreak: { green: 0, red: 0 },
   
   settings: {
     gameName: '',
@@ -67,22 +72,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   initializeGrid: (newSettings?: GameSettings) => {
     const currentSettings = newSettings || get().settings;
-    
+
     const newCells: HexCell[] = [];
     const alphabet = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
-    
+
+    // توزيع عشوائي بدون تكرار (25 حرف فريد)
+    const shuffledAlphabet = alphabet.split('').sort(() => Math.random() - 0.5);
     const gridLayout = [[5], [5], [5], [5], [5]];
-    
+
+    let letterIndex = 0;
+
     // إنشاء الخلايا
     for (let r = 0; r < gridLayout.length; r++) {
       const cellsInRow = gridLayout[r][0];
-      
+
       for (let q = 0; q < cellsInRow; q++) {
         newCells.push({
           id: `c-${r}-${q}`,
           q,
           r,
-          letter: alphabet[Math.floor(Math.random() * alphabet.length)],
+          letter: shuffledAlphabet[letterIndex % shuffledAlphabet.length], // بدون تكرار
           status: 'unanswered',
           isGolden: false,
           hasCard: false,
@@ -91,6 +100,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           isShielded: false,
           categoryId: 'general',
         });
+        letterIndex++;
       }
     }
     
@@ -173,7 +183,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // إعادة تعيين اللعبة (جولة جديدة)
   resetGame: () => {
-    set({ cells: [], winner: null, winMessage: null });
+    set({ cells: [], winner: null, winMessage: null, winStreak: { green: 0, red: 0 } });
   },
 
   // الجولة التالية
