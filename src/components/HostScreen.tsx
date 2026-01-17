@@ -1,17 +1,19 @@
 // src/components/HostScreen.tsx
-// شاشة المقدم الكاملة
+// شاشة المقدم المُعاد تصميمها - تطابق الهوية البصرية النهائية
 
 import React, { useState } from 'react';
-import { 
-  ZoomIn, 
-  ZoomOut, 
-  Shuffle, 
-  Palette, 
+import {
+  Shuffle,
+  Palette,
   CheckCircle2,
   RefreshCw,
   Users,
   Tv,
-  Sparkles
+  Sparkles,
+  Maximize,
+  PartyPopper,
+  Pause,
+  Dices
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
@@ -30,8 +32,30 @@ interface HostScreenProps {
   onBack: () => void;
 }
 
-export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
-  const { cells, claimCell, syncFromExternal, initializeGrid, winner, winMessage, currentRound, scores, resetGame } = useGameStore();
+// أيقونات البطاقات
+const CARD_ICONS: Record<CardType, string> = {
+  freeze: '🧊',
+  bomb: '💣',
+  battle: '⚔️',
+  shield: '🛡️',
+  demonShuffle: '👹',
+  speedUp: '⚡',
+  luck: '🍀',
+};
+
+export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
+  const {
+    cells,
+    claimCell,
+    syncFromExternal,
+    initializeGrid,
+    winner,
+    winMessage,
+    scores,
+    resetGame,
+    teamCards
+  } = useGameStore();
+
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
   const [showQuestion, setShowQuestion] = useState(false);
@@ -39,13 +63,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showRoulette, setShowRoulette] = useState(false);
-  const [teamCards] = useState<{
-    green: CardType[];
-    red: CardType[];
-  }>({
-    green: ['freeze', 'bomb', 'shield'] as CardType[],
-    red: ['battle', 'speedUp', 'luck'] as CardType[],
-  });
+  const [isPaused, setIsPaused] = useState(false);
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
@@ -95,20 +113,20 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
   const handleRouletteComplete = async (card: CardType) => {
     setShowRoulette(false);
-    
+
     // إضافة البطاقة للفريق الفائز
     setCardAnimation({
       type: 'cardFound',
-      message: `مبروك! حصلت على بطاقة ${card}! 🎁`,
+      message: `مبروك! حصلت على بطاقة ${CARD_ICONS[card]}! 🎁`,
     });
-    
+
     setTimeout(async () => {
       // جلب سؤال ذكي
       const question = await getSmartQuestion(
-        selectedCell?.letter || '', 
+        selectedCell?.letter || '',
         settings.selectedCategories
       );
-      
+
       if (question) {
         setCurrentQuestion(question.question_text);
       } else {
@@ -155,9 +173,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     });
   };
 
-  const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 2));
-  const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 0.5));
-
   // عكس الألوان - تبديل الفرق
   const handleToggleColors = () => {
     const updatedCells = cells.map(cell => {
@@ -195,256 +210,190 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     }
   };
 
+  // Fullscreen
+  const handleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  // Confetti
+  const handleConfetti = () => {
+    // يمكن إضافة مكتبة confetti لاحقاً
+    console.log('🎉 Confetti!');
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1a0b2e 0%, #2d1154 50%, #4c1d95 100%)',
-      padding: '1rem',
+      background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 25%, #6366f1 50%, #4f46e5 75%, #3730a3 100%)',
+      padding: '1.5rem',
       display: 'flex',
-      flexDirection: 'column',
-      gap: '1rem',
+      gap: '1.5rem',
+      position: 'relative',
     }}>
-      
-      {/* Header */}
+
+      {/* لوحة الفريق الأيمن (الأخضر) */}
       <div style={{
+        width: '280px',
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',
       }}>
-        {/* الصف الأول */}
+        {/* بطاقة الفريق */}
         <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'rgba(0, 0, 0, 0.3)',
-          backdropFilter: 'blur(10px)',
-          padding: '1rem 1.5rem',
-          borderRadius: '1rem',
-          border: '2px solid rgba(168, 85, 247, 0.3)',
+          background: 'rgba(255, 255, 255, 0.1)',
+          backdropFilter: 'blur(20px)',
+          border: '2px solid rgba(16, 185, 129, 0.3)',
+          borderRadius: '1.5rem',
+          padding: '2rem 1.5rem',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
         }}>
-          <button
-            onClick={onBack}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.75rem 1.5rem',
-              background: 'rgba(239, 68, 68, 0.2)',
-              border: '2px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '0.75rem',
-              color: '#ef4444',
-              fontSize: '1rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            ← رجوع
-          </button>
-
-          <div style={{ textAlign: 'center' }}>
-            <h1 style={{
-              fontSize: '1.5rem',
-              fontWeight: 900,
-              color: 'white',
-              margin: 0,
-            }}>
-              🎙️ شاشة المقدم
-            </h1>
-            <p style={{
-              fontSize: '0.875rem',
-              color: '#a855f7',
-              margin: '0.25rem 0 0 0',
-            }}>
-              {settings.gameName}
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {/* زر شاشة اللاعبين */}
-            <button
-              onClick={handleOpenPlayersScreen}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem 1.5rem',
-                background: 'linear-gradient(135deg, #10b981, #14b8a6)',
-                border: 'none',
-                borderRadius: '0.75rem',
-                color: 'white',
-                fontSize: '1rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-              }}
-            >
-              <Tv size={20} />
-              شاشة اللاعبين
-            </button>
-
-            {/* زر البطاقات */}
-            {settings.enableCards && (
-              <button
-                onClick={() => setShowCardPanel(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem 1.5rem',
-                  background: 'linear-gradient(135deg, #a855f7, #ec4899)',
-                  border: 'none',
-                  borderRadius: '0.75rem',
-                  color: 'white',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(168, 85, 247, 0.3)',
-                }}
-              >
-                <Sparkles size={20} />
-                البطاقات
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* أدوات التحكم */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-          background: 'rgba(0, 0, 0, 0.2)',
-          backdropFilter: 'blur(10px)',
-          padding: '1rem',
-          borderRadius: '1rem',
-          border: '2px solid rgba(168, 85, 247, 0.2)',
-        }}>
-          {/* الصف الأول - أزرار التحكم */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: '0.5rem',
-          }}>
-            <button onClick={handleZoomOut} style={{
-              padding: '0.75rem',
-              background: 'rgba(59, 130, 246, 0.2)',
-              border: '2px solid rgba(59, 130, 246, 0.3)',
-              borderRadius: '0.75rem',
-              color: '#60a5fa',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }} title="تصغير">
-              <ZoomOut size={20} />
-            </button>
-
-            <button onClick={handleZoomIn} style={{
-              padding: '0.75rem',
-              background: 'rgba(59, 130, 246, 0.2)',
-              border: '2px solid rgba(59, 130, 246, 0.3)',
-              borderRadius: '0.75rem',
-              color: '#60a5fa',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }} title="تكبير">
-              <ZoomIn size={20} />
-            </button>
-
-            <button onClick={handleRandomLetter} style={{
-              padding: '0.75rem',
-              background: 'rgba(236, 72, 153, 0.2)',
-              border: '2px solid rgba(236, 72, 153, 0.3)',
-              borderRadius: '0.75rem',
-              color: '#ec4899',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }} title="حرف عشوائي">
-              <Shuffle size={20} />
-            </button>
-
-            <button onClick={handleToggleColors} style={{
-              padding: '0.75rem',
-              background: 'rgba(168, 85, 247, 0.2)',
-              border: '2px solid rgba(168, 85, 247, 0.3)',
-              borderRadius: '0.75rem',
-              color: '#a855f7',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }} title="عكس الألوان">
-              <Palette size={20} />
-            </button>
-
-            <button onClick={handleResetRound} style={{
-              padding: '0.75rem',
-              background: 'rgba(239, 68, 68, 0.2)',
-              border: '2px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '0.75rem',
-              color: '#ef4444',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }} title="إعادة الجولة">
-              <RefreshCw size={20} />
-            </button>
-          </div>
-
-          {/* الصف الثاني - شريط الزووم */}
+          {/* اسم الفريق */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '1rem',
-            padding: '0 1rem',
+            justifyContent: 'center',
+            gap: '0.75rem',
+            marginBottom: '1.5rem',
           }}>
-            <span style={{
-              color: '#a855f7',
-              fontSize: '0.875rem',
-              fontWeight: 700,
-              minWidth: '60px',
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #10b981, #14b8a6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
             }}>
-              التكبير:
-            </span>
-            <input
-              type="range"
-              min="0.5"
-              max="2"
-              step="0.1"
-              value={zoom}
-              onChange={(e) => setZoom(parseFloat(e.target.value))}
-              style={{
-                flex: 1,
-                height: '6px',
-                borderRadius: '3px',
-                background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.3), rgba(168, 85, 247, 0.6))',
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            />
-            <span style={{
-              color: 'white',
+              <Users size={28} color="white" />
+            </div>
+          </div>
+
+          <h3 style={{
+            fontSize: '1.25rem',
+            fontWeight: 900,
+            color: 'white',
+            textAlign: 'center',
+            marginBottom: '1rem',
+          }}>
+            {settings.teamNames.green}
+          </h3>
+
+          {/* النقاط */}
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '1rem',
+          }}>
+            <div style={{
               fontSize: '0.875rem',
-              fontWeight: 700,
-              minWidth: '50px',
+              color: 'rgba(255, 255, 255, 0.7)',
+              marginBottom: '0.5rem',
+            }}>
+              النقاط
+            </div>
+            <div style={{
+              fontSize: '4rem',
+              fontWeight: 900,
+              color: '#10b981',
+              textShadow: '0 4px 12px rgba(16, 185, 129, 0.5)',
+              lineHeight: 1,
+            }}>
+              {scores.green}
+            </div>
+          </div>
+
+          {/* البطاقات المملوكة */}
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
+            minHeight: '80px',
+          }}>
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.75rem',
               textAlign: 'center',
             }}>
-              {Math.round(zoom * 100)}%
-            </span>
+              البطاقات الممتلكة
+            </div>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              justifyContent: 'center',
+            }}>
+              {teamCards.green.length > 0 ? (
+                teamCards.green.map((card, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(20, 184, 166, 0.3))',
+                      border: '2px solid rgba(16, 185, 129, 0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.5rem',
+                    }}
+                  >
+                    {CARD_ICONS[card]}
+                  </div>
+                ))
+              ) : (
+                <div style={{
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '0.875rem',
+                  textAlign: 'center',
+                  width: '100%',
+                }}>
+                  لا توجد بطاقات
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* المحتوى */}
+      {/* المنطقة الوسطى */}
       <div style={{
-        display: 'flex',
-        gap: '1rem',
         flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.5rem',
       }}>
+        {/* العنوان */}
+        <div style={{
+          textAlign: 'center',
+        }}>
+          <h1 style={{
+            fontSize: '2.5rem',
+            fontWeight: 900,
+            margin: 0,
+            background: 'linear-gradient(135deg, #fbbf24 0%, #10b981 33%, #3b82f6 66%, #ef4444 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            textShadow: '0 0 30px rgba(255, 255, 255, 0.5)',
+          }}>
+            حرب الحروف
+          </h1>
+        </div>
+
         {/* الشبكة */}
         <div style={{
           flex: 1,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '2rem',
+          minHeight: '500px',
         }}>
-          <HexGrid 
+          <HexGrid
             cells={cells}
             onCellClick={handleCellSelect}
             selectedCellId={selectedCell?.id}
@@ -453,109 +402,172 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           />
         </div>
 
-        {/* لوحة المعلومات */}
+        {/* شريط التحكم الطافي */}
         <div style={{
-          width: '300px',
           display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.75rem',
+          background: 'rgba(0, 0, 0, 0.3)',
+          backdropFilter: 'blur(20px)',
+          padding: '1rem 1.5rem',
+          borderRadius: '2rem',
+          border: '2px solid rgba(255, 255, 255, 0.1)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+          alignSelf: 'center',
         }}>
-          {/* الفريق الأخضر */}
+          {/* Zoom Slider */}
+          <input
+            type="range"
+            min="0.5"
+            max="2"
+            step="0.1"
+            value={zoom}
+            onChange={(e) => setZoom(parseFloat(e.target.value))}
+            style={{
+              width: '120px',
+              height: '6px',
+              borderRadius: '3px',
+              background: 'linear-gradient(90deg, #a855f7, #ec4899)',
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+          />
+
+          {/* الأزرار */}
+          <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={20} />} title="إعادة الجولة" />
+          <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={20} />} title="ملء الشاشة" />
+          <ControlButton onClick={handleConfetti} color="#fbbf24" icon={<PartyPopper size={20} />} title="احتفال" />
+          <ControlButton onClick={() => setIsPaused(!isPaused)} color="#8b5cf6" icon={<Pause size={20} />} title="إيقاف مؤقت" />
+          <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={20} />} title="حرف عشوائي" />
+          <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={20} />} title="عكس الألوان" />
+          <ControlButton onClick={handleRandomLetter} color="#10b981" icon={<Shuffle size={20} />} title="خلط" />
+          <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={20} />} title="شاشة اللاعبين" />
+          <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={20} />} title="البطاقات" />
+        </div>
+      </div>
+
+      {/* لوحة الفريق الأيسر (الأحمر) */}
+      <div style={{
+        width: '280px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem',
+      }}>
+        {/* بطاقة الفريق */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.1)',
+          backdropFilter: 'blur(20px)',
+          border: '2px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '1.5rem',
+          padding: '2rem 1.5rem',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+        }}>
+          {/* اسم الفريق */}
           <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            backdropFilter: 'blur(10px)',
-            padding: '1.5rem',
-            borderRadius: '1rem',
-            border: '2px solid rgba(16, 185, 129, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.75rem',
+            marginBottom: '1.5rem',
           }}>
-            <h3 style={{
-              fontSize: '1rem',
-              fontWeight: 900,
-              color: '#10b981',
-              margin: '0 0 1rem 0',
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
             }}>
-              <Users size={20} />
-              {settings.teamNames.green}
-            </h3>
-            <div style={{
-              fontSize: '3rem',
-              fontWeight: 900,
-              color: 'white',
-              textAlign: 'center',
-            }}>
-              {scores.green}
-            </div>
-            <div style={{
-              fontSize: '0.75rem',
-              color: '#10b981',
-              marginTop: '0.5rem',
-            }}>
-              نقاط الفوز
+              <Users size={28} color="white" />
             </div>
           </div>
 
-          {/* الفريق الأحمر */}
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            backdropFilter: 'blur(10px)',
-            padding: '1.5rem',
-            borderRadius: '1rem',
-            border: '2px solid rgba(239, 68, 68, 0.3)',
+          <h3 style={{
+            fontSize: '1.25rem',
+            fontWeight: 900,
+            color: 'white',
+            textAlign: 'center',
+            marginBottom: '1rem',
           }}>
-            <h3 style={{
-              fontSize: '1rem',
+            {settings.teamNames.red}
+          </h3>
+
+          {/* النقاط */}
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '1rem',
+          }}>
+            <div style={{
+              fontSize: '0.875rem',
+              color: 'rgba(255, 255, 255, 0.7)',
+              marginBottom: '0.5rem',
+            }}>
+              النقاط
+            </div>
+            <div style={{
+              fontSize: '4rem',
               fontWeight: 900,
               color: '#ef4444',
-              margin: '0 0 1rem 0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <Users size={20} />
-              {settings.teamNames.red}
-            </h3>
-            <div style={{
-              fontSize: '3rem',
-              fontWeight: 900,
-              color: 'white',
-              textAlign: 'center',
+              textShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
+              lineHeight: 1,
             }}>
               {scores.red}
             </div>
-            <div style={{
-              fontSize: '0.75rem',
-              color: '#ef4444',
-              marginTop: '0.5rem',
-            }}>
-              نقاط الفوز
-            </div>
           </div>
 
-          {/* الجولة */}
+          {/* البطاقات المملوكة */}
           <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            backdropFilter: 'blur(10px)',
-            padding: '1.5rem',
+            background: 'rgba(0, 0, 0, 0.2)',
             borderRadius: '1rem',
-            border: '2px solid rgba(168, 85, 247, 0.3)',
+            padding: '1rem',
+            minHeight: '80px',
           }}>
             <div style={{
-              color: '#a855f7',
-              fontSize: '0.875rem',
-              fontWeight: 700,
-              marginBottom: '0.5rem',
+              fontSize: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.75rem',
+              textAlign: 'center',
             }}>
-              الجولة الحالية
+              البطاقات الممتلكة
             </div>
             <div style={{
-              fontSize: '2rem',
-              fontWeight: 900,
-              color: 'white',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              justifyContent: 'center',
             }}>
-              {currentRound} / {settings.rounds === 'infinite' ? '∞' : settings.rounds}
+              {teamCards.red.length > 0 ? (
+                teamCards.red.map((card, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.3))',
+                      border: '2px solid rgba(239, 68, 68, 0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.5rem',
+                    }}
+                  >
+                    {CARD_ICONS[card]}
+                  </div>
+                ))
+              ) : (
+                <div style={{
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '0.875rem',
+                  textAlign: 'center',
+                  width: '100%',
+                }}>
+                  لا توجد بطاقات
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -755,3 +767,39 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     </div>
   );
 };
+
+// مكون زر التحكم
+const ControlButton: React.FC<{
+  onClick: () => void;
+  color: string;
+  icon: React.ReactNode;
+  title: string;
+}> = ({ onClick, color, icon, title }) => (
+  <button
+    onClick={onClick}
+    title={title}
+    style={{
+      width: '48px',
+      height: '48px',
+      borderRadius: '12px',
+      background: `${color}33`,
+      border: `2px solid ${color}66`,
+      color,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.background = `${color}66`;
+      e.currentTarget.style.transform = 'translateY(-2px)';
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.background = `${color}33`;
+      e.currentTarget.style.transform = 'translateY(0)';
+    }}
+  >
+    {icon}
+  </button>
+);
