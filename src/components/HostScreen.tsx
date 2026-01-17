@@ -70,17 +70,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const handleCellSelect = async (cell: HexCellType) => {
     if (cell.status === 'unanswered') {
       setSelectedCell(cell);
-      
-      if (cell.hasCard) {
-        // عرض الروليت
+
+      // إذا كانت الخلية تحتوي على بطاقة مخفية أو حرف ذهبي، عرض الروليت
+      if (cell.hasCard || cell.isGolden) {
         setShowRoulette(true);
       } else {
         // جلب سؤال ذكي من Supabase
         const question = await getSmartQuestion(
-          cell.letter, 
+          cell.letter,
           settings.selectedCategories
         );
-        
+
         if (question) {
           setCurrentQuestion(question.question_text);
           setShowQuestion(true);
