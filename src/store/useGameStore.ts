@@ -86,7 +86,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           hasCard: false,
           frozenBy: null,
           freezeCounter: 0,
-          hasShield: false,
+          isShielded: false,
           categoryId: 'general',
         });
       }

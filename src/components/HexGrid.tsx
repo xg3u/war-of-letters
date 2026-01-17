@@ -31,7 +31,7 @@ export const HexGrid: React.FC<HexGridProps> = ({
     hasCard: false,
     frozenBy: null,
     freezeCounter: 0,
-    hasShield: false,
+    isShielded: false,
     categoryId: '',
   });
 

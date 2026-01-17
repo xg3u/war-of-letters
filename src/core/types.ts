@@ -17,15 +17,15 @@ export interface TeamData {
 // ========== الخلية السداسية ==========
 export interface HexCell {
   id: string;
-  q: number; 
-  r: number; 
+  q: number;
+  r: number;
   letter: string;
   status: 'unanswered' | 'green' | 'red';
   isGolden: boolean;
   hasCard: boolean;
-  frozenBy: Team;
-  freezeCounter: number;
-  hasShield: boolean;
+  frozenBy: Team; // null | 'red' | 'green'
+  freezeCounter: number; // عدد الأدوار المتبقية للتجميد
+  isShielded: boolean; // حماية من القنبلة والمعركة (حتى نهاية الجولة)
   categoryId: string; // الكاتيجوري المرتبط بهذه الخلية
 }
 

@@ -20,7 +20,7 @@ export const CARD_PERMISSIONS: Record<CardType, CardPermission> = {
     id: 'freeze',
     name: 'Freeze',
     nameAr: '🧊 التجميد',
-    description: 'يجمد حرفاً غير مجاب ويمنع الإجابة عليه لجولة واحدة',
+    description: 'تجميد حرف معين لدورتين. فقط الفريق المجمد له يقدر يجاوب عليه. إذا أجاب صح يحصل عليه، وإذا فشل تبقى الحالة.',
     canTargetOwn: false,
     canTargetOpponent: false,
     canTargetUnanswered: true,    // ✅ فقط الحروف غير المجابة
@@ -32,7 +32,7 @@ export const CARD_PERMISSIONS: Record<CardType, CardPermission> = {
     id: 'bomb',
     name: 'Bomb',
     nameAr: '💣 القنبلة',
-    description: 'يفجر حرفاً للخصم ويحوله لحرف غير مجاب',
+    description: 'حذف حرف مجاب عليه من خصمك (يتم إرجاعه فارغاً على اللوحة). لا تعيد السؤال ولا تمنح الفريق الآخر نقطة.',
     canTargetOwn: false,
     canTargetOpponent: true,      // ✅ فقط حروف الخصم
     canTargetUnanswered: false,
@@ -44,10 +44,10 @@ export const CARD_PERMISSIONS: Record<CardType, CardPermission> = {
     id: 'battle',
     name: 'Battle',
     nameAr: '⚔️ المعركة',
-    description: 'معركة على أي حرف - الفائز يأخذ الحرف',
+    description: 'يتم اختيار حرف مجاب عليه من الخصم ليُعاد طرحه من جديد على اللوحة ويُعاد التنافس عليه.',
     canTargetOwn: false,
-    canTargetOpponent: true,      // ✅ حروف الخصم
-    canTargetUnanswered: true,    // ✅ حروف غير مجابة
+    canTargetOpponent: true,      // ✅ حروف الخصم فقط
+    canTargetUnanswered: false,   // ❌ ليس للحروف غير المجابة
     requiresTarget: true,
     targetAll: false,
   },
@@ -56,7 +56,7 @@ export const CARD_PERMISSIONS: Record<CardType, CardPermission> = {
     id: 'shield',
     name: 'Shield',
     nameAr: '🛡️ الدرع',
-    description: 'يحمي حرفاً من فريقك من البطاقات الأخرى',
+    description: 'حماية أحد الحروف التي تملكها من التأثيرات الأخرى (قنبلة / معركة). يستمر حتى نهاية الجولة.',
     canTargetOwn: true,           // ✅ فقط حروفك
     canTargetOpponent: false,
     canTargetUnanswered: false,
@@ -68,20 +68,20 @@ export const CARD_PERMISSIONS: Record<CardType, CardPermission> = {
     id: 'demonShuffle',
     name: 'Demon Shuffle',
     nameAr: '👹 خلط الشيطان',
-    description: 'يخلط جميع الحروف غير المجابة بشكل عشوائي',
+    description: 'يتم اختيار 1-3 أحرف من خصمك وتُخلط عشوائيًا مع حروف غير مجابة في اللوحة. نقاط الخصم تبقى كما هي، لكن قد يخسر اتصال مهم.',
     canTargetOwn: false,
-    canTargetOpponent: false,
+    canTargetOpponent: true,      // ✅ يستهدف حروف الخصم
     canTargetUnanswered: false,
-    requiresTarget: false,        // ❌ لا يحتاج اختيار
-    targetAll: true,              // ✅ يستهدف الكل
+    requiresTarget: false,        // ❌ لا يحتاج اختيار محدد (يختار عشوائياً)
+    targetAll: false,             // يستهدف 1-3 أحرف فقط
   },
   
   speedUp: {
     id: 'speedUp',
     name: 'Speed Up',
     nameAr: '⚡ تسريع',
-    description: 'يقلل الوقت المتاح للخصم للإجابة على السؤال التالي',
-    canTargetOwn: false,
+    description: 'الفريق يلعب دورتين متتاليتين. تستخدم مرة واحدة فقط.',
+    canTargetOwn: true,           // ✅ يستخدمها الفريق على نفسه
     canTargetOpponent: false,
     canTargetUnanswered: false,
     requiresTarget: false,        // ❌ لا يحتاج اختيار
@@ -92,7 +92,7 @@ export const CARD_PERMISSIONS: Record<CardType, CardPermission> = {
     id: 'luck',
     name: 'Luck',
     nameAr: '🍀 الحظ',
-    description: 'يمنح فرصة ثانية في حال الإجابة الخاطئة',
+    description: 'تأثير عشوائي (من بين كل البطاقات أو لا شيء). ممكن يخدم أو يضر.',
     canTargetOwn: false,
     canTargetOpponent: false,
     canTargetUnanswered: false,
@@ -142,7 +142,7 @@ export const canUseCardOnCell = (
   }
   
   // التحقق من الحماية
-  if (cell.hasShield) {
+  if (cell.isShielded) {
     return { 
       allowed: false, 
       reason: '🛡️ هذا الحرف محمي بالدرع!' 
@@ -159,47 +159,80 @@ export const applyCardEffect = (
   targetCellId: string | null,
   userTeam: 'green' | 'red'
 ): HexCell[] => {
+  const opponentTeam = userTeam === 'green' ? 'red' : 'green';
+
   switch (card) {
     case 'freeze':
-      return cells.map(c => 
-        c.id === targetCellId 
-          ? { ...c, frozenBy: userTeam, freezeCounter: 1 }
+      // تجميد لدورتين (freezeCounter = 2)
+      return cells.map(c =>
+        c.id === targetCellId
+          ? { ...c, frozenBy: userTeam, freezeCounter: 2 }
           : c
       );
-      
+
     case 'bomb':
-      return cells.map(c => 
-        c.id === targetCellId 
-          ? { ...c, status: 'unanswered' }
+      // حذف حرف الخصم وإرجاعه فارغاً
+      return cells.map(c =>
+        c.id === targetCellId
+          ? { ...c, status: 'unanswered', isShielded: false }
           : c
       );
-      
+
+    case 'battle':
+      // إعادة طرح حرف الخصم للمنافسة (يرجع unanswered)
+      return cells.map(c =>
+        c.id === targetCellId
+          ? { ...c, status: 'unanswered', isShielded: false }
+          : c
+      );
+
     case 'shield':
-      return cells.map(c => 
-        c.id === targetCellId 
-          ? { ...c, hasShield: true }
+      // حماية حتى نهاية الجولة
+      return cells.map(c =>
+        c.id === targetCellId
+          ? { ...c, isShielded: true }
           : c
       );
-      
+
     case 'demonShuffle':
-      // خلط الحروف غير المجابة
+      // اختيار 1-3 أحرف من الخصم وخلطها مع حروف غير مجابة
+      const opponentCells = cells.filter(c => c.status === opponentTeam && !c.isShielded);
       const unansweredCells = cells.filter(c => c.status === 'unanswered');
-      const letters = unansweredCells.map(c => c.letter);
-      
-      // خلط عشوائي
-      for (let i = letters.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [letters[i], letters[j]] = [letters[j], letters[i]];
+
+      if (opponentCells.length === 0 || unansweredCells.length === 0) {
+        return cells; // لا يوجد حروف للخلط
       }
-      
-      let letterIndex = 0;
+
+      // اختيار عشوائي من 1-3 أحرف
+      const count = Math.min(
+        Math.floor(Math.random() * 3) + 1,
+        opponentCells.length,
+        unansweredCells.length
+      );
+
+      const selectedOpponent = opponentCells
+        .sort(() => Math.random() - 0.5)
+        .slice(0, count);
+      const selectedUnanswered = unansweredCells
+        .sort(() => Math.random() - 0.5)
+        .slice(0, count);
+
+      // خلط المواقع
       return cells.map(c => {
-        if (c.status === 'unanswered') {
-          return { ...c, letter: letters[letterIndex++] };
+        const opponentIndex = selectedOpponent.findIndex(cell => cell.id === c.id);
+        if (opponentIndex !== -1) {
+          // نقل الحرف للموقع الجديد (unanswered)
+          return { ...selectedUnanswered[opponentIndex], status: opponentTeam };
         }
+
+        const unansweredIndex = selectedUnanswered.findIndex(cell => cell.id === c.id);
+        if (unansweredIndex !== -1) {
+          return { ...selectedOpponent[unansweredIndex], status: 'unanswered' };
+        }
+
         return c;
       });
-      
+
     default:
       return cells;
   }
