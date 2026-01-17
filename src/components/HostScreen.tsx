@@ -31,7 +31,7 @@ interface HostScreenProps {
 }
 
 export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
-  const { cells, claimCell, syncFromExternal, initializeGrid, winner, winMessage, currentRound, scores } = useGameStore();
+  const { cells, claimCell, syncFromExternal, initializeGrid, winner, winMessage, currentRound, scores, resetGame } = useGameStore();
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
   const [showQuestion, setShowQuestion] = useState(false);
@@ -158,6 +158,43 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.1, 2));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.1, 0.5));
 
+  // عكس الألوان - تبديل الفرق
+  const handleToggleColors = () => {
+    const updatedCells = cells.map(cell => {
+      if (cell.status === 'green') {
+        return { ...cell, status: 'red' as const };
+      } else if (cell.status === 'red') {
+        return { ...cell, status: 'green' as const };
+      }
+      return cell;
+    });
+
+    syncManager.broadcast({
+      type: 'GRID_INITIALIZED',
+      cells: updatedCells,
+      settings,
+    });
+
+    syncFromExternal(updatedCells);
+  };
+
+  // اختيار حرف عشوائي
+  const handleRandomLetter = () => {
+    const unansweredCells = cells.filter(c => c.status === 'unanswered');
+    if (unansweredCells.length > 0) {
+      const randomCell = unansweredCells[Math.floor(Math.random() * unansweredCells.length)];
+      handleCellSelect(randomCell);
+    }
+  };
+
+  // إعادة تعيين الجولة
+  const handleResetRound = () => {
+    if (window.confirm('هل تريد إعادة تعيين الجولة الحالية؟')) {
+      resetGame();
+      initializeGrid(settings);
+    }
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -274,57 +311,122 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         {/* أدوات التحكم */}
         <div style={{
           display: 'flex',
-          justifyContent: 'center',
-          gap: '0.5rem',
+          flexDirection: 'column',
+          gap: '1rem',
           background: 'rgba(0, 0, 0, 0.2)',
           backdropFilter: 'blur(10px)',
           padding: '1rem',
           borderRadius: '1rem',
           border: '2px solid rgba(168, 85, 247, 0.2)',
         }}>
-          <button onClick={handleZoomOut} style={{
-            padding: '0.75rem',
-            background: 'rgba(59, 130, 246, 0.2)',
-            border: '2px solid rgba(59, 130, 246, 0.3)',
-            borderRadius: '0.75rem',
-            color: '#60a5fa',
-            cursor: 'pointer',
-          }} title="تصغير">
-            <ZoomOut size={20} />
-          </button>
-          
-          <button onClick={handleZoomIn} style={{
-            padding: '0.75rem',
-            background: 'rgba(59, 130, 246, 0.2)',
-            border: '2px solid rgba(59, 130, 246, 0.3)',
-            borderRadius: '0.75rem',
-            color: '#60a5fa',
-            cursor: 'pointer',
-          }} title="تكبير">
-            <ZoomIn size={20} />
-          </button>
+          {/* الصف الأول - أزرار التحكم */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '0.5rem',
+          }}>
+            <button onClick={handleZoomOut} style={{
+              padding: '0.75rem',
+              background: 'rgba(59, 130, 246, 0.2)',
+              border: '2px solid rgba(59, 130, 246, 0.3)',
+              borderRadius: '0.75rem',
+              color: '#60a5fa',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }} title="تصغير">
+              <ZoomOut size={20} />
+            </button>
 
-          <button style={{
-            padding: '0.75rem',
-            background: 'rgba(236, 72, 153, 0.2)',
-            border: '2px solid rgba(236, 72, 153, 0.3)',
-            borderRadius: '0.75rem',
-            color: '#ec4899',
-            cursor: 'pointer',
-          }} title="خلط الحروف">
-            <Shuffle size={20} />
-          </button>
+            <button onClick={handleZoomIn} style={{
+              padding: '0.75rem',
+              background: 'rgba(59, 130, 246, 0.2)',
+              border: '2px solid rgba(59, 130, 246, 0.3)',
+              borderRadius: '0.75rem',
+              color: '#60a5fa',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }} title="تكبير">
+              <ZoomIn size={20} />
+            </button>
 
-          <button style={{
-            padding: '0.75rem',
-            background: 'rgba(168, 85, 247, 0.2)',
-            border: '2px solid rgba(168, 85, 247, 0.3)',
-            borderRadius: '0.75rem',
-            color: '#a855f7',
-            cursor: 'pointer',
-          }} title="عكس الألوان">
-            <Palette size={20} />
-          </button>
+            <button onClick={handleRandomLetter} style={{
+              padding: '0.75rem',
+              background: 'rgba(236, 72, 153, 0.2)',
+              border: '2px solid rgba(236, 72, 153, 0.3)',
+              borderRadius: '0.75rem',
+              color: '#ec4899',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }} title="حرف عشوائي">
+              <Shuffle size={20} />
+            </button>
+
+            <button onClick={handleToggleColors} style={{
+              padding: '0.75rem',
+              background: 'rgba(168, 85, 247, 0.2)',
+              border: '2px solid rgba(168, 85, 247, 0.3)',
+              borderRadius: '0.75rem',
+              color: '#a855f7',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }} title="عكس الألوان">
+              <Palette size={20} />
+            </button>
+
+            <button onClick={handleResetRound} style={{
+              padding: '0.75rem',
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: '2px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '0.75rem',
+              color: '#ef4444',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }} title="إعادة الجولة">
+              <RefreshCw size={20} />
+            </button>
+          </div>
+
+          {/* الصف الثاني - شريط الزووم */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            padding: '0 1rem',
+          }}>
+            <span style={{
+              color: '#a855f7',
+              fontSize: '0.875rem',
+              fontWeight: 700,
+              minWidth: '60px',
+            }}>
+              التكبير:
+            </span>
+            <input
+              type="range"
+              min="0.5"
+              max="2"
+              step="0.1"
+              value={zoom}
+              onChange={(e) => setZoom(parseFloat(e.target.value))}
+              style={{
+                flex: 1,
+                height: '6px',
+                borderRadius: '3px',
+                background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.3), rgba(168, 85, 247, 0.6))',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            />
+            <span style={{
+              color: 'white',
+              fontSize: '0.875rem',
+              fontWeight: 700,
+              minWidth: '50px',
+              textAlign: 'center',
+            }}>
+              {Math.round(zoom * 100)}%
+            </span>
+          </div>
         </div>
       </div>
 
