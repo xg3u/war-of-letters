@@ -8,6 +8,7 @@ import { categories } from '../lib/categories';
 import { actionCards } from '../lib/actionCards';
 import { Play, Moon, Sun, Sparkles } from 'lucide-react';
 import { WelcomeModal } from './WelcomeModal';
+import { PaymentModal } from './PaymentModal';
 
 const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهويةئؤءآإ";
 const VIBRANT_COLORS = ['#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24', '#ec4899', '#14b8a6'];
@@ -23,6 +24,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
     const hideModal = localStorage.getItem('hideWelcomeModal');
     return hideModal !== 'true'; // يظهر إذا ما كان محفوظ
   });
+  const [showPayment, setShowPayment] = useState(false);
 
   // توليد الحروف المتساقطة
   const fallingLetters = React.useMemo(() => 
@@ -61,7 +63,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       
       {/* مودال الترحيب */}
       {showWelcome && <WelcomeModal onClose={() => setShowWelcome(false)} />}
-      
+
+      {/* مودال الدفع */}
+      {showPayment && (
+        <PaymentModal
+          onClose={() => setShowPayment(false)}
+          onSuccess={() => {
+            setShowPayment(false);
+            onOpenSettings();
+          }}
+        />
+      )}
+
       {/* طبقة الحروف المتساقطة */}
       <div style={{
         position: 'fixed',
@@ -392,7 +405,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
 
               {/* زر ابدأ اللعبة */}
               <button
-                onClick={onOpenSettings}
+                onClick={() => setShowPayment(true)}
                 style={{
                   width: '100%',
                   padding: 'clamp(1rem, 2.5vw, 1.25rem)',
