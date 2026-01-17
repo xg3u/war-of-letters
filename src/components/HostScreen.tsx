@@ -20,8 +20,10 @@ import { HexGrid } from './HexGrid';
 import { ActionCardPanel, type CardType } from './ActionCardPanel';
 import { CardAnimation } from './CardAnimation';
 import { CardRoulette } from './CardRoulette';
+import { ResultsOverlay } from './ResultsOverlay';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType } from '../core/types';
+import { getWinStats } from '../utils/winChecker';
 
 interface HostScreenProps {
   settings: GameSettingsData;
@@ -615,100 +617,38 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         />
       )}
 
-      {/* نافذة الفوز */}
+      {/* نافذة النتائج */}
       {winner && winMessage && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.9)',
-          backdropFilter: 'blur(15px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 3000,
-          animation: 'fadeIn 0.5s ease',
-        }}>
-          <div style={{
-            maxWidth: '600px',
-            width: '90%',
-            background: winner === 'green' 
-              ? 'linear-gradient(135deg, #10b981, #14b8a6)'
-              : 'linear-gradient(135deg, #ef4444, #dc2626)',
-            border: '4px solid white',
-            borderRadius: '2rem',
-            padding: '3rem',
-            textAlign: 'center',
-            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
-          }}>
-            <div style={{
-              fontSize: '5rem',
-              marginBottom: '1rem',
-              animation: 'bounce 1s ease infinite',
-            }}>
-              🏆
-            </div>
+        <ResultsOverlay
+          winner={winner}
+          winType={(winMessage.includes('ربط الجدار') ? 'wall-to-wall' :
+                   winMessage.includes('5 خلايا') ? 'five-connected' :
+                   'most-letters') as 'wall-to-wall' | 'five-connected' | 'most-letters'}
+          winMessage={winMessage}
+          greenScore={getWinStats(cells).greenCount}
+          redScore={getWinStats(cells).redCount}
+          greenTeamName={settings.teamNames.green}
+          redTeamName={settings.teamNames.red}
+          onClose={() => {
+            const { resetGame } = useGameStore.getState();
+            resetGame();
+          }}
+          onNewGame={() => {
+            const { resetGame, initializeGrid, nextRound, currentRound, settings: storeSettings } = useGameStore.getState();
+            const maxRounds = storeSettings.rounds === 'infinite' ? Infinity : storeSettings.rounds;
 
-            <h2 style={{
-              fontSize: '3rem',
-              fontWeight: 900,
-              color: 'white',
-              margin: '0 0 1.5rem 0',
-              textShadow: '0 4px 10px rgba(0, 0, 0, 0.5)',
-              whiteSpace: 'pre-line',
-            }}>
-              {winMessage.split('\n')[0]}
-            </h2>
-
-            <div style={{
-              fontSize: '1.5rem',
-              fontWeight: 700,
-              color: 'rgba(255, 255, 255, 0.9)',
-              marginBottom: '1rem',
-              padding: '1rem',
-              background: 'rgba(0, 0, 0, 0.2)',
-              borderRadius: '1rem',
-            }}>
-              {winMessage.split('\n')[1] || ''}
-            </div>
-
-            <button
-              onClick={() => {
-                const { resetGame, initializeGrid, nextRound, currentRound, settings } = useGameStore.getState();
-                const maxRounds = settings.rounds === 'infinite' ? Infinity : settings.rounds;
-                
-                if (currentRound < maxRounds) {
-                  // جولة جديدة
-                  nextRound();
-                  resetGame();
-                  initializeGrid();
-                } else {
-                  // انتهت اللعبة
-                  resetGame();
-                  initializeGrid();
-                }
-              }}
-              style={{
-                marginTop: '2rem',
-                padding: '1.25rem 2.5rem',
-                background: 'white',
-                border: 'none',
-                borderRadius: '1rem',
-                color: winner === 'green' ? '#10b981' : '#ef4444',
-                fontSize: '1.25rem',
-                fontWeight: 900,
-                cursor: 'pointer',
-                boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)',
-              }}
-            >
-              {currentRound < (settings.rounds === 'infinite' ? Infinity : settings.rounds)
-                ? '➡️ الجولة التالية'
-                : '🔄 لعبة جديدة'}
-            </button>
-          </div>
-        </div>
+            if (currentRound < maxRounds) {
+              // جولة جديدة
+              nextRound();
+              resetGame();
+              initializeGrid();
+            } else {
+              // انتهت اللعبة
+              resetGame();
+              initializeGrid();
+            }
+          }}
+        />
       )}
     </div>
   );

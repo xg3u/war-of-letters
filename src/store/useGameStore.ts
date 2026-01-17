@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import type { HexCell, Team, GameSettings, CardType } from '../core/types';
 import { syncManager } from '../utils/SyncManager';
 import { checkWinCondition, getWinMessage } from '../utils/winChecker';
+import { applyCardEffect } from '../utils/cardPermissions';
 
 interface GameStore {
   cells: HexCell[];
@@ -23,6 +24,7 @@ interface GameStore {
   resetGame: () => void;
   nextRound: () => void;
   addCardToTeam: (team: 'green' | 'red', card: CardType) => void;
+  useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -137,7 +139,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     syncManager.broadcast({ type: 'CELL_CLAIMED', cellId, team, cells: updated });
     
     // فحص الفوز
-    const winCheck = checkWinCondition(updated, team, settings.winCondition, settings.teamColors);
+    const winCheck = checkWinCondition(updated, settings.winCondition, settings.teamColors);
     
     if (winCheck.winner) {
       const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
@@ -197,7 +199,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       [team]: [...teamCards[team], card],
     };
     set({ teamCards: newTeamCards });
-    
+
     // بث التحديث
     syncManager.broadcast({
       type: 'CARD_ADDED',
@@ -205,5 +207,57 @@ export const useGameStore = create<GameStore>((set, get) => ({
       card,
       teamCards: newTeamCards,
     });
+  },
+
+  // استخدام بطاقة
+  useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null) => {
+    const { cells, teamCards, settings } = get();
+
+    // تطبيق تأثير البطاقة
+    const updatedCells = applyCardEffect(card, cells, targetCellId, team);
+
+    // إزالة البطاقة من رصيد الفريق
+    const newTeamCards = {
+      ...teamCards,
+      [team]: teamCards[team].filter(c => c !== card),
+    };
+
+    set({ cells: updatedCells, teamCards: newTeamCards });
+
+    // بث التحديث
+    syncManager.broadcast({
+      type: 'CARD_USED',
+      team,
+      card,
+      targetCellId,
+      cells: updatedCells,
+      teamCards: newTeamCards,
+    });
+
+    // فحص الفوز بعد استخدام البطاقة
+    const winCheck = checkWinCondition(updatedCells, settings.winCondition, settings.teamColors);
+
+    if (winCheck.winner) {
+      const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
+      const message = winCheck.message || getWinMessage(winCheck.winner, winCheck.winType!, teamName);
+
+      const { scores, currentRound } = get();
+      const newScores = { ...scores };
+      newScores[winCheck.winner as 'green' | 'red']++;
+
+      set({
+        winner: winCheck.winner,
+        winMessage: message,
+        scores: newScores,
+      });
+
+      syncManager.broadcast({
+        type: 'GAME_WON',
+        winner: winCheck.winner,
+        winMessage: message,
+        scores: newScores,
+        round: currentRound,
+      });
+    }
   },
 }));
