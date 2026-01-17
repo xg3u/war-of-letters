@@ -33,8 +33,6 @@ export const ARABIC_LETTERS = [
   { letter: 'ي', frequency: 'very-high' },
 ] as const;
 
-type Frequency = 'very-high' | 'high' | 'medium' | 'low' | 'very-low';
-
 /**
  * اختيار حروف عشوائية بناءً على حجم الشبكة
  * @param gridSize - حجم الشبكة المطلوب

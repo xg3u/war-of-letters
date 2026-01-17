@@ -7,7 +7,6 @@ import { useGameStore } from '../store/useGameStore';
 import { HostScreen } from './HostScreen';
 import { PlayersScreen } from './PlayersScreen';
 import type { GameSettingsData } from './GameSettings';
-import type { HexCell } from '../core/types';
 
 interface ScreenSelectorProps {
   settings: GameSettingsData;
@@ -20,8 +19,6 @@ export const ScreenSelector: React.FC<ScreenSelectorProps> = ({
 }) => {
   const [screenType, setScreenType] = useState<'select' | 'host' | 'players'>('select');
   const { initializeGrid } = useGameStore();
-  const [selectedCell, setSelectedCell] = useState<HexCell | null>(null);
-  const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
 
   // تهيئة الشبكة عند بدء اللعبة
   useEffect(() => {
@@ -266,7 +263,7 @@ export const ScreenSelector: React.FC<ScreenSelectorProps> = ({
 
   // شاشة المقدم
   if (screenType === 'host') {
-    return <HostScreen settings={settings} />;
+    return <HostScreen settings={settings} onBack={() => setScreenType('select')} />;
   }
 
   // شاشة اللاعبين
@@ -274,8 +271,8 @@ export const ScreenSelector: React.FC<ScreenSelectorProps> = ({
     return (
       <PlayersScreen
         settings={settings}
-        currentQuestion={currentQuestion}
-        selectedCell={selectedCell}
+        currentQuestion={null}
+        selectedCell={null}
       />
     );
   }

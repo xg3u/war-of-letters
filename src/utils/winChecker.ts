@@ -117,7 +117,7 @@ const checkVerticalWall = (cells: HexCell[], team: Team): boolean => {
 
 // رسالة الفوز
 export const getWinMessage = (
-  winner: Team,
+  _winner: Team,
   winType: 'horizontal' | 'vertical' | 'count' | 'any',
   teamName: string
 ): string => {
