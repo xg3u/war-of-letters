@@ -1,5 +1,5 @@
 // src/components/PlayersScreen.tsx
-// شاشة اللاعبين - عرض فقط
+// شاشة اللاعبين - عرض فقط (Synchronized with HostScreen design)
 
 import React from 'react';
 import { Users } from 'lucide-react';
@@ -10,6 +10,17 @@ import { CardAnimation } from './CardAnimation';
 import type { CardType } from './ActionCardPanel';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType } from '../core/types';
+
+// Card Icons Mapping (matching HostScreen)
+const CARD_ICONS: Record<CardType, string> = {
+  freeze: '🧊',
+  bomb: '💣',
+  battle: '⚔️',
+  shield: '🛡️',
+  demonShuffle: '👹',
+  speedUp: '⚡',
+  luck: '🍀',
+};
 
 interface PlayersScreenProps {
   settings: GameSettingsData;
@@ -22,14 +33,15 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   currentQuestion,
   selectedCell,
 }) => {
-  const { cells, syncFromExternal, winner, winMessage } = useGameStore();
+  const { cells, syncFromExternal, winner, winMessage, scores, teamCards } = useGameStore();
   const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
+  const [zoom, setZoom] = React.useState(1);
 
   // المزامنة فقط
   React.useEffect(() => {
     const unsubscribe = syncManager.subscribe((data) => {
       console.log('PlayersScreen received:', data.type);
-      
+
       if (data.type === 'GRID_INITIALIZED') {
         console.log('Syncing grid:', data.cells?.length, 'cells');
         if (data.cells) {
@@ -46,6 +58,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           type: data.cardType,
           message: data.message,
         });
+      } else if (data.type === 'ZOOM_CHANGED' && typeof data.zoom === 'number') {
+        setZoom(data.zoom);
       }
     });
     return unsubscribe;
@@ -59,161 +73,283 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1a0b2e 0%, #2d1154 50%, #4c1d95 100%)',
-      padding: '1rem',
+      background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 25%, #6366f1 50%, #4f46e5 75%, #3730a3 100%)',
+      padding: '2rem',
       display: 'flex',
       flexDirection: 'column',
-      gap: '1rem',
+      gap: '2rem',
     }}>
-      
-      {/* Header */}
-      <div style={{
-        background: 'rgba(0, 0, 0, 0.3)',
-        backdropFilter: 'blur(10px)',
-        padding: '1rem 1.5rem',
-        borderRadius: '1rem',
-        border: '2px solid rgba(168, 85, 247, 0.3)',
-        textAlign: 'center',
-      }}>
-        <h1 style={{
-          fontSize: '2rem',
-          fontWeight: 900,
-          color: 'white',
-          margin: 0,
-        }}>
-          👥 شاشة اللاعبين
-        </h1>
-        <p style={{
-          fontSize: '1rem',
-          color: '#a855f7',
-          margin: '0.5rem 0 0 0',
-        }}>
-          {settings.gameName}
-        </p>
-      </div>
 
-      {/* المحتوى */}
+      {/* Main Layout: Left Panel | Center Area | Right Panel */}
       <div style={{
         display: 'flex',
-        gap: '1rem',
+        gap: '2rem',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
         flex: 1,
       }}>
-        {/* الشبكة */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '2rem',
-        }}>
-          {cells.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              color: '#a855f7',
-              fontSize: '1.5rem',
-              fontWeight: 700,
-            }}>
-              ⏳ في انتظار بدء اللعبة من المقدم...
-            </div>
-          ) : (
-            <HexGrid 
-              cells={cells}
-              zoom={1}
-              scale={1}
-            />
-          )}
-        </div>
 
-        {/* لوحة المعلومات */}
+        {/* Left Panel - Green Team */}
         <div style={{
-          width: '300px',
+          width: '280px',
+          background: 'rgba(255, 255, 255, 0.1)',
+          backdropFilter: 'blur(20px)',
+          border: '2px solid rgba(16, 185, 129, 0.3)',
+          borderRadius: '1.5rem',
+          padding: '2rem 1.5rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '1rem',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
         }}>
-          {/* الفريق الأخضر */}
+          {/* Team Icon */}
           <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            backdropFilter: 'blur(10px)',
-            padding: '1.5rem',
-            borderRadius: '1rem',
-            border: '2px solid rgba(16, 185, 129, 0.3)',
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, #10b981, #14b8a6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
+            margin: '0 auto',
           }}>
-            <h3 style={{
-              fontSize: '1rem',
-              fontWeight: 900,
-              color: '#10b981',
-              margin: '0 0 1rem 0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <Users size={20} />
-              {settings.teamNames.green}
-            </h3>
-            <div style={{
-              fontSize: '3rem',
-              fontWeight: 900,
-              color: 'white',
-              textAlign: 'center',
-            }}>
-              0
-            </div>
+            <Users size={28} color="white" />
           </div>
 
-          {/* الفريق الأحمر */}
+          {/* Team Name */}
           <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            backdropFilter: 'blur(10px)',
-            padding: '1.5rem',
-            borderRadius: '1rem',
-            border: '2px solid rgba(239, 68, 68, 0.3)',
+            textAlign: 'center',
+            fontSize: '1.125rem',
+            fontWeight: 700,
+            color: '#10b981',
           }}>
-            <h3 style={{
-              fontSize: '1rem',
-              fontWeight: 900,
-              color: '#ef4444',
-              margin: '0 0 1rem 0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <Users size={20} />
-              {settings.teamNames.red}
-            </h3>
-            <div style={{
-              fontSize: '3rem',
-              fontWeight: 900,
-              color: 'white',
-              textAlign: 'center',
-            }}>
-              0
-            </div>
+            {settings.teamNames.green}
           </div>
 
-          {/* الجولة */}
+          {/* Score */}
           <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            backdropFilter: 'blur(10px)',
-            padding: '1.5rem',
+            fontSize: '4rem',
+            fontWeight: 900,
+            color: '#10b981',
+            textShadow: '0 4px 12px rgba(16, 185, 129, 0.5)',
+            lineHeight: 1,
+            textAlign: 'center',
+          }}>
+            {scores.green}
+          </div>
+
+          {/* Card Inventory */}
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
             borderRadius: '1rem',
-            border: '2px solid rgba(168, 85, 247, 0.3)',
+            padding: '1rem',
+            minHeight: '80px',
           }}>
             <div style={{
-              color: '#a855f7',
               fontSize: '0.875rem',
               fontWeight: 700,
-              marginBottom: '0.5rem',
+              color: 'rgba(255, 255, 255, 0.7)',
+              marginBottom: '0.75rem',
+              textAlign: 'center',
             }}>
-              الجولة الحالية
+              البطاقات الممتلكة
             </div>
+
+            {teamCards.green.length > 0 ? (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                justifyContent: 'center',
+              }}>
+                {teamCards.green.map((card, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(20, 184, 166, 0.3))',
+                      border: '2px solid rgba(16, 185, 129, 0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.5rem',
+                    }}
+                  >
+                    {CARD_ICONS[card]}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: '0.875rem',
+                textAlign: 'center',
+                padding: '1rem 0',
+              }}>
+                لا توجد بطاقات
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Center Area */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '2rem',
+        }}>
+          {/* Title */}
+          <h1 style={{
+            fontSize: '3rem',
+            fontWeight: 900,
+            background: 'linear-gradient(135deg, #f97316, #ec4899, #a855f7)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            margin: 0,
+            textAlign: 'center',
+          }}>
+            حرب الحروف
+          </h1>
+
+          {/* Grid Area */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '500px',
+          }}>
+            {cells.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                background: 'rgba(0, 0, 0, 0.3)',
+                backdropFilter: 'blur(10px)',
+                padding: '3rem',
+                borderRadius: '1.5rem',
+                border: '2px solid rgba(168, 85, 247, 0.3)',
+              }}>
+                ⏳ في انتظار بدء اللعبة من المقدم...
+              </div>
+            ) : (
+              <HexGrid
+                cells={cells}
+                zoom={zoom}
+                scale={1}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Right Panel - Red Team */}
+        <div style={{
+          width: '280px',
+          background: 'rgba(255, 255, 255, 0.1)',
+          backdropFilter: 'blur(20px)',
+          border: '2px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '1.5rem',
+          padding: '2rem 1.5rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+        }}>
+          {/* Team Icon */}
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
+            margin: '0 auto',
+          }}>
+            <Users size={28} color="white" />
+          </div>
+
+          {/* Team Name */}
+          <div style={{
+            textAlign: 'center',
+            fontSize: '1.125rem',
+            fontWeight: 700,
+            color: '#ef4444',
+          }}>
+            {settings.teamNames.red}
+          </div>
+
+          {/* Score */}
+          <div style={{
+            fontSize: '4rem',
+            fontWeight: 900,
+            color: '#ef4444',
+            textShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
+            lineHeight: 1,
+            textAlign: 'center',
+          }}>
+            {scores.red}
+          </div>
+
+          {/* Card Inventory */}
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
+            minHeight: '80px',
+          }}>
             <div style={{
-              fontSize: '2rem',
-              fontWeight: 900,
-              color: 'white',
+              fontSize: '0.875rem',
+              fontWeight: 700,
+              color: 'rgba(255, 255, 255, 0.7)',
+              marginBottom: '0.75rem',
+              textAlign: 'center',
             }}>
-              1 / {settings.rounds === 'infinite' ? '∞' : settings.rounds}
+              البطاقات الممتلكة
             </div>
+
+            {teamCards.red.length > 0 ? (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                justifyContent: 'center',
+              }}>
+                {teamCards.red.map((card, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.3))',
+                      border: '2px solid rgba(239, 68, 68, 0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.5rem',
+                    }}
+                  >
+                    {CARD_ICONS[card]}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: '0.875rem',
+                textAlign: 'center',
+                padding: '1rem 0',
+              }}>
+                لا توجد بطاقات
+              </div>
+            )}
           </div>
         </div>
       </div>

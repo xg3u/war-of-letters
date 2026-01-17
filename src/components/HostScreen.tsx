@@ -175,22 +175,27 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
   // عكس الألوان - تبديل الفرق
   const handleToggleColors = () => {
-    const updatedCells = cells.map(cell => {
-      if (cell.status === 'green') {
-        return { ...cell, status: 'red' as const };
-      } else if (cell.status === 'red') {
-        return { ...cell, status: 'green' as const };
-      }
-      return cell;
-    });
+    // Swap wall/perimeter win directions (horizontal ↔ vertical)
+    // Do NOT swap cell ownership
+    const updatedSettings = {
+      ...settings,
+      teamColors: {
+        green: settings.teamColors.red,
+        red: settings.teamColors.green,
+      },
+    };
 
+    // Update local storage
+    localStorage.setItem('current-game-settings', JSON.stringify(updatedSettings));
+
+    // Broadcast settings update
     syncManager.broadcast({
-      type: 'GRID_INITIALIZED',
-      cells: updatedCells,
-      settings,
+      type: 'SETTINGS_UPDATED',
+      settings: updatedSettings,
     });
 
-    syncFromExternal(updatedCells);
+    // Reinitialize grid with new settings (preserves current cell states)
+    initializeGrid(updatedSettings);
   };
 
   // اختيار حرف عشوائي
@@ -423,7 +428,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
             max="2"
             step="0.1"
             value={zoom}
-            onChange={(e) => setZoom(parseFloat(e.target.value))}
+            onChange={(e) => {
+              const newZoom = parseFloat(e.target.value);
+              setZoom(newZoom);
+              // Broadcast zoom change to player screens
+              syncManager.broadcast({ type: 'ZOOM_CHANGED', zoom: newZoom });
+            }}
             style={{
               width: '120px',
               height: '6px',
