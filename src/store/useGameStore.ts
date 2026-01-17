@@ -1,7 +1,7 @@
 // src/store/useGameStore.ts - التصحيح
 
 import { create } from 'zustand';
-import type { HexCell, Team, GameSettings } from '../core/types';
+import type { HexCell, Team, GameSettings, CardType } from '../core/types';
 import { syncManager } from '../utils/SyncManager';
 import { checkWinCondition, getWinMessage } from '../utils/winChecker';
 
@@ -10,17 +10,28 @@ interface GameStore {
   settings: GameSettings;
   winner: Team;
   winMessage: string | null;
+  currentRound: number;
+  scores: { green: number; red: number };
+  teamCards: {
+    green: CardType[];
+    red: CardType[];
+  };
   
-  initializeGrid: () => void;
+  initializeGrid: (settings?: GameSettings) => void;
   claimCell: (cellId: string, team: Team) => void;
   syncFromExternal: (cells: HexCell[]) => void;
   resetGame: () => void;
+  nextRound: () => void;
+  addCardToTeam: (team: 'green' | 'red', card: CardType) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
   cells: [],
   winner: null,
   winMessage: null,
+  currentRound: 1,
+  scores: { green: 0, red: 0 },
+  teamCards: { green: [], red: [] },
   
   settings: {
     gameName: '',
@@ -52,23 +63,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
     timePerQuestion: 30,
   },
 
-  initializeGrid: () => {
+  initializeGrid: (newSettings?: GameSettings) => {
+    const currentSettings = newSettings || get().settings;
+    
     const newCells: HexCell[] = [];
     const alphabet = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
     
-    // الشبكة ثابتة 5×5 = 25 خلية
-    const gridSize = '5x5';
-    const totalCells = 25;
-    const gridLayout = [
-      [5], // row 0: 5 cells
-      [5], // row 1: 5 cells
-      [5], // row 2: 5 cells
-      [5], // row 3: 5 cells
-      [5], // row 4: 5 cells
-    ];
+    const gridLayout = [[5], [5], [5], [5], [5]];
     
-    let cellIndex = 0;
-    
+    // إنشاء الخلايا
     for (let r = 0; r < gridLayout.length; r++) {
       const cellsInRow = gridLayout[r][0];
       
@@ -80,31 +83,57 @@ export const useGameStore = create<GameStore>((set, get) => ({
           letter: alphabet[Math.floor(Math.random() * alphabet.length)],
           status: 'unanswered',
           isGolden: false,
-          hasCard: Math.random() < 0.2, // 20% فرصة بطاقة
+          hasCard: false,
           frozenBy: null,
           freezeCounter: 0,
           hasShield: false,
           categoryId: 'general',
         });
-        cellIndex++;
       }
     }
     
-    set({ cells: newCells, winner: null, winMessage: null });
+    // إضافة الكروت المخفية (حسب الإعدادات)
+    if (currentSettings.enableHiddenCards && currentSettings.hiddenCardsCount > 0) {
+      const availableIndices = [...Array(25).keys()];
+      const cardCount = Math.min(currentSettings.hiddenCardsCount, 25);
+      
+      for (let i = 0; i < cardCount; i++) {
+        const randomIndex = Math.floor(Math.random() * availableIndices.length);
+        const cellIndex = availableIndices.splice(randomIndex, 1)[0];
+        newCells[cellIndex].hasCard = true;
+      }
+    }
     
-    // بث الشبكة الجديدة للشاشات الأخرى
-    syncManager.broadcast({ type: 'GRID_INITIALIZED', cells: newCells });
+    // إضافة الحرف الذهبي (حسب الإعدادات)
+    if (currentSettings.enableGoldenLetter) {
+      const randomIndex = Math.floor(Math.random() * 25);
+      newCells[randomIndex].isGolden = true;
+    }
+    
+    set({ 
+      cells: newCells, 
+      winner: null, 
+      winMessage: null,
+      settings: currentSettings,
+    });
+    
+    // بث الشبكة
+    syncManager.broadcast({ 
+      type: 'GRID_INITIALIZED', 
+      cells: newCells,
+      settings: currentSettings,
+    });
   },
 
   claimCell: (cellId: string, team: Team) => {
-    const { cells, settings } = get();
+    const { cells, settings, scores, currentRound } = get();
     const updated = cells.map((c) =>
       c.id === cellId ? { ...c, status: team as 'green' | 'red' } : c
     );
     
     set({ cells: updated });
     
-    // بث التحديث لجميع الشاشات
+    // بث التحديث
     syncManager.broadcast({ type: 'CELL_CLAIMED', cellId, team, cells: updated });
     
     // فحص الفوز
@@ -114,24 +143,67 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
       const message = getWinMessage(winCheck.winner, winCheck.winType!, teamName);
       
-      set({ winner: winCheck.winner, winMessage: message });
+      // تحديث النقاط
+      const newScores = { ...scores };
+      newScores[winCheck.winner as 'green' | 'red']++;
+      
+      set({ 
+        winner: winCheck.winner, 
+        winMessage: message,
+        scores: newScores,
+      });
       
       // بث الفوز
       syncManager.broadcast({ 
         type: 'GAME_WON', 
         winner: winCheck.winner, 
-        winMessage: message 
+        winMessage: message,
+        scores: newScores,
+        round: currentRound,
       });
     }
   },
 
-  // استقبال التحديثات من شاشات أخرى
+  // استقبال التحديثات
   syncFromExternal: (cells: HexCell[]) => {
     set({ cells });
   },
 
-  // إعادة تعيين اللعبة
+  // إعادة تعيين اللعبة (جولة جديدة)
   resetGame: () => {
     set({ cells: [], winner: null, winMessage: null });
+  },
+
+  // الجولة التالية
+  nextRound: () => {
+    const { currentRound, settings } = get();
+    const maxRounds = settings.rounds === 'infinite' ? Infinity : settings.rounds;
+    
+    if (currentRound < maxRounds) {
+      set({ 
+        currentRound: currentRound + 1,
+        cells: [],
+        winner: null,
+        winMessage: null,
+      });
+    }
+  },
+
+  // إضافة بطاقة لفريق
+  addCardToTeam: (team: 'green' | 'red', card: CardType) => {
+    const { teamCards } = get();
+    const newTeamCards = {
+      ...teamCards,
+      [team]: [...teamCards[team], card],
+    };
+    set({ teamCards: newTeamCards });
+    
+    // بث التحديث
+    syncManager.broadcast({
+      type: 'CARD_ADDED',
+      team,
+      card,
+      teamCards: newTeamCards,
+    });
   },
 }));

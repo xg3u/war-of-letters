@@ -13,10 +13,14 @@ interface GameSettingsProps {
 export interface GameSettingsData {
   gameName: string;
   teamNames: { green: string; red: string };
-  
+
   // آليات الفوز
   winCondition: 'wall-to-wall' | 'five-connected' | 'most-letters' | 'all';
-  
+  teamColors: {
+    green: 'horizontal' | 'vertical' | 'both';
+    red: 'horizontal' | 'vertical' | 'both';
+  };
+
   // عدد الجولات
   rounds: 3 | 5 | number | 'infinite';
   
@@ -57,10 +61,14 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
   const [settings, setSettings] = useState<GameSettingsData>({
     gameName: '',
     teamNames: { green: 'الفريق الأخضر', red: 'الفريق الأحمر' },
-    
+
     // آليات الفوز
     winCondition: 'all',
-    
+    teamColors: {
+      green: 'both',
+      red: 'both',
+    },
+
     // عدد الجولات
     rounds: 3,
     

@@ -15,9 +15,11 @@ import {
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
+import { getSmartQuestion } from '../utils/questionEngine';
 import { HexGrid } from './HexGrid';
 import { ActionCardPanel, type CardType } from './ActionCardPanel';
 import { CardAnimation } from './CardAnimation';
+import { CardRoulette } from './CardRoulette';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType } from '../core/types';
 
@@ -27,14 +29,15 @@ interface HostScreenProps {
 }
 
 export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
-  const { cells, claimCell, syncFromExternal, initializeGrid, winner, winMessage } = useGameStore();
+  const { cells, claimCell, syncFromExternal, initializeGrid, winner, winMessage, currentRound, scores } = useGameStore();
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
-  const [teamCards, setTeamCards] = useState<{
+  const [showRoulette, setShowRoulette] = useState(false);
+  const [teamCards] = useState<{
     green: CardType[];
     red: CardType[];
   }>({
@@ -44,8 +47,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
-    initializeGrid();
-  }, [initializeGrid]);
+    initializeGrid(settings);
+  }, [initializeGrid, settings]);
 
   // المزامنة
   React.useEffect(() => {
@@ -62,25 +65,55 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     window.open(playersUrl, '_blank');
   };
 
-  const handleCellSelect = (cell: HexCellType) => {
+  const handleCellSelect = async (cell: HexCellType) => {
     if (cell.status === 'unanswered') {
       setSelectedCell(cell);
       
       if (cell.hasCard) {
-        setCardAnimation({
-          type: 'cardFound',
-          message: `الحرف "${cell.letter}" يحمل بطاقة! 🎁`,
-        });
-        
-        setTimeout(() => {
-          setCurrentQuestion(`سؤال تجريبي للحرف "${cell.letter}"؟`);
-          setShowQuestion(true);
-        }, 3500);
+        // عرض الروليت
+        setShowRoulette(true);
       } else {
-        setCurrentQuestion(`سؤال تجريبي للحرف "${cell.letter}"؟`);
-        setShowQuestion(true);
+        // جلب سؤال ذكي من Supabase
+        const question = await getSmartQuestion(
+          cell.letter, 
+          settings.selectedCategories
+        );
+        
+        if (question) {
+          setCurrentQuestion(question.question_text);
+          setShowQuestion(true);
+        } else {
+          // لا يوجد أسئلة
+          setCurrentQuestion(`⚠️ لا توجد أسئلة متاحة للحرف "${cell.letter}" في التصنيفات المختارة!`);
+          setShowQuestion(true);
+        }
       }
     }
+  };
+
+  const handleRouletteComplete = async (card: CardType) => {
+    setShowRoulette(false);
+    
+    // إضافة البطاقة للفريق الفائز
+    setCardAnimation({
+      type: 'cardFound',
+      message: `مبروك! حصلت على بطاقة ${card}! 🎁`,
+    });
+    
+    setTimeout(async () => {
+      // جلب سؤال ذكي
+      const question = await getSmartQuestion(
+        selectedCell?.letter || '', 
+        settings.selectedCategories
+      );
+      
+      if (question) {
+        setCurrentQuestion(question.question_text);
+      } else {
+        setCurrentQuestion(`سؤال تجريبي للحرف "${selectedCell?.letter}"؟`);
+      }
+      setShowQuestion(true);
+    }, 3500);
   };
 
   const handleTeamWin = (team: 'green' | 'red') => {
@@ -349,7 +382,14 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               color: 'white',
               textAlign: 'center',
             }}>
-              0
+              {scores.green}
+            </div>
+            <div style={{
+              fontSize: '0.75rem',
+              color: '#10b981',
+              marginTop: '0.5rem',
+            }}>
+              نقاط الفوز
             </div>
           </div>
 
@@ -379,7 +419,14 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               color: 'white',
               textAlign: 'center',
             }}>
-              0
+              {scores.red}
+            </div>
+            <div style={{
+              fontSize: '0.75rem',
+              color: '#ef4444',
+              marginTop: '0.5rem',
+            }}>
+              نقاط الفوز
             </div>
           </div>
 
@@ -404,7 +451,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               fontWeight: 900,
               color: 'white',
             }}>
-              1 / {settings.rounds === 'infinite' ? '∞' : settings.rounds}
+              {currentRound} / {settings.rounds === 'infinite' ? '∞' : settings.rounds}
             </div>
           </div>
         </div>
@@ -561,6 +608,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         />
       )}
 
+      {/* روليت البطاقات */}
+      {showRoulette && (
+        <CardRoulette
+          onComplete={handleRouletteComplete}
+        />
+      )}
+
       {/* نافذة الفوز */}
       {winner && winMessage && (
         <div style={{
@@ -601,17 +655,40 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               fontSize: '3rem',
               fontWeight: 900,
               color: 'white',
-              margin: '0 0 1rem 0',
+              margin: '0 0 1.5rem 0',
               textShadow: '0 4px 10px rgba(0, 0, 0, 0.5)',
+              whiteSpace: 'pre-line',
             }}>
-              {winMessage}
+              {winMessage.split('\n')[0]}
             </h2>
+
+            <div style={{
+              fontSize: '1.5rem',
+              fontWeight: 700,
+              color: 'rgba(255, 255, 255, 0.9)',
+              marginBottom: '1rem',
+              padding: '1rem',
+              background: 'rgba(0, 0, 0, 0.2)',
+              borderRadius: '1rem',
+            }}>
+              {winMessage.split('\n')[1] || ''}
+            </div>
 
             <button
               onClick={() => {
-                const { resetGame, initializeGrid } = useGameStore.getState();
-                resetGame();
-                initializeGrid();
+                const { resetGame, initializeGrid, nextRound, currentRound, settings } = useGameStore.getState();
+                const maxRounds = settings.rounds === 'infinite' ? Infinity : settings.rounds;
+                
+                if (currentRound < maxRounds) {
+                  // جولة جديدة
+                  nextRound();
+                  resetGame();
+                  initializeGrid();
+                } else {
+                  // انتهت اللعبة
+                  resetGame();
+                  initializeGrid();
+                }
               }}
               style={{
                 marginTop: '2rem',
@@ -626,7 +703,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                 boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)',
               }}
             >
-              🔄 جولة جديدة
+              {currentRound < (settings.rounds === 'infinite' ? Infinity : settings.rounds)
+                ? '➡️ الجولة التالية'
+                : '🔄 لعبة جديدة'}
             </button>
           </div>
         </div>

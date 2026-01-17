@@ -36,6 +36,11 @@ export const HexCell: React.FC<HexCellProps> = ({
       return 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)';
     }
 
+    // إذا ذهبي
+    if (cell.isGolden && cell.status === 'unanswered') {
+      return 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)';
+    }
+
     // إذا مجموعة (collected)
     if (cell.status === 'green') {
       return 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)';
@@ -91,7 +96,16 @@ export const HexCell: React.FC<HexCellProps> = ({
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* الحرف */}
-      {!isDecorative && cell.letter}
+      {!isDecorative && (
+        <span style={{
+          color: cell.isGolden && cell.status === 'unanswered' ? '#fff' : undefined,
+          textShadow: cell.isGolden && cell.status === 'unanswered' 
+            ? '0 0 10px rgba(251, 191, 36, 0.8), 0 0 20px rgba(251, 191, 36, 0.5)'
+            : undefined,
+        }}>
+          {cell.letter}
+        </span>
+      )}
 
       {/* أيقونة البطاقة */}
       {!isDecorative && cell.hasCard && !isCollected && (
@@ -104,6 +118,19 @@ export const HexCell: React.FC<HexCellProps> = ({
           }}
         >
           🎁
+        </div>
+      )}
+
+      {/* شعاع ذهبي */}
+      {!isDecorative && cell.isGolden && cell.status === 'unanswered' && (
+        <div style={{
+          position: 'absolute',
+          top: '-2px',
+          right: '-2px',
+          fontSize: `${12 * scale}px`,
+          animation: 'sparkle 1.5s ease-in-out infinite',
+        }}>
+          ✨
         </div>
       )}
     </div>

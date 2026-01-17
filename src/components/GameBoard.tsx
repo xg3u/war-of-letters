@@ -95,7 +95,7 @@ interface TeamPanelProps {
   teamName: string;
 }
 
-const TeamPanel: React.FC<TeamPanelProps> = ({ team, color, icon, teamName }) => {
+const TeamPanel: React.FC<TeamPanelProps> = ({ color, icon, teamName }) => {
   const [name, setName] = React.useState(teamName);
 
   return (

@@ -31,7 +31,7 @@ export interface HexCell {
 
 // ========== إعدادات اللعبة ==========
 export type GameMode = 'normal' | 'tv-show';
-export type WinCondition = 'wall-to-wall' | 'first-to-5' | 'most-letters' | 'any-condition';
+export type WinCondition = 'wall-to-wall' | 'first-to-5' | 'five-connected' | 'most-letters' | 'any-condition' | 'all';
 
 export interface GameSettings {
   gameName: string;
@@ -93,6 +93,7 @@ export interface Category {
 
 // ========== البطاقات (Action Cards) ==========
 export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
+export type CardType = 'freeze' | 'bomb' | 'battle' | 'shield' | 'demonShuffle' | 'speedUp' | 'luck';
 
 export interface ActionCard {
   id: string;

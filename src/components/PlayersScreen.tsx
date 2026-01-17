@@ -25,12 +25,20 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const { cells, syncFromExternal, winner, winMessage } = useGameStore();
   const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
 
-  // المزامنة فقط (بدون تهيئة - الشبكة تأتي من HostScreen)
+  // المزامنة فقط
   React.useEffect(() => {
     const unsubscribe = syncManager.subscribe((data) => {
+      console.log('PlayersScreen received:', data.type);
+      
       if (data.type === 'GRID_INITIALIZED') {
-        // تحديث الشبكة من HostScreen
-        syncFromExternal(data.cells);
+        console.log('Syncing grid:', data.cells?.length, 'cells');
+        if (data.cells) {
+          syncFromExternal(data.cells);
+        }
+        if (data.settings) {
+          // تحديث الإعدادات أيضاً
+          localStorage.setItem('current-game-settings', JSON.stringify(data.settings));
+        }
       } else if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
       } else if (data.type === 'CARD_USED') {
@@ -42,6 +50,11 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
     });
     return unsubscribe;
   }, [syncFromExternal]);
+
+  // Debug: عرض حالة الشبكة
+  React.useEffect(() => {
+    console.log('PlayersScreen cells:', cells.length);
+  }, [cells]);
 
   return (
     <div style={{
@@ -93,11 +106,22 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           justifyContent: 'center',
           padding: '2rem',
         }}>
-          <HexGrid 
-            cells={cells}
-            zoom={1}
-            scale={1}
-          />
+          {cells.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              color: '#a855f7',
+              fontSize: '1.5rem',
+              fontWeight: 700,
+            }}>
+              ⏳ في انتظار بدء اللعبة من المقدم...
+            </div>
+          ) : (
+            <HexGrid 
+              cells={cells}
+              zoom={1}
+              scale={1}
+            />
+          )}
         </div>
 
         {/* لوحة المعلومات */}
