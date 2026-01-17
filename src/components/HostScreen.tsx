@@ -53,7 +53,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
     winMessage,
     scores,
     resetGame,
-    teamCards
+    teamCards,
+    addCardToTeam
   } = useGameStore();
 
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
@@ -64,6 +65,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showRoulette, setShowRoulette] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [pendingCard, setPendingCard] = useState<CardType | null>(null); // Card waiting to be awarded to winning team
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
@@ -114,14 +116,19 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
   const handleRouletteComplete = async (card: CardType) => {
     setShowRoulette(false);
 
-    // إضافة البطاقة للفريق الفائز
+    // Store pending card (to be awarded to team that answers correctly)
+    setPendingCard(card);
+
+    // Show card found animation
     setCardAnimation({
       type: 'cardFound',
-      message: `مبروك! حصلت على بطاقة ${CARD_ICONS[card]}! 🎁`,
+      message: `ظهرت بطاقة ${CARD_ICONS[card]}! أجب على السؤال لتحصل عليها 🎁`,
     });
 
     setTimeout(async () => {
-      // جلب سؤال ذكي
+      setCardAnimation(null);
+
+      // Fetch smart question from Supabase
       const question = await getSmartQuestion(
         selectedCell?.letter || '',
         settings.selectedCategories
@@ -138,7 +145,29 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
   const handleTeamWin = (team: 'green' | 'red') => {
     if (selectedCell) {
+      // Claim the cell for the winning team
       claimCell(selectedCell.id, team);
+
+      // Award pending card to the winning team (if any)
+      if (pendingCard) {
+        addCardToTeam(team, pendingCard);
+
+        // Show card awarded animation
+        setCardAnimation({
+          type: pendingCard,
+          message: `مبروك! فاز الفريق ${team === 'green' ? 'الأخضر' : 'الأحمر'} بالبطاقة ${CARD_ICONS[pendingCard]}! 🎉`,
+        });
+
+        // Clear pending card
+        setPendingCard(null);
+
+        // Clear animation after delay
+        setTimeout(() => {
+          setCardAnimation(null);
+        }, 3000);
+      }
+
+      // Reset question UI
       setShowQuestion(false);
       setSelectedCell(null);
       setCurrentQuestion(null);
@@ -622,6 +651,30 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
               }}>
                 {selectedCell?.letter}
               </div>
+
+              {/* Card Prize Indicator */}
+              {pendingCard && (
+                <div style={{
+                  marginTop: '1.5rem',
+                  padding: '1rem 2rem',
+                  background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(249, 115, 22, 0.2))',
+                  border: '2px solid rgba(251, 191, 36, 0.5)',
+                  borderRadius: '1rem',
+                  display: 'inline-block',
+                }}>
+                  <div style={{
+                    fontSize: '1.25rem',
+                    fontWeight: 900,
+                    color: '#fbbf24',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                  }}>
+                    <span style={{ fontSize: '2rem' }}>{CARD_ICONS[pendingCard]}</span>
+                    <span>الفريق الفائز يحصل على هذه البطاقة!</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{
