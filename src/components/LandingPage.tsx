@@ -26,6 +26,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
   });
   const [showPayment, setShowPayment] = useState(false);
 
+  // دوال التنقل
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   // توليد الحروف المتساقطة
   const fallingLetters = React.useMemo(() => 
     Array.from({ length: 30 }).map((_, i) => ({
@@ -186,70 +194,76 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
               gap: '1.5rem',
               alignItems: 'center',
             }}>
-              <a style={{
-                color: isDarkMode ? 'white' : 'white',
-                fontSize: '1rem',
-                fontWeight: 700,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                padding: '0.5rem 1rem',
-                borderRadius: '0.5rem',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = isDarkMode 
-                  ? 'rgba(255, 255, 255, 0.1)' 
-                  : 'rgba(255, 255, 255, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-              }}
+              <a
+                onClick={() => scrollToSection('hero')}
+                style={{
+                  color: isDarkMode ? 'white' : 'white',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDarkMode
+                    ? 'rgba(255, 255, 255, 0.1)'
+                    : 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}
               >
                 الرئيسية
               </a>
-              <a style={{
-                color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
-                fontSize: '1rem',
-                fontWeight: 700,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                padding: '0.5rem 1rem',
-                borderRadius: '0.5rem',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = isDarkMode 
-                  ? 'rgba(255, 255, 255, 0.1)' 
-                  : 'rgba(255, 255, 255, 0.2)';
-                e.currentTarget.style.color = 'white';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
-              }}
+              <a
+                onClick={() => scrollToSection('categories')}
+                style={{
+                  color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDarkMode
+                    ? 'rgba(255, 255, 255, 0.1)'
+                    : 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
+                }}
               >
                 الأسئلة
               </a>
-              <a style={{
-                color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
-                fontSize: '1rem',
-                fontWeight: 700,
-                textDecoration: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                padding: '0.5rem 1rem',
-                borderRadius: '0.5rem',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = isDarkMode 
-                  ? 'rgba(255, 255, 255, 0.1)' 
-                  : 'rgba(255, 255, 255, 0.2)';
-                e.currentTarget.style.color = 'white';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
-              }}
+              <a
+                onClick={() => scrollToSection('cards')}
+                style={{
+                  color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDarkMode
+                    ? 'rgba(255, 255, 255, 0.1)'
+                    : 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.color = 'white';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
+                }}
               >
                 البطاقات
               </a>
@@ -302,6 +316,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       <div style={{ paddingTop: '5.5rem' }}>
         
         {/* القسم الأول - الكارد المركزي */}
+        <div id="hero"></div>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -451,7 +466,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         </div>
 
         {/* القسم الثاني - الكاتيجوريز */}
-        <section style={{ 
+        <section id="categories" style={{ 
           display: 'flex',
           justifyContent: 'center',
           padding: 'clamp(2rem, 3vw, 3rem) clamp(1.5rem, 4vw, 3rem)',
@@ -547,7 +562,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         </div>
 
         {/* القسم الثالث - البطاقات */}
-        <section style={{ 
+        <section id="cards" style={{ 
           display: 'flex',
           justifyContent: 'center',
           padding: 'clamp(2rem, 3vw, 3rem) clamp(1.5rem, 4vw, 3rem)',
