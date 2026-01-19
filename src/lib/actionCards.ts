@@ -39,6 +39,7 @@ export const actionCards: ActionCard[] = [
     color: '#10b981', // أخضر
     rarity: 'common',
   },
+  /*
   {
     id: 'shuffle',
     name: '😈 خلط شيطاني',
@@ -46,15 +47,8 @@ export const actionCards: ActionCard[] = [
     icon: '😈',
     color: '#8b5cf6', // بنفسجي
     rarity: 'epic',
-  },
-  {
-    id: 'speed',
-    name: '⏱ تسريع',
-    description: 'العب دورتين متتاليتين. تُستخدم مرة واحدة فقط',
-    icon: '⏱',
-    color: '#fbbf24', // أصفر
-    rarity: 'epic',
-  },
+  },*/
+ /* 
   {
     id: 'luck',
     name: '🎲 حظ',
@@ -63,14 +57,7 @@ export const actionCards: ActionCard[] = [
     color: '#ec4899', // وردي
     rarity: 'legendary',
   },
-  {
-    id: 'steal',
-    name: '🎯 سرقة',
-    description: 'اسرق بطاقة عشوائية من خصمك وأضفها لمجموعتك',
-    icon: '🎯',
-    color: '#06b6d4', // سماوي
-    rarity: 'legendary',
-  },
+  */
 ];
 
 // ========== مثال: كيف تضيف بطاقة جديدة ==========

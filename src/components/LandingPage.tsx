@@ -1,12 +1,13 @@
 // src/components/LandingPage.tsx
-// الصفحة الرئيسية - تصميم سموث واحترافي
-
 import React, { useState } from 'react';
 import { CategoryCard } from './CategoryCard';
 import { ActionCardComponent } from './ActionCardComponent';
 import { categories } from '../lib/categories';
 import { actionCards } from '../lib/actionCards';
-import { Play, Moon, Sun, Sparkles } from 'lucide-react';
+import { 
+  Play, Moon, Sun, Sparkles, BookOpen, 
+  Trophy, ShieldCheck, Zap, HelpCircle 
+} from 'lucide-react';
 import { WelcomeModal } from './WelcomeModal';
 import { PaymentModal } from './PaymentModal';
 
@@ -20,13 +21,11 @@ interface LandingPageProps {
 export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [showWelcome, setShowWelcome] = useState(() => {
-    // التحقق من localStorage عند التحميل
     const hideModal = localStorage.getItem('hideWelcomeModal');
-    return hideModal !== 'true'; // يظهر إذا ما كان محفوظ
+    return hideModal !== 'true';
   });
   const [showPayment, setShowPayment] = useState(false);
 
-  // دوال التنقل
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (element) {
@@ -34,16 +33,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
     }
   };
 
-  // توليد الحروف المتساقطة
   const fallingLetters = React.useMemo(() => 
     Array.from({ length: 30 }).map((_, i) => ({
       id: i,
       char: ARABIC_LETTERS[Math.floor(Math.random() * ARABIC_LETTERS.length)],
       color: VIBRANT_COLORS[Math.floor(Math.random() * VIBRANT_COLORS.length)],
       left: `${Math.random() * 100}%`,
-      duration: `${Math.random() * 15 + 20}s`, // أبطأ: 20-35 ثانية
+      duration: `${Math.random() * 15 + 20}s`,
       delay: `${Math.random() * 10}s`,
-      size: `clamp(2rem, 3vw, 3.5rem)`, // حجم متوسط ومتناسق
+      size: `clamp(2rem, 3vw, 3.5rem)`,
     }))
   , []);
 
@@ -52,11 +50,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
     bgGradient: isDarkMode 
       ? 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)'
       : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%)',
-    cardBg: isDarkMode ? 'rgba(26, 11, 46, 0.6)' : 'rgba(255, 255, 255, 0.9)',
+    cardBg: isDarkMode ? 'rgba(26, 11, 46, 0.7)' : 'rgba(255, 255, 255, 0.9)',
     text: isDarkMode ? '#ffffff' : '#1a0b2e',
     textSecondary: isDarkMode ? '#e9d5ff' : '#7c3aed',
     border: isDarkMode ? 'rgba(168, 85, 247, 0.25)' : 'rgba(124, 58, 237, 0.2)',
-    sectionBg: isDarkMode ? 'rgba(26, 11, 46, 0.4)' : 'rgba(255, 255, 255, 0.6)',
   };
 
   return (
@@ -66,13 +63,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       color: colors.text,
       transition: 'all 0.5s ease',
       position: 'relative',
-      overflow: 'hidden',
+      overflowX: 'hidden',
+      direction: 'rtl',
     }}>
       
-      {/* مودال الترحيب */}
       {showWelcome && <WelcomeModal onClose={() => setShowWelcome(false)} />}
-
-      {/* مودال الدفع */}
       {showPayment && (
         <PaymentModal
           onClose={() => setShowPayment(false)}
@@ -83,602 +78,190 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         />
       )}
 
-      {/* طبقة الحروف المتساقطة */}
-      <div style={{
-        position: 'fixed',
-        inset: 0,
-        overflow: 'hidden',
-        pointerEvents: 'none',
-        zIndex: 1,
-      }}>
+      {/* Falling Letters Layer */}
+      <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 1 }}>
         {fallingLetters.map((letter) => (
-          <div
-            key={letter.id}
-            style={{
-              position: 'absolute',
-              left: letter.left,
-              top: '-10%',
-              fontSize: letter.size,
-              color: letter.color,
-              animation: `falling ${letter.duration} linear infinite`,
-              animationDelay: letter.delay,
-              textShadow: `0 0 15px ${letter.color}, 0 0 30px ${letter.color}`,
-              fontWeight: 700,
-              opacity: isDarkMode ? 0.4 : 0.25,
-              fontFamily: 'Tajawal, sans-serif',
-            }}
-          >
+          <div key={letter.id} style={{
+            position: 'absolute',
+            left: letter.left,
+            top: '-10%',
+            fontSize: letter.size,
+            color: letter.color,
+            animation: `falling ${letter.duration} linear infinite`,
+            animationDelay: letter.delay,
+            textShadow: `0 0 15px ${letter.color}`,
+            fontWeight: 700,
+            opacity: isDarkMode ? 0.3 : 0.15,
+            fontFamily: 'Tajawal, sans-serif',
+          }}>
             {letter.char}
           </div>
         ))}
       </div>
-      {/* Header - هيدر احترافي */}
+
+      {/* Header */}
       <header style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 50,
-        background: isDarkMode 
-          ? 'linear-gradient(135deg, #1a0b2e 0%, #2d1154 100%)' 
-          : 'linear-gradient(135deg, #f97316 0%, #ec4899 100%)',
-        borderBottom: isDarkMode 
-          ? '3px solid rgba(168, 85, 247, 0.3)' 
-          : '3px solid rgba(255, 255, 255, 0.3)',
-        boxShadow: isDarkMode 
-          ? '0 4px 20px rgba(0, 0, 0, 0.5)' 
-          : '0 4px 20px rgba(249, 115, 22, 0.3)',
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
+        background: isDarkMode ? 'rgba(26, 11, 46, 0.8)' : 'rgba(249, 115, 22, 0.9)',
+        backdropFilter: 'blur(10px)',
+        borderBottom: `2px solid ${colors.border}`,
       }}>
-        <div style={{
-          maxWidth: '1400px',
-          margin: '0 auto',
-          padding: '1rem 2rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          
-          {/* اللوجو والاسم */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '1rem',
-          }}>
-            <div style={{
-              width: '3.5rem',
-              height: '3.5rem',
-              borderRadius: '1rem',
-              background: isDarkMode 
-                ? 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)'
-                : 'rgba(255, 255, 255, 0.95)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
-              flexShrink: 0,
-            }}>
-              <Sparkles 
-                size={28} 
-                color={isDarkMode ? 'white' : '#f97316'} 
-                strokeWidth={2.5} 
-              />
-            </div>
-            <div>
-              <h1 style={{
-                fontSize: 'clamp(1.5rem, 3vw, 2rem)',
-                fontWeight: 900,
-                margin: 0,
-                color: isDarkMode ? 'white' : 'white',
-                letterSpacing: '-0.02em',
-                lineHeight: 1,
-              }}>
-                حرب الحروف
-              </h1>
-              <p style={{
-                fontSize: '0.875rem',
-                margin: '0.25rem 0 0 0',
-                color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
-                fontWeight: 600,
-              }}>
-                معركة المعرفة والذكاء 🎯
-              </p>
-            </div>
-          </div>
-
-          {/* القائمة والزر */}
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            
-            {/* روابط التنقل */}
-            <nav style={{ 
-              display: 'flex', 
-              gap: '1.5rem',
-              alignItems: 'center',
-            }}>
-              <a
-                onClick={() => scrollToSection('hero')}
-                style={{
-                  color: isDarkMode ? 'white' : 'white',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '0.5rem',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = isDarkMode
-                    ? 'rgba(255, 255, 255, 0.1)'
-                    : 'rgba(255, 255, 255, 0.2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                الرئيسية
-              </a>
-              <a
-                onClick={() => scrollToSection('categories')}
-                style={{
-                  color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '0.5rem',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = isDarkMode
-                    ? 'rgba(255, 255, 255, 0.1)'
-                    : 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.color = 'white';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
-                }}
-              >
-                الأسئلة
-              </a>
-              <a
-                onClick={() => scrollToSection('cards')}
-                style={{
-                  color: isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  padding: '0.5rem 1rem',
-                  borderRadius: '0.5rem',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = isDarkMode
-                    ? 'rgba(255, 255, 255, 0.1)'
-                    : 'rgba(255, 255, 255, 0.2)';
-                  e.currentTarget.style.color = 'white';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : 'rgba(255, 255, 255, 0.9)';
-                }}
-              >
-                البطاقات
-              </a>
-            </nav>
-
-            {/* زر Dark Mode */}
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              style={{
-                width: '3rem',
-                height: '3rem',
-                borderRadius: '0.75rem',
-                background: isDarkMode 
-                  ? 'rgba(255, 255, 255, 0.1)' 
-                  : 'rgba(255, 255, 255, 0.2)',
-                border: isDarkMode 
-                  ? '2px solid rgba(255, 255, 255, 0.2)'
-                  : '2px solid rgba(255, 255, 255, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.1)';
-                e.currentTarget.style.background = isDarkMode 
-                  ? 'rgba(255, 255, 255, 0.15)' 
-                  : 'rgba(255, 255, 255, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.background = isDarkMode 
-                  ? 'rgba(255, 255, 255, 0.1)' 
-                  : 'rgba(255, 255, 255, 0.2)';
-              }}
-            >
-              {isDarkMode ? (
-                <Sun size={20} color="white" />
-              ) : (
-                <Moon size={20} color="white" />
-              )}
-            </button>
+            <Sparkles size={32} color="white" />
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: 'white' }}>حرب الحروف</h1>
           </div>
+          <nav style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            {['الرئيسية', 'الأسئلة', 'البطاقات', 'الدليل'].map((item, idx) => (
+              <button 
+                key={item}
+                onClick={() => scrollToSection(['hero', 'categories', 'cards', 'guide'][idx])}
+                style={{ background: 'none', border: 'none', color: 'white', fontWeight: 700, cursor: 'pointer', padding: '0.5rem' }}
+              >
+                {item}
+              </button>
+            ))}
+            <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', padding: '0.5rem', cursor: 'pointer' }}>
+              {isDarkMode ? <Sun size={20} color="white" /> : <Moon size={20} color="white" />}
+            </button>
+          </nav>
         </div>
       </header>
 
-      {/* المحتوى الرئيسي */}
-      <div style={{ paddingTop: '5.5rem' }}>
+      <main style={{ paddingTop: '6rem' }}>
         
-        {/* القسم الأول - الكارد المركزي */}
-        <div id="hero"></div>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '85vh',
-          padding: 'clamp(1rem, 3vw, 2rem)',
-        }}>
+        {/* Hero Section */}
+        <section id="hero" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ 
-            maxWidth: '600px', 
-            width: '100%', 
-            position: 'relative',
+            maxWidth: '700px', width: '100%', padding: '3rem', borderRadius: '3rem', 
+            background: colors.cardBg, backdropFilter: 'blur(20px)', border: `2px solid ${colors.border}`,
+            textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
           }}>
-            
-            {/* التوهج الخارجي */}
-            <div style={{
-              position: 'absolute',
-              inset: '-1rem',
-              borderRadius: '2.5rem',
-              filter: 'blur(50px)',
-              background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%)',
-              opacity: isDarkMode ? 0.25 : 0.15,
-              pointerEvents: 'none',
-            }} />
+            <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>⚔️</div>
+            <h2 style={{ fontSize: '3.5rem', fontWeight: 900, background: 'linear-gradient(to left, #f97316, #ec4899, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              معركة المعرفة الكبرى
+            </h2>
+            <p style={{ fontSize: '1.25rem', fontWeight: 600, color: colors.textSecondary, marginBottom: '2rem' }}>
+              تحدَّ أصدقاءك في أول لعبة لوحية إلكترونية تعتمد على الذكاء وبناء الجسور
+            </p>
+            <button 
+              onClick={() => setShowPayment(true)}
+              style={{ 
+                width: '100%', padding: '1.5rem', borderRadius: '1.5rem', background: 'linear-gradient(135deg, #f97316, #ec4899)',
+                color: 'white', fontSize: '1.5rem', fontWeight: 900, border: 'none', cursor: 'pointer',
+                boxShadow: '0 10px 30px rgba(249, 115, 22, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem'
+              }}
+            >
+              <Play fill="white" /> ابدأ التحدي الآن
+            </button>
+          </div>
+        </section>
 
-            {/* الكارد */}
-            <div style={{
-              position: 'relative',
-              borderRadius: '2.5rem',
-              padding: 'clamp(2rem, 5vw, 3rem)',
-              border: `2px solid ${colors.border}`,
-              background: colors.cardBg,
-              backdropFilter: 'blur(30px)',
-              boxShadow: isDarkMode 
-                ? '0 0 60px rgba(168, 85, 247, 0.2), 0 20px 40px rgba(0, 0, 0, 0.3)' 
-                : '0 20px 60px rgba(124, 58, 237, 0.15)',
-              transition: 'all 0.3s ease',
-            }}>
-              
-              {/* الأيقونة */}
-              <div style={{ 
-                position: 'relative', 
-                width: 'clamp(4rem, 10vw, 5rem)', 
-                height: 'clamp(4rem, 10vw, 5rem)', 
-                margin: '0 auto clamp(1.5rem, 3vw, 2rem)' 
-              }}>
-                <div style={{
-                  position: 'absolute',
-                  inset: '-0.5rem',
-                  borderRadius: '1.5rem',
-                  filter: 'blur(20px)',
-                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
-                  opacity: 0.4,
-                }} />
-                <div style={{
-                  position: 'relative',
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: '1.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
-                  boxShadow: '0 10px 30px rgba(168, 85, 247, 0.35)',
-                }}>
-                  <span style={{ fontSize: 'clamp(2rem, 5vw, 3rem)' }}>⚔️</span>
+        {/* Categories Section */}
+        <section id="categories" style={{ padding: '4rem 2rem' }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+              <h2 style={{ fontSize: '3rem', fontWeight: 900 }}>🎯 أنواع الأسئلة</h2>
+              <p style={{ color: colors.textSecondary, fontSize: '1.2rem' }}>آلاف الأسئلة في كافة المجالات بانتظارك</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem' }}>
+              {categories.map((cat) => <CategoryCard key={cat.id} category={cat} />)}
+            </div>
+          </div>
+        </section>
+
+
+
+
+                {/* Cards Section */}
+        <section id="cards" style={{ padding: '6rem 2rem' }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+              <h2 style={{ fontSize: '3rem', fontWeight: 900 }}>🃏 البطاقات الإستراتيجية</h2>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '2rem' }}>
+              {actionCards.map((card) => <ActionCardComponent key={card.id} card={card} />)}
+            </div>
+          </div>
+        </section>
+
+
+        {/* Game Guide Section - الدليل الجديد */}
+        <section id="guide" style={{ padding: '6rem 2rem', background: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)' }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+              <div style={{ display: 'inline-flex', padding: '1rem', borderRadius: '1.5rem', background: 'rgba(168, 85, 247, 0.1)', marginBottom: '1rem' }}>
+                <BookOpen size={40} color="#a855f7" />
+              </div>
+              <h2 style={{ fontSize: '3.5rem', fontWeight: 900, margin: 0 }}>دليل المحاربين</h2>
+              <p style={{ fontSize: '1.2rem', color: colors.textSecondary }}>تعلم قوانين اللعبة لتصبح بطلاً</p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
+              {/* منطق الفوز */}
+              <div style={{ padding: '2rem', borderRadius: '2rem', background: colors.cardBg, border: `1px solid ${colors.border}` }}>
+                <Trophy size={32} color="#f97316" style={{ marginBottom: '1rem' }} />
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>كيف تحقق النصر؟</h3>
+                <ul style={{ paddingRight: '1.2rem', lineHeight: '1.8', fontWeight: 500 }}>
+                  <li><b>الجسر الرأسي:</b> اربط مساراً متصلاً من الصف الأول إلى الصف الخامس.</li>
+                  <li><b>الجسر الأفقي:</b> اربط مساراً من أقصى اليمين إلى أقصى اليسار.</li>
+                  <li><b>الارتباط الصارم:</b> يجب أن تلمس الخلايا بعضها؛ لا يحسب الفوز إذا انتهى المسار في جوانب غير متقابلة.</li>
+                </ul>
+              </div>
+
+              {/* بطاقات النخبة */}
+              <div style={{ padding: '2rem', borderRadius: '2rem', background: colors.cardBg, border: `1px solid ${colors.border}` }}>
+                <Zap size={32} color="#ec4899" style={{ marginBottom: '1rem' }} />
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>ترسانة البطاقات</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>❄️ <b>تجميد:</b> شل حرفاً أبيض لمدة دورتين.</div>
+                  <div>⚔️ <b>معركة:</b> تحدَّ الخصم لسرقة حرف يملكه بسؤال جديد.</div>
+                  <div>💣 <b>قنبلة:</b> فجر ملكية الخصم وأعد الحرف للحالة البيضاء.</div>
+                  <div>🛡️ <b>الدرع:</b> حماية مطلقة لحروفك لمدة 3 دورات كاملة.</div>
                 </div>
               </div>
 
-              {/* العنوان */}
-              <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <h2 style={{
-                  fontSize: 'clamp(2rem, 6vw, 3rem)',
-                  fontWeight: 900,
-                  marginBottom: '0.5rem',
-                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  letterSpacing: '-0.02em',
-                }}>
-                  حرب الحروف
-                </h2>
-                <p style={{ 
-                  color: colors.textSecondary, 
-                  fontSize: 'clamp(1rem, 2.5vw, 1.125rem)', 
-                  fontWeight: 600,
-                  margin: 0,
-                }}>
-                  جاهز للتحدي؟ 🎯
-                </p>
+              {/* قوانين اللعبة */}
+              <div style={{ padding: '2rem', borderRadius: '2rem', background: colors.cardBg, border: `1px solid ${colors.border}` }}>
+                <ShieldCheck size={32} color="#10b981" style={{ marginBottom: '1rem' }} />
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>قواعد السلوك</h3>
+                <ul style={{ paddingRight: '1.2rem', lineHeight: '1.8', fontWeight: 500 }}>
+                  <li><b>قاعدة الحرف:</b> يجب أن تبدأ الإجابة بنفس حرف الخلية (تجاهل الـ التعريف).</li>
+                  <li><b>صلاحية البطاقات:</b> تُطلب البطاقات شفهياً من المقدم؛ وكلمته هي الفصل.</li>
+                  <li><b>الحصول على الكروت:</b> تظهر خلف الحروف، الحروف الذهبية، أو عند الفوز بـ 3 دورات متتالية.</li>
+                </ul>
               </div>
-
-              {/* الخط الفاصل */}
-              <div style={{
-                height: '1px',
-                width: '100%',
-                marginBottom: '2rem',
-                background: isDarkMode 
-                  ? 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.4), transparent)'
-                  : 'linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.3), transparent)',
-              }} />
-
-              {/* زر ابدأ اللعبة */}
-              <button
-                onClick={() => setShowPayment(true)}
-                style={{
-                  width: '100%',
-                  padding: 'clamp(1rem, 2.5vw, 1.25rem)',
-                  borderRadius: '1.25rem',
-                  color: 'white',
-                  fontWeight: 900,
-                  fontSize: 'clamp(1.125rem, 3vw, 1.5rem)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.75rem',
-                  transition: 'all 0.3s ease',
-                  cursor: 'pointer',
-                  border: 'none',
-                  background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
-                  boxShadow: '0 8px 30px rgba(249, 115, 22, 0.4)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-3px)';
-                  e.currentTarget.style.boxShadow = '0 12px 40px rgba(249, 115, 22, 0.5)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(249, 115, 22, 0.4)';
-                }}
-              >
-                <Play size={28} fill="currentColor" />
-                ابدأ اللعبة الآن
-              </button>
-
-              <p style={{
-                textAlign: 'center',
-                marginTop: '1.5rem',
-                color: isDarkMode ? 'rgba(233, 213, 255, 0.5)' : 'rgba(124, 58, 237, 0.5)',
-                fontWeight: 600,
-                fontSize: 'clamp(0.75rem, 2vw, 0.875rem)',
-                margin: '1.5rem 0 0 0',
-              }}>
-                اضغط لإنشاء لعبة جديدة ومشاركتها مع الأصدقاء 🎮
-              </p>
             </div>
-          </div>
-        </div>
 
-        {/* القسم الثاني - الكاتيجوريز */}
-        <section id="categories" style={{ 
-          display: 'flex',
-          justifyContent: 'center',
-          padding: 'clamp(2rem, 3vw, 3rem) clamp(1.5rem, 4vw, 3rem)',
-        }}>
-          <div style={{ maxWidth: '1400px', width: '100%' }}>
-            
-            {/* العنوان */}
+            {/* نظام الفوز المصور - مفهوم بصري */}
             <div style={{ 
-              textAlign: 'center', 
-              marginBottom: 'clamp(2rem, 3vw, 2.5rem)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '1rem',
+              marginTop: '4rem', padding: '3rem', borderRadius: '2.5rem', 
+              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(249, 115, 22, 0.1))',
+              border: `1px dashed ${colors.border}`, textAlign: 'center'
             }}>
-              <div style={{
-                fontSize: 'clamp(3rem, 7vw, 5rem)',
-                filter: 'drop-shadow(0 4px 10px rgba(249, 115, 22, 0.5))',
-              }}>
-                🎯
-              </div>
-              <h2 style={{
-                fontSize: 'clamp(2rem, 6vw, 3.5rem)',
-                fontWeight: 900,
-                margin: 0,
-                background: 'linear-gradient(135deg, #f97316, #ec4899, #a855f7)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}>
-                أنواع الأسئلة
-              </h2>
-              <p style={{ 
-                color: colors.textSecondary, 
-                fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
-                fontWeight: 600,
-                margin: 0,
-                textAlign: 'center',
-              }}>
-                اضغط على أي بطاقة لرؤية التفاصيل
+              <HelpCircle size={40} color={colors.textSecondary} style={{ marginBottom: '1rem' }} />
+              <h4 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>تلميح تكتيكي</h4>
+              <p style={{ maxWidth: '800px', margin: '0 auto', lineHeight: '1.6', fontWeight: 500 }}>
+                عند استخدام بطاقة <b>المعركة</b>، اختر الحرف الذي يمثل "حجر الزاوية" في جسر خصمك لتقطعه وتكمل جسرك الخاص. المقدم هو الحكم الوحيد الذي يحدد من نطق بالطلب أولاً!
               </p>
-            </div>
-
-            {/* البطاقات - 4 في كل صف */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: 'clamp(1.5rem, 2.5vw, 3rem)',
-            }}>
-              {categories.map((category) => (
-                <CategoryCard key={category.id} category={category} />
-              ))}
             </div>
           </div>
         </section>
 
-        {/* الخط الفاصل المتوهج */}
-        <div style={{ 
-          maxWidth: '1400px', 
-          margin: '0 auto', 
-          padding: '0 clamp(1.5rem, 4vw, 3rem)',
-        }}>
-          <div style={{
-            position: 'relative',
-            height: '1px',
-            background: isDarkMode 
-              ? 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.6), rgba(236, 72, 153, 0.6), rgba(249, 115, 22, 0.6), transparent)'
-              : 'linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.4), rgba(219, 39, 119, 0.4), rgba(234, 88, 12, 0.4), transparent)',
-            boxShadow: isDarkMode 
-              ? '0 0 20px rgba(168, 85, 247, 0.5)'
-              : '0 0 15px rgba(124, 58, 237, 0.3)',
-          }}>
-            <div style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              padding: '0.75rem 1.5rem',
-              background: isDarkMode ? '#1a0b2e' : '#f8f9fa',
-              borderRadius: '2rem',
-              border: `2px solid ${isDarkMode ? 'rgba(168, 85, 247, 0.5)' : 'rgba(124, 58, 237, 0.3)'}`,
-              boxShadow: isDarkMode 
-                ? '0 4px 20px rgba(168, 85, 247, 0.3)'
-                : '0 4px 15px rgba(124, 58, 237, 0.2)',
-            }}>
-              <span style={{
-                fontSize: '1.5rem',
-                filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))',
-              }}>
-                ✨
-              </span>
-            </div>
-          </div>
-        </div>
+        
 
-        {/* القسم الثالث - البطاقات */}
-        <section id="cards" style={{ 
-          display: 'flex',
-          justifyContent: 'center',
-          padding: 'clamp(2rem, 3vw, 3rem) clamp(1.5rem, 4vw, 3rem)',
-        }}>
-          <div style={{ maxWidth: '1400px', width: '100%' }}>
-            
-            {/* العنوان */}
-            <div style={{ 
-              textAlign: 'center', 
-              marginBottom: 'clamp(2rem, 3vw, 2.5rem)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '1rem',
-            }}>
-              <div style={{
-                fontSize: 'clamp(3rem, 7vw, 5rem)',
-                filter: 'drop-shadow(0 4px 10px rgba(236, 72, 153, 0.5))',
-              }}>
-                🃏
-              </div>
-              <h2 style={{
-                fontSize: 'clamp(2rem, 6vw, 3.5rem)',
-                fontWeight: 900,
-                margin: 0,
-                background: 'linear-gradient(135deg, #ec4899, #a855f7, #3b82f6)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}>
-                البطاقات الإستراتيجية
-              </h2>
-              <p style={{ 
-                color: colors.textSecondary, 
-                fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
-                fontWeight: 600,
-                margin: 0,
-                textAlign: 'center',
-              }}>
-                استخدم البطاقات بذكاء لتغيير مجرى المعركة
-              </p>
-            </div>
-
-            {/* البطاقات - 4 في كل صف */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: 'clamp(1.5rem, 2.5vw, 3rem)',
-            }}>
-              {actionCards.map((card) => (
-                <ActionCardComponent key={card.id} card={card} />
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Media Query للشاشات الأصغر */}
-        <style>{`
-          @media (max-width: 1200px) {
-            section > div:last-child {
-              grid-template-columns: repeat(3, 1fr) !important;
-            }
-          }
-          @media (max-width: 900px) {
-            section > div:last-child {
-              grid-template-columns: repeat(2, 1fr) !important;
-            }
-          }
-          @media (max-width: 600px) {
-            section > div:last-child {
-              grid-template-columns: repeat(1, 1fr) !important;
-            }
-          }
-        `}</style>
-
-        {/* Footer */}
-        <footer style={{
-          marginTop: '2rem',
-          padding: '2rem',
-          background: isDarkMode 
-            ? 'rgba(0, 0, 0, 0.3)' 
-            : 'rgba(255, 255, 255, 0.5)',
-          backdropFilter: 'blur(10px)',
-          borderTop: `2px solid ${colors.border}`,
-          textAlign: 'center',
-        }}>
-          <p style={{ 
-            color: colors.textSecondary, 
-            fontSize: '0.875rem',
-            margin: 0,
-          }}>
-            © 2025 حرب الحروف • جميع الحقوق محفوظة
-          </p>
+        <footer style={{ padding: '4rem 2rem', textAlign: 'center', borderTop: `1px solid ${colors.border}` }}>
+          <p style={{ fontWeight: 700, color: colors.textSecondary }}>Meshal-ALshammari || xg3u</p>
+          <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>© 2026 حرب الحروف - جميع الحقوق محفوظة</p>
         </footer>
-      </div>
+      </main>
 
-      {/* CSS للأنيميشنز */}
       <style>{`
         @keyframes falling {
-          0% {
-            transform: translateY(-10vh) rotate(0deg);
-            opacity: 0;
-          }
-          10% {
-            opacity: 0.4;
-          }
-          90% {
-            opacity: 0.4;
-          }
-          100% {
-            transform: translateY(110vh) rotate(360deg);
-            opacity: 0;
-          }
-        }
-
-        .falling-letter {
-          animation: falling linear infinite;
+          0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
+          10% { opacity: 0.4; }
+          90% { opacity: 0.4; }
+          100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
         }
       `}</style>
     </div>

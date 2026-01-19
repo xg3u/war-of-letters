@@ -54,7 +54,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
     scores,
     resetGame,
     teamCards,
-    addCardToTeam
+    addCardToTeam,
+    isLocked,
+    setLocked
   } = useGameStore();
 
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
@@ -88,8 +90,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
   };
 
   const handleCellSelect = async (cell: HexCellType) => {
+    // 🔒 ACTION LOCK: Prevent cell selection during active processes
+    if (isLocked) {
+      console.warn('⚠️ Action blocked: Game is locked during roulette/question');
+      return;
+    }
+
     if (cell.status === 'unanswered') {
       setSelectedCell(cell);
+
+      // 🔒 LOCK the game when starting roulette or question
+      setLocked(true);
 
       // إذا كانت الخلية تحتوي على بطاقة مخفية أو حرف ذهبي، عرض الروليت
       if (cell.hasCard || cell.isGolden) {
@@ -171,6 +182,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
       setShowQuestion(false);
       setSelectedCell(null);
       setCurrentQuestion(null);
+
+      // 🔓 UNLOCK the game after answer is processed
+      setLocked(false);
     }
   };
 
@@ -427,6 +441,35 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
           justifyContent: 'center',
           minHeight: '500px',
         }}>
+          {/* 🔒 Overlay when locked */}
+          {isLocked && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.3)',
+              backdropFilter: 'blur(2px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+              pointerEvents: 'all',
+            }}>
+              <div style={{
+                background: 'rgba(168, 85, 247, 0.2)',
+                border: '2px solid rgba(168, 85, 247, 0.5)',
+                borderRadius: '1rem',
+                padding: '1rem 2rem',
+                color: '#e9d5ff',
+                fontSize: '1.25rem',
+                fontWeight: 700,
+              }}>
+                🔒 جاري المعالجة...
+              </div>
+            </div>
+          )}
           <HexGrid
             cells={cells}
             onCellClick={handleCellSelect}
@@ -441,7 +484,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '0.75rem',
+          gap: '1.75rem',
           background: 'rgba(0, 0, 0, 0.3)',
           backdropFilter: 'blur(20px)',
           padding: '1rem 1.5rem',
@@ -473,16 +516,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
             }}
           />
 
-          {/* الأزرار */}
-          <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={20} />} title="إعادة الجولة" />
-          <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={20} />} title="ملء الشاشة" />
-          <ControlButton onClick={handleConfetti} color="#fbbf24" icon={<PartyPopper size={20} />} title="احتفال" />
-          <ControlButton onClick={() => setIsPaused(!isPaused)} color="#8b5cf6" icon={<Pause size={20} />} title="إيقاف مؤقت" />
-          <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={20} />} title="حرف عشوائي" />
-          <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={20} />} title="عكس الألوان" />
-          <ControlButton onClick={handleRandomLetter} color="#10b981" icon={<Shuffle size={20} />} title="خلط" />
-          <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={20} />} title="شاشة اللاعبين" />
-          <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={20} />} title="البطاقات" />
+          {/* الأزرار - 🔒 معطلة أثناء القفل */}
+          <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={20} />} title="إعادة الجولة" disabled={isLocked} />
+          <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={20} />} title="ملء الشاشة" disabled={false} />
+          <ControlButton onClick={handleConfetti} color="#fbbf24" icon={<PartyPopper size={20} />} title="احتفال" disabled={false} />
+          <ControlButton onClick={() => setIsPaused(!isPaused)} color="#8b5cf6" icon={<Pause size={20} />} title="إيقاف مؤقت" disabled={isLocked} />
+          <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={20} />} title="حرف عشوائي" disabled={isLocked} />
+          <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={20} />} title="عكس الألوان" disabled={isLocked} />
+          <ControlButton onClick={handleRandomLetter} color="#10b981" icon={<Shuffle size={20} />} title="خلط" disabled={isLocked} />
+          <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={20} />} title="شاشة اللاعبين" disabled={false} />
+          <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={20} />} title="البطاقات" disabled={isLocked} />
         </div>
       </div>
 
@@ -837,30 +880,37 @@ const ControlButton: React.FC<{
   color: string;
   icon: React.ReactNode;
   title: string;
-}> = ({ onClick, color, icon, title }) => (
+  disabled?: boolean; // 🔒 Support disabled state
+}> = ({ onClick, color, icon, title, disabled = false }) => (
   <button
-    onClick={onClick}
-    title={title}
+    onClick={disabled ? undefined : onClick}
+    title={disabled ? '🔒 معطل أثناء المعالجة' : title}
+    disabled={disabled}
     style={{
       width: '48px',
       height: '48px',
       borderRadius: '12px',
-      background: `${color}33`,
-      border: `2px solid ${color}66`,
-      color,
+      background: disabled ? 'rgba(100, 100, 100, 0.3)' : `${color}33`,
+      border: disabled ? '2px solid rgba(100, 100, 100, 0.5)' : `2px solid ${color}66`,
+      color: disabled ? 'rgba(200, 200, 200, 0.5)' : color,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      cursor: 'pointer',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.5 : 1,
       transition: 'all 0.2s',
     }}
     onMouseEnter={(e) => {
-      e.currentTarget.style.background = `${color}66`;
-      e.currentTarget.style.transform = 'translateY(-2px)';
+      if (!disabled) {
+        e.currentTarget.style.background = `${color}66`;
+        e.currentTarget.style.transform = 'translateY(-2px)';
+      }
     }}
     onMouseLeave={(e) => {
-      e.currentTarget.style.background = `${color}33`;
-      e.currentTarget.style.transform = 'translateY(0)';
+      if (!disabled) {
+        e.currentTarget.style.background = `${color}33`;
+        e.currentTarget.style.transform = 'translateY(0)';
+      }
     }}
   >
     {icon}

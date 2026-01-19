@@ -21,6 +21,7 @@ interface GameStore {
     green: number;
     red: number;
   };
+  isLocked: boolean; // 🔒 Action Lock: prevents interaction during roulette/question
 
   initializeGrid: (settings?: GameSettings) => void;
   claimCell: (cellId: string, team: Team) => void;
@@ -29,6 +30,7 @@ interface GameStore {
   nextRound: () => void;
   addCardToTeam: (team: 'green' | 'red', card: CardType) => void;
   useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null) => void;
+  setLocked: (locked: boolean) => void; // 🔒 Lock/unlock game actions
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -39,6 +41,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   scores: { green: 0, red: 0 },
   teamCards: { green: [], red: [] },
   winStreak: { green: 0, red: 0 },
+  isLocked: false, // 🔒 Initially unlocked
   
   settings: {
     gameName: '',
@@ -269,5 +272,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
         round: currentRound,
       });
     }
+  },
+
+  // 🔒 Lock/Unlock Actions
+  setLocked: (locked: boolean) => {
+    set({ isLocked: locked });
+
+    // Broadcast lock state to synced screens
+    syncManager.broadcast({
+      type: 'LOCK_STATE_CHANGED',
+      isLocked: locked,
+    });
   },
 }));

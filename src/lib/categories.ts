@@ -52,15 +52,7 @@ export const categories: Category[] = [
     icon: '🎭',
     color: '#ec4899', // وردي
   },
-  {
-    id: 'technology',
-    name: 'تقنية',
-    description: 'أسئلة عن التكنولوجيا الحديثة، البرمجة، الذكاء الاصطناعي والابتكارات التقنية',
-    questionsCount: 0,
-    rating: 4.9,
-    icon: '💻',
-    color: '#06b6d4', // سماوي
-  },
+
   {
     id: 'islamic',
     name: 'ثقافة إسلامية',
@@ -70,15 +62,7 @@ export const categories: Category[] = [
     icon: '🕌',
     color: '#14b8a6', // تيل
   },
-  {
-    id: 'general',
-    name: 'عامة',
-    description: 'مزيج متنوع من الأسئلة في مختلف المجالات والموضوعات',
-    questionsCount: 0,
-    rating: 4.3,
-    icon: '❓',
-    color: '#a855f7', // بنفسجي فاتح
-  },
+
 ];
 
 // ========== مثال: كيف تضيف كاتيجوري جديد ==========

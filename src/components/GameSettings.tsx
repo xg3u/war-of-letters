@@ -112,10 +112,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
       alert('⚠️ الرجاء إدخال اسم اللعبة');
       return;
     }
-    if (settings.selectedCategories.length === 0) {
-      alert('⚠️ الرجاء اختيار فئة واحدة على الأقل');
-      return;
-    }
+  
     onStartGame(settings);
   };
 
@@ -244,8 +241,8 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
             placeholder="حرب الحروف مع..."
             style={{
               width: '100%',
-              padding: '1rem 1.5rem',
-              fontSize: '1.125rem',
+              padding: '1rem 0.5rem',
+              fontSize: '1.25rem',
               fontWeight: 700,
               background: 'rgba(255, 255, 255, 0.1)',
               border: '2px solid rgba(168, 85, 247, 0.3)',
@@ -288,7 +285,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '1rem',
+            gap: '1.5rem',
           }}>
             {/* الفريق الأخضر */}
             <div>
@@ -311,7 +308,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
                 placeholder="الفريق الأخضر"
                 style={{
                   width: '100%',
-                  padding: '1rem 1.5rem',
+                  padding: '1rem 0.5rem',
                   fontSize: '1rem',
                   fontWeight: 700,
                   background: 'rgba(16, 185, 129, 0.1)',
@@ -353,7 +350,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
                 placeholder="الفريق الأحمر"
                 style={{
                   width: '100%',
-                  padding: '1rem 1.5rem',
+                  padding: '1rem 0.5rem',
                   fontSize: '1rem',
                   fontWeight: 700,
                   background: 'rgba(239, 68, 68, 0.1)',
@@ -805,110 +802,6 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
                 </label>
               </div>
 
-              {/* توزيع البطاقات */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{
-                  display: 'block',
-                  color: '#ec4899',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  marginBottom: '0.75rem',
-                }}>
-                  🎲 توزيع البطاقات:
-                </label>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button
-                    onClick={() => setSettings({ ...settings, cardDistribution: 'random' })}
-                    style={{
-                      flex: 1,
-                      padding: '1rem',
-                      background: settings.cardDistribution === 'random'
-                        ? 'linear-gradient(135deg, #ec4899, #db2777)'
-                        : 'rgba(255, 255, 255, 0.1)',
-                      border: settings.cardDistribution === 'random'
-                        ? '2px solid #ec4899'
-                        : '2px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: '0.75rem',
-                      color: 'white',
-                      fontSize: '0.95rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    🎲 عشوائي
-                  </button>
-                  <button
-                    onClick={() => setSettings({ ...settings, cardDistribution: 'manual' })}
-                    style={{
-                      flex: 1,
-                      padding: '1rem',
-                      background: settings.cardDistribution === 'manual'
-                        ? 'linear-gradient(135deg, #ec4899, #db2777)'
-                        : 'rgba(255, 255, 255, 0.1)',
-                      border: settings.cardDistribution === 'manual'
-                        ? '2px solid #ec4899'
-                        : '2px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: '0.75rem',
-                      color: 'white',
-                      fontSize: '0.95rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    ✋ يدوي
-                  </button>
-                </div>
-              </div>
-
-              {/* إظهار مواقع البطاقات */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{
-                  display: 'block',
-                  color: '#ec4899',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  marginBottom: '0.75rem',
-                }}>
-                  👁 إظهار مواقع البطاقات:
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
-                  {[
-                    { value: 'always', label: 'دائماً', icon: <Eye size={16} /> },
-                    { value: 'on-press', label: 'عند الضغط', icon: '⏱' },
-                    { value: 'hidden', label: 'مخفية', icon: <EyeOff size={16} /> },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setSettings({ ...settings, showCardLocations: option.value as any })}
-                      style={{
-                        padding: '0.75rem',
-                        background: settings.showCardLocations === option.value
-                          ? 'linear-gradient(135deg, #ec4899, #db2777)'
-                          : 'rgba(255, 255, 255, 0.1)',
-                        border: settings.showCardLocations === option.value
-                          ? '2px solid #ec4899'
-                          : '2px solid rgba(255, 255, 255, 0.2)',
-                        borderRadius: '0.75rem',
-                        color: 'white',
-                        fontSize: '0.875rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.25rem',
-                      }}
-                    >
-                      {typeof option.icon === 'string' ? option.icon : option.icon}
-                      <span>{option.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* أنواع البطاقات المفعلة */}
               <div>
                 <label style={{
@@ -923,16 +816,14 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-                  gap: '0.75rem',
+                  gap: '5.75rem',
                 }}>
                   {[
                     { key: 'freeze', label: 'تجميد', icon: '🧊' },
                     { key: 'bomb', label: 'قنبلة', icon: '💣' },
                     { key: 'battle', label: 'معركة', icon: '⚔️' },
                     { key: 'shield', label: 'درع', icon: '🛡️' },
-                    { key: 'demonShuffle', label: 'خلط شيطاني', icon: '😈' },
-                    { key: 'speedUp', label: 'تسريع', icon: '⏱' },
-                    { key: 'luck', label: 'حظ', icon: '🎲' },
+              
                   ].map((card) => (
                     <label
                       key={card.key}
@@ -1043,129 +934,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           margin: '2rem 0',
         }} />
 
-        {/* الفئات */}
-        <div style={{ marginBottom: '2rem' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '1rem',
-          }}>
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              fontSize: '1.25rem',
-              fontWeight: 900,
-              color: 'white',
-            }}>
-              <Target size={24} color="#a855f7" />
-              الفئات ({settings.selectedCategories.length}/{categories.length})
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={selectAllCategories}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: 'linear-gradient(135deg, #10b981, #14b8a6)',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  color: 'white',
-                  fontSize: '0.875rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-              >
-                اختر الكل
-              </button>
-              <button
-                onClick={clearAllCategories}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: 'rgba(239, 68, 68, 0.8)',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  color: 'white',
-                  fontSize: '0.875rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-              >
-                إلغاء الكل
-              </button>
-            </div>
-          </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-            gap: '1rem',
-          }}>
-            {categories.map((category) => (
-              <button
-                key={category.id}
-                onClick={() => toggleCategory(category.id)}
-                style={{
-                  padding: '1rem',
-                  background: settings.selectedCategories.includes(category.id)
-                    ? category.color
-                    : 'rgba(255, 255, 255, 0.1)',
-                  border: settings.selectedCategories.includes(category.id)
-                    ? `3px solid ${category.color}`
-                    : '2px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '1rem',
-                  color: 'white',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  position: 'relative',
-                }}
-                onMouseEnter={(e) => {
-                  if (!settings.selectedCategories.includes(category.id)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                  }
-                  e.currentTarget.style.transform = 'translateY(-5px)';
-                }}
-                onMouseLeave={(e) => {
-                  if (!settings.selectedCategories.includes(category.id)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                  }
-                  e.currentTarget.style.transform = 'translateY(0)';
-                }}
-              >
-                {settings.selectedCategories.includes(category.id) && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '-8px',
-                    right: '-8px',
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: '#10b981',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.875rem',
-                    fontWeight: 900,
-                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.5)',
-                  }}>
-                    ✓
-                  </div>
-                )}
-                <span style={{ fontSize: '1.5rem' }}>{category.icon}</span>
-                <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>
-                  {category.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
+      
         {/* زر البدء */}
         <button
           onClick={handleStart}

@@ -21,9 +21,7 @@ const CARDS: CardOption[] = [
   { id: 'bomb', name: 'القنبلة', icon: '💣', color: '#f87171', probability: 0.10 },
   { id: 'battle', name: 'المعركة', icon: '⚔️', color: '#fb923c', probability: 0.20 },
   { id: 'shield', name: 'الدرع', icon: '🛡️', color: '#34d399', probability: 0.15 },
-  { id: 'demonShuffle', name: 'خلط الشيطان', icon: '👹', color: '#a855f7', probability: 0.05 },
-  { id: 'speedUp', name: 'تسريع', icon: '⚡', color: '#facc15', probability: 0.20 },
-  { id: 'luck', name: 'الحظ', icon: '🍀', color: '#f472b6', probability: 0.15 },
+  
 ];
 
 export const CardRoulette: React.FC<CardRouletteProps> = ({ onComplete }) => {
@@ -142,7 +140,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({ onComplete }) => {
           gap: '1rem',
         }}>
           {/* نكرر البطاقات 3 مرات عشان الحركة تكون سلسة */}
-          {[...CARDS, ...CARDS, ...CARDS].map((card, idx) => {
+          {[...CARDS, ...CARDS, ].map((card, idx) => {
             const isCenter = !isSpinning && idx % CARDS.length === currentIndex;
             
             return (

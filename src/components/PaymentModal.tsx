@@ -52,7 +52,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
     //
     // Mock Implementation:
     console.log(`Processing payment for ${selectedPlan} plan...`);
-    console.log(`Amount: ${selectedPlan === 'single' ? '1.99' : '29.99'} SAR`);
+    console.log(`Amount: ${selectedPlan === 'single' ? '4.99' : '29.99'} SAR`);
 
     // Simulate payment processing
     setShowSuccess(true);
@@ -227,7 +227,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
               color: 'white',
               marginBottom: '0.5rem',
             }}>
-              1.99 ر.س
+              4.99 ر.س
             </div>
 
             <div style={{

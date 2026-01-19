@@ -91,32 +91,7 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
           {card.description.substring(0, 50)}...
         </p>
 
-        {/* Rarity Badge */}
-        {rarity && (
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.3)',
-            padding: '0.5rem 1rem',
-            borderRadius: '0.75rem',
-            marginBottom: '1rem',
-            border: `2px solid ${rarity.border}`,
-          }}>
-            <div style={{ 
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-            }}>
-              <Sparkles size={14} color={rarity.border} />
-              <span style={{
-                fontSize: '0.875rem',
-                fontWeight: 900,
-                color: 'white',
-              }}>
-                {rarity.name}
-              </span>
-            </div>
-          </div>
-        )}
+    
 
         {/* زر Play Now */}
         <button style={{
@@ -229,33 +204,8 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
                   </h2>
                 </div>
 
-                {/* الندرة */}
-                {rarity && (
-                  <div style={{
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    padding: '1.5rem',
-                    borderRadius: '1.5rem',
-                    border: `3px solid ${rarity.border}`,
-                    boxShadow: `0 0 30px ${rarity.color}50`,
-                  }}>
-                    <div style={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '1rem',
-                    }}>
-                      <Sparkles size={24} color={rarity.border} />
-                      <span style={{
-                        fontSize: '1.5rem',
-                        fontWeight: 900,
-                        color: 'white',
-                      }}>
-                        {rarity.name}
-                      </span>
-                      <Sparkles size={24} color={rarity.border} />
-                    </div>
-                  </div>
-                )}
+            
+                
 
                 {/* نص التلميح */}
                 <p style={{
@@ -338,33 +288,7 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
                     {card.description}
                   </p>
 
-                  {/* معلومات الندرة */}
-                  {rarity && (
-                    <div style={{
-                      background: 'rgba(0, 0, 0, 0.3)',
-                      borderRadius: '1rem',
-                      padding: '1.5rem',
-                      border: `3px solid ${rarity.border}`,
-                      boxShadow: `0 0 20px ${rarity.color}30`,
-                    }}>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        gap: '1rem',
-                      }}>
-                        <Sparkles size={20} color={rarity.border} />
-                        <span style={{ 
-                          color: 'white', 
-                          fontSize: '1.25rem',
-                          fontWeight: 900,
-                        }}>
-                          ندرة: {rarity.name}
-                        </span>
-                        <Sparkles size={20} color={rarity.border} />
-                      </div>
-                    </div>
-                  )}
+          
                 </div>
 
                 <p style={{
