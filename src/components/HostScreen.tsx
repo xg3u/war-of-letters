@@ -67,6 +67,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showRoulette, setShowRoulette] = useState(false);
+  const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
   const [isPaused, setIsPaused] = useState(false);
   const [pendingCard, setPendingCard] = useState<CardType | null>(null); // Card waiting to be awarded to winning team
 
@@ -105,7 +106,15 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
       // إذا كانت الخلية تحتوي على بطاقة مخفية أو حرف ذهبي، عرض الروليت
       if (cell.hasCard || cell.isGolden) {
+        const triggerType = cell.isGolden ? 'golden' : 'card';
+        setRouletteTriggerType(triggerType);
         setShowRoulette(true);
+
+        // بث حدث بدء الروليت لشاشة اللاعبين
+        syncManager.broadcast({
+          type: 'ROULETTE_START',
+          triggerType,
+        });
       } else {
         // جلب سؤال ذكي من Supabase
         const question = await getSmartQuestion(
@@ -132,13 +141,27 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
   const handleRouletteComplete = async (card: CardType) => {
     setShowRoulette(false);
 
+    // بث حدث انتهاء الروليت للاعبين
+    syncManager.broadcast({
+      type: 'ROULETTE_END',
+      card,
+    });
+
     // Store pending card (to be awarded to team that answers correctly)
     setPendingCard(card);
 
     // Show card found animation
+    const cardFoundMessage = `ظهرت بطاقة ${CARD_ICONS[card]}! أجب على السؤال لتحصل عليها 🎁`;
     setCardAnimation({
       type: 'cardFound',
-      message: `ظهرت بطاقة ${CARD_ICONS[card]}! أجب على السؤال لتحصل عليها 🎁`,
+      message: cardFoundMessage,
+    });
+
+    // بث رسالة ظهور البطاقة للاعبين
+    syncManager.broadcast({
+      type: 'CARD_FOUND',
+      cardType: 'cardFound',
+      message: cardFoundMessage,
     });
 
     setTimeout(async () => {
@@ -171,9 +194,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
         addCardToTeam(team, pendingCard);
 
         // Show card awarded animation
+        const cardWonMessage = `مبروك! فاز الفريق ${team === 'green' ? 'الأخضر' : 'الأحمر'} بالبطاقة ${CARD_ICONS[pendingCard]}! 🎉`;
         setCardAnimation({
           type: pendingCard,
-          message: `مبروك! فاز الفريق ${team === 'green' ? 'الأخضر' : 'الأحمر'} بالبطاقة ${CARD_ICONS[pendingCard]}! 🎉`,
+          message: cardWonMessage,
+        });
+
+        // بث رسالة فوز البطاقة للاعبين
+        syncManager.broadcast({
+          type: 'CARD_WON',
+          cardType: pendingCard,
+          message: cardWonMessage,
         });
 
         // Clear pending card
@@ -853,6 +884,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
       {showRoulette && (
         <CardRoulette
           onComplete={handleRouletteComplete}
+          triggerType={rouletteTriggerType}
         />
       )}
 

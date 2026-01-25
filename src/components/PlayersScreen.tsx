@@ -7,9 +7,11 @@ import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
 import { HexGrid } from './HexGrid';
 import { CardAnimation } from './CardAnimation';
+import { CardRoulette } from './CardRoulette';
 import type { CardType } from './ActionCardPanel';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType } from '../core/types';
+import type { CardType as RouletteCardType } from '../core/types';
 
 // Card Icons Mapping (matching HostScreen)
 const CARD_ICONS: Record<CardType, string> = {
@@ -36,6 +38,9 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const { cells, syncFromExternal, winner, winMessage, scores, teamCards } = useGameStore();
   const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [zoom, setZoom] = React.useState(1);
+  const [showRoulette, setShowRoulette] = React.useState(false);
+  const [rouletteTriggerType, setRouletteTriggerType] = React.useState<'card' | 'golden'>('card');
+  const [syncedCard, setSyncedCard] = React.useState<RouletteCardType | null>(null);
 
   // المزامنة فقط
   React.useEffect(() => {
@@ -60,6 +65,26 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         });
       } else if (data.type === 'ZOOM_CHANGED' && typeof data.zoom === 'number') {
         setZoom(data.zoom);
+      } else if (data.type === 'ROULETTE_START') {
+        // بدء الروليت في شاشة اللاعبين
+        setRouletteTriggerType(data.triggerType || 'card');
+        setSyncedCard(null);
+        setShowRoulette(true);
+      } else if (data.type === 'ROULETTE_END') {
+        // انتهاء الروليت - تحديث البطاقة المختارة
+        setSyncedCard(data.card);
+      } else if (data.type === 'CARD_FOUND') {
+        // رسالة ظهور البطاقة (قبل السؤال)
+        setCardAnimation({
+          type: data.cardType,
+          message: data.message,
+        });
+      } else if (data.type === 'CARD_WON') {
+        // رسالة فوز الفريق بالبطاقة (بعد الإجابة)
+        setCardAnimation({
+          type: data.cardType,
+          message: data.message,
+        });
       }
     });
     return unsubscribe;
@@ -242,6 +267,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
                 cells={cells}
                 zoom={zoom}
                 scale={1}
+                showCardIndicator={false}
               />
             )}
           </div>
@@ -412,6 +438,16 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           type={cardAnimation.type}
           message={cardAnimation.message}
           onComplete={() => setCardAnimation(null)}
+        />
+      )}
+
+      {/* روليت البطاقات - متزامن مع شاشة المقدم */}
+      {showRoulette && (
+        <CardRoulette
+          onComplete={() => setShowRoulette(false)}
+          syncedCard={syncedCard}
+          isViewerMode={true}
+          triggerType={rouletteTriggerType}
         />
       )}
 

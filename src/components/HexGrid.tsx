@@ -11,14 +11,16 @@ interface HexGridProps {
   selectedCellId?: string | null;
   zoom?: number;
   scale?: number;
+  showCardIndicator?: boolean; // إظهار مؤشر البطاقات (للمقدم فقط)
 }
 
-export const HexGrid: React.FC<HexGridProps> = ({ 
-  cells, 
+export const HexGrid: React.FC<HexGridProps> = ({
+  cells,
   onCellClick,
   selectedCellId = null,
   zoom = 1,
-  scale = 1 
+  scale = 1,
+  showCardIndicator = true // افتراضياً يظهر للمقدم
 }) => {
   // خلية زينة
   const createDecorativeCell = (id: string, isRed: boolean = false): HexCellType => ({
@@ -128,13 +130,14 @@ export const HexGrid: React.FC<HexGridProps> = ({
                 key={cell.id}
                 cell={cell}
                 onClick={
-                  !isDecorative && onCellClick 
-                    ? () => onCellClick(cell) 
+                  !isDecorative && onCellClick
+                    ? () => onCellClick(cell)
                     : undefined
                 }
                 isDecorative={isDecorative}
                 isSelected={cell.id === selectedCellId}
                 scale={scale}
+                showCardIndicator={showCardIndicator}
               />
             );
           })}

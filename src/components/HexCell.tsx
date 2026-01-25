@@ -10,14 +10,16 @@ interface HexCellProps {
   isDecorative?: boolean;
   isSelected?: boolean;
   scale?: number;
+  showCardIndicator?: boolean; // إظهار مؤشر البطاقة (للمقدم فقط)
 }
 
-export const HexCell: React.FC<HexCellProps> = ({ 
-  cell, 
-  onClick, 
+export const HexCell: React.FC<HexCellProps> = ({
+  cell,
+  onClick,
   isDecorative = false,
   isSelected = false,
-  scale = 1 
+  scale = 1,
+  showCardIndicator = true // افتراضياً يظهر للمقدم
 }) => {
   const [isHovered, setIsHovered] = React.useState(false);
 
@@ -107,8 +109,8 @@ export const HexCell: React.FC<HexCellProps> = ({
         </span>
       )}
 
-      {/* أيقونة البطاقة */}
-      {!isDecorative && cell.hasCard && !isCollected && (
+      {/* أيقونة البطاقة - تظهر فقط للمقدم */}
+      {!isDecorative && cell.hasCard && !isCollected && showCardIndicator && (
         <div
           style={{
             position: 'absolute',
