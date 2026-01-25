@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 
-const LETTERS = [];
+const LETTERS: string[] = ['ا', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ', 'د', 'ر', 'ز'];
 
 export const AnimatedBackground: React.FC = () => {
   const bgLetters = useMemo(() => {

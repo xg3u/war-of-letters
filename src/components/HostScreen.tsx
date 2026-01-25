@@ -61,6 +61,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
+  const [currentAnswer, setCurrentAnswer] = useState<string | null>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
@@ -114,11 +115,15 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
         if (question) {
           setCurrentQuestion(question.question_text);
+          setCurrentAnswer(question.correct_answer);
+
           setShowQuestion(true);
         } else {
           // لا يوجد أسئلة
           setCurrentQuestion(`⚠️ لا توجد أسئلة متاحة للحرف "${cell.letter}" في التصنيفات المختارة!`);
           setShowQuestion(true);
+          setCurrentAnswer('إجابة تجريبية');
+         
         }
       }
     }
@@ -147,8 +152,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
       if (question) {
         setCurrentQuestion(question.question_text);
+        setCurrentAnswer(question.correct_answer);
       } else {
         setCurrentQuestion(`سؤال تجريبي للحرف "${selectedCell?.letter}"؟`);
+        setCurrentAnswer('إجابة تجريبية');
       }
       setShowQuestion(true);
     }, 3500);
@@ -734,8 +741,20 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
               }}>
                 {currentQuestion}
               </div>
+              
             </div>
-
+          {/* 3. ✅ صندوق الإجابة (تم نقله ليصبح تحت السؤال) */}
+            {currentAnswer && (
+              <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '2px dashed rgba(16, 185, 129, 0.4)', borderRadius: '1.25rem', padding: '1.5rem', marginBottom: '2rem', textAlign: 'center' }}>
+                <div style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+                   الإجابة الصحيحة ✓
+                </div>
+                <div style={{ color: '#10b981', fontSize: '1.5rem', fontWeight: 900 }}>
+                  {currentAnswer}
+                </div>
+              </div>
+            )}
+               
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',

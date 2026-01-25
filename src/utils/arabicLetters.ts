@@ -3,7 +3,7 @@
 
 // الحروف العربية الـ 28 مع تكرارها الإحصائي
 export const ARABIC_LETTERS = [
-  { letter: 'ا', frequency: 'very-high' },
+  { letter: 'أ', frequency: 'very-high' },
   { letter: 'ب', frequency: 'high' },
   { letter: 'ت', frequency: 'high' },
   { letter: 'ث', frequency: 'low' },

@@ -59,7 +59,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
 
     setTimeout(() => {
       onSuccess();
-    }, 2000);
+    }, 1000);
   };
 
   if (showSuccess) {

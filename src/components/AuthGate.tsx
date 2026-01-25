@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { Mail, ShieldCheck, ArrowRight, Lock, Sparkles, Moon, Sun } from 'lucide-react';
 
-const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهويةئؤءآإ";
+const ARABIC_LETTERS = "";
 
 const VIBRANT_COLORS = [
   '#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24',

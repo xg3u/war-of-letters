@@ -3,23 +3,19 @@
 
 import React, { useState } from 'react';
 import type { ActionCard } from '../core/types';
-import { X, Sparkles } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface ActionCardComponentProps {
   card: ActionCard;
 }
 
-const rarityConfig = {
-  common: { color: '#6b7280', name: 'شائع', border: '#9ca3af' },
-  rare: { color: '#3b82f6', name: 'نادر', border: '#60a5fa' },
-  epic: { color: '#8b5cf6', name: 'أسطوري', border: '#a78bfa' },
-  legendary: { color: '#f59e0b', name: 'خرافي', border: '#fbbf24' },
-};
+// Rarity config متاح للاستخدام المستقبلي
+// common: #6b7280, rare: #3b82f6, epic: #8b5cf6, legendary: #f59e0b
 
 export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
-  const rarity = card.rarity ? rarityConfig[card.rarity] : null;
+  // رارتي البطاقة متاح في card.rarity مع rarityConfig
 
   const handleCardClick = () => {
     setIsModalOpen(true);

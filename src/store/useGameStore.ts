@@ -47,7 +47,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     gameName: '',
     teamNames: { green: 'الفريق الأخضر', red: 'الفريق الأحمر' },
     winCondition: 'most-letters',
-    teamColors: { green: 'both', red: 'both' },
+    teamColors: { green: 'horizontal', red: 'vertical' },
     rounds: 3,
     enableCards: true,
     enableRandomLetter: true,

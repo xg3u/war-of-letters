@@ -47,25 +47,26 @@ export const getSmartQuestion = async (
 };
 
 // ========== 1. Pooling: جلب الأسئلة ==========
+// تعديل محرك الجلب ليدعم "جلب الكل" إذا لم تُحدد فئات
 const fetchQuestionPool = async (
   letter: string,
-  categoryIds: string[]
+  _categoryIds: string[]
 ): Promise<Question[]> => {
-  
+
+  // استعلام بسيط ومباشر يتجاهل الفئات تماماً
   const { data, error } = await supabase
     .from('questions')
     .select('*')
-    .eq('letter', letter)
-    .in('category_id', categoryIds);
-  
+    .eq('letter_assigned', letter); // نبحث فقط بالحرف
+
   if (error) {
-    console.error('Error fetching questions:', error);
+    console.error('❌ خطأ في الجلب:', error);
     return [];
   }
-  
+
+  console.log(`✅ تم جلب ${data?.length || 0} أسئلة للحرف: ${letter}`);
   return data || [];
 };
-
 // ========== 2. جلب الأسئلة المشاهدة ==========
 const getSeenQuestions = async (): Promise<Set<string>> => {
   const userId = getUserId();

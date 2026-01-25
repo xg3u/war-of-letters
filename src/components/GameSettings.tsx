@@ -2,7 +2,7 @@
 // صفحة إعدادات اللعبة الكاملة - النسخة المحدثة
 
 import React, { useState } from 'react';
-import { ArrowLeft, Target, Trophy, Dice5, Eye, EyeOff, Zap, Award, Users } from 'lucide-react';
+import { ArrowLeft, Target, Trophy, Dice5, Zap, Award, Users } from 'lucide-react';
 import { categories } from '../lib/categories';
 
 interface GameSettingsProps {
@@ -65,8 +65,8 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     // آليات الفوز
     winCondition: 'all',
     teamColors: {
-      green: 'both',
-      red: 'both',
+      green: 'horizontal',
+      red: 'vertical',
     },
 
     // عدد الجولات
@@ -116,7 +116,8 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     onStartGame(settings);
   };
 
-  const toggleCategory = (categoryId: string) => {
+  // Category helpers - متاحة للاستخدام المستقبلي
+  const _toggleCategory = (categoryId: string) => {
     setSettings(prev => ({
       ...prev,
       selectedCategories: prev.selectedCategories.includes(categoryId)
@@ -124,17 +125,20 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
         : [...prev.selectedCategories, categoryId]
     }));
   };
+  void _toggleCategory; // suppress unused warning
 
-  const selectAllCategories = () => {
+  const _selectAllCategories = () => {
     setSettings(prev => ({
       ...prev,
       selectedCategories: categories.map(c => c.id)
     }));
   };
+  void _selectAllCategories;
 
-  const clearAllCategories = () => {
+  const _clearAllCategories = () => {
     setSettings(prev => ({ ...prev, selectedCategories: [] }));
   };
+  void _clearAllCategories;
 
   const toggleCardType = (cardType: keyof typeof settings.cardTypes) => {
     setSettings(prev => ({
