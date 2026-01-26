@@ -11,6 +11,7 @@ interface GameStore {
   settings: GameSettings;
   winner: Team;
   winMessage: string | null;
+  matchWinner: 'green' | 'red' | null; // الفائز بالمباراة (Best of X)
   currentRound: number;
   scores: { green: number; red: number };
   teamCards: {
@@ -31,12 +32,16 @@ interface GameStore {
   addCardToTeam: (team: 'green' | 'red', card: CardType) => void;
   useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null) => void;
   setLocked: (locked: boolean) => void; // 🔒 Lock/unlock game actions
+  updateStreak: (winningTeam: 'green' | 'red') => { streakReached: boolean; team: 'green' | 'red' | null };
+  resetStreak: () => void;
+  resetMatch: () => void; // إعادة تعيين المباراة كاملة
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
   cells: [],
   winner: null,
   winMessage: null,
+  matchWinner: null,
   currentRound: 1,
   scores: { green: 0, red: 0 },
   teamCards: { green: [], red: [] },
@@ -62,9 +67,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       bomb: true,
       battle: true,
       shield: true,
-      demonShuffle: true,
-      speedUp: true,
-      luck: true,
     },
     carryCardsToNextRound: false,
     selectedCategories: [],
@@ -94,13 +96,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
           id: `c-${r}-${q}`,
           q,
           r,
-          letter: shuffledAlphabet[letterIndex % shuffledAlphabet.length], // بدون تكرار
+          letter: shuffledAlphabet[letterIndex % shuffledAlphabet.length],
           status: 'unanswered',
           isGolden: false,
           hasCard: false,
+          // التجميد
+          isFrozen: false,
           frozenBy: null,
           freezeCounter: 0,
+          // الحماية
           isShielded: false,
+          shieldCounter: 0,
           categoryId: 'general',
         });
         letterIndex++;
@@ -157,24 +163,38 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (winCheck.winner) {
       const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
       const message = getWinMessage(winCheck.winner, winCheck.winType!, teamName);
-      
+
       // تحديث النقاط
       const newScores = { ...scores };
       newScores[winCheck.winner as 'green' | 'red']++;
-      
-      set({ 
-        winner: winCheck.winner, 
+
+      // فحص الفوز بالمباراة (Best of X)
+      let matchWinnerTeam: 'green' | 'red' | null = null;
+      const totalRounds = settings.rounds;
+      if (typeof totalRounds === 'number' && totalRounds !== Infinity) {
+        const winsNeeded = Math.ceil(totalRounds / 2);
+        if (newScores.green >= winsNeeded) {
+          matchWinnerTeam = 'green';
+        } else if (newScores.red >= winsNeeded) {
+          matchWinnerTeam = 'red';
+        }
+      }
+
+      set({
+        winner: winCheck.winner,
         winMessage: message,
         scores: newScores,
+        matchWinner: matchWinnerTeam,
       });
-      
+
       // بث الفوز
-      syncManager.broadcast({ 
-        type: 'GAME_WON', 
-        winner: winCheck.winner, 
+      syncManager.broadcast({
+        type: 'GAME_WON',
+        winner: winCheck.winner,
         winMessage: message,
         scores: newScores,
         round: currentRound,
+        matchWinner: matchWinnerTeam,
       });
     }
   },
@@ -282,6 +302,65 @@ export const useGameStore = create<GameStore>((set, get) => ({
     syncManager.broadcast({
       type: 'LOCK_STATE_CHANGED',
       isLocked: locked,
+    });
+  },
+
+  // 🔥 تحديث سلسلة الإجابات
+  updateStreak: (winningTeam: 'green' | 'red') => {
+    const { winStreak } = get();
+    const losingTeam = winningTeam === 'green' ? 'red' : 'green';
+
+    // زيادة سلسلة الفريق الفائز وإعادة تعيين الفريق الخاسر
+    const newStreak = {
+      [winningTeam]: winStreak[winningTeam] + 1,
+      [losingTeam]: 0,
+    } as { green: number; red: number };
+
+    set({ winStreak: newStreak });
+
+    // بث تحديث السلسلة
+    syncManager.broadcast({
+      type: 'STREAK_UPDATED',
+      winStreak: newStreak,
+    });
+
+    // فحص إذا وصل لـ 3 إجابات متتالية
+    if (newStreak[winningTeam] >= 3) {
+      // إعادة تعيين السلسلة
+      set({ winStreak: { green: 0, red: 0 } });
+      syncManager.broadcast({
+        type: 'STREAK_UPDATED',
+        winStreak: { green: 0, red: 0 },
+      });
+      return { streakReached: true, team: winningTeam };
+    }
+
+    return { streakReached: false, team: null };
+  },
+
+  // إعادة تعيين السلسلة
+  resetStreak: () => {
+    set({ winStreak: { green: 0, red: 0 } });
+    syncManager.broadcast({
+      type: 'STREAK_UPDATED',
+      winStreak: { green: 0, red: 0 },
+    });
+  },
+
+  // إعادة تعيين المباراة كاملة
+  resetMatch: () => {
+    set({
+      cells: [],
+      winner: null,
+      winMessage: null,
+      matchWinner: null,
+      currentRound: 1,
+      scores: { green: 0, red: 0 },
+      teamCards: { green: [], red: [] },
+      winStreak: { green: 0, red: 0 },
+    });
+    syncManager.broadcast({
+      type: 'MATCH_RESET',
     });
   },
 }));

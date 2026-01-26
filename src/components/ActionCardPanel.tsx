@@ -16,9 +16,6 @@ interface ActionCardPanelProps {
     bomb: boolean;
     battle: boolean;
     shield: boolean;
-    demonShuffle: boolean;
-    speedUp: boolean;
-    luck: boolean;
   };
   selectedCell: string | null;
   teamCards: {

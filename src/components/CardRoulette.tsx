@@ -34,7 +34,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isSpinning, setIsSpinning] = useState(true);
-  const [speed, setSpeed] = useState(80);
+  const [speed, setSpeed] = useState(60);
   const [finalCard, setFinalCard] = useState<CardType | null>(null);
   const [showResult, setShowResult] = useState(false);
 
@@ -65,7 +65,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
       setCurrentIndex((prev) => (prev + 1) % CARDS.length);
 
       if (speed < 300) {
-        setSpeed(prev => prev + 15);
+        setSpeed(prev => prev + 25);
       } else {
         // توقف الدوران
         setIsSpinning(false);
@@ -77,8 +77,8 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         // إظهار النتيجة بعد تأخير قصير
         setTimeout(() => {
           setShowResult(true);
-          setTimeout(() => onComplete(winner), 2000);
-        }, 300);
+          setTimeout(() => onComplete(winner), 1000);
+        }, 200);
       }
     }, speed);
 
@@ -95,8 +95,8 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
 
       setTimeout(() => {
         setShowResult(true);
-        setTimeout(() => onComplete(syncedCard), 2000);
-      }, 300);
+        setTimeout(() => onComplete(syncedCard), 1000);
+      }, 200);
     }
   }, [isViewerMode, syncedCard, isSpinning, onComplete]);
 

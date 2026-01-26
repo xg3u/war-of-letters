@@ -8,20 +8,18 @@ import { syncManager } from '../utils/SyncManager';
 import { HexGrid } from './HexGrid';
 import { CardAnimation } from './CardAnimation';
 import { CardRoulette } from './CardRoulette';
-import type { CardType } from './ActionCardPanel';
+import { StreakVisualizer } from './StreakVisualizer';
+import { MatchScoreTracker } from './MatchScoreTracker';
+import { MatchWinnerOverlay } from './MatchWinnerOverlay';
 import type { GameSettingsData } from './GameSettings';
-import type { HexCell as HexCellType } from '../core/types';
-import type { CardType as RouletteCardType } from '../core/types';
+import type { HexCell as HexCellType, CardType } from '../core/types';
 
-// Card Icons Mapping (matching HostScreen)
+// أيقونات البطاقات الأربعة
 const CARD_ICONS: Record<CardType, string> = {
   freeze: '🧊',
   bomb: '💣',
   battle: '⚔️',
   shield: '🛡️',
-  demonShuffle: '👹',
-  speedUp: '⚡',
-  luck: '🍀',
 };
 
 interface PlayersScreenProps {
@@ -35,12 +33,18 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   currentQuestion,
   selectedCell,
 }) => {
-  const { cells, syncFromExternal, winner, winMessage, scores, teamCards } = useGameStore();
+  const { cells, syncFromExternal, winner, winMessage, scores, teamCards, winStreak, currentRound } = useGameStore();
   const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [zoom, setZoom] = React.useState(1);
   const [showRoulette, setShowRoulette] = React.useState(false);
   const [rouletteTriggerType, setRouletteTriggerType] = React.useState<'card' | 'golden'>('card');
-  const [syncedCard, setSyncedCard] = React.useState<RouletteCardType | null>(null);
+  const [syncedCard, setSyncedCard] = React.useState<CardType | null>(null);
+  const [showRandomLetterAnnouncement, setShowRandomLetterAnnouncement] = React.useState(false);
+  const [localStreak, setLocalStreak] = React.useState(winStreak);
+  const [localScores, setLocalScores] = React.useState(scores);
+  const [localCurrentRound, setLocalCurrentRound] = React.useState(currentRound);
+  const [localMatchWinner, setLocalMatchWinner] = React.useState<'green' | 'red' | null>(null);
+  const [localTeamCards, setLocalTeamCards] = React.useState(teamCards);
 
   // المزامنة فقط
   React.useEffect(() => {
@@ -63,6 +67,15 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           type: data.cardType,
           message: data.message,
         });
+        // تحديث البطاقات الممتلكة بعد استخدام بطاقة
+        if (data.teamCards) {
+          setLocalTeamCards(data.teamCards);
+        }
+      } else if (data.type === 'CARD_ADDED') {
+        // تحديث البطاقات عند إضافة بطاقة جديدة
+        if (data.teamCards) {
+          setLocalTeamCards(data.teamCards);
+        }
       } else if (data.type === 'ZOOM_CHANGED' && typeof data.zoom === 'number') {
         setZoom(data.zoom);
       } else if (data.type === 'ROULETTE_START') {
@@ -85,6 +98,35 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           type: data.cardType,
           message: data.message,
         });
+      } else if (data.type === 'RANDOM_LETTER_ANNOUNCEMENT') {
+        // إعلان الحرف العشوائي
+        setShowRandomLetterAnnouncement(true);
+        // إخفاء الإعلان بعد 2.5 ثانية (نفس التوقيت في HostScreen)
+        setTimeout(() => {
+          setShowRandomLetterAnnouncement(false);
+        }, 2500);
+      } else if (data.type === 'STREAK_UPDATED') {
+        // تحديث سلسلة الإجابات
+        setLocalStreak(data.winStreak);
+      } else if (data.type === 'GAME_WON') {
+        // تحديث النتيجة عند فوز فريق
+        if (data.scores) {
+          setLocalScores(data.scores);
+        }
+        if (data.round) {
+          setLocalCurrentRound(data.round);
+        }
+        // فحص الفوز بالمباراة
+        if (data.matchWinner) {
+          setLocalMatchWinner(data.matchWinner);
+        }
+      } else if (data.type === 'MATCH_RESET') {
+        // إعادة تعيين المباراة
+        setLocalScores({ green: 0, red: 0 });
+        setLocalCurrentRound(1);
+        setLocalMatchWinner(null);
+        setLocalStreak({ green: 0, red: 0 });
+        setLocalTeamCards({ green: [], red: [] });
       }
     });
     return unsubscribe;
@@ -99,32 +141,35 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
     <div style={{
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 25%, #6366f1 50%, #4f46e5 75%, #3730a3 100%)',
-      padding: '2rem',
+      padding: '1rem',
       display: 'flex',
       flexDirection: 'column',
-      gap: '2rem',
+      alignItems: 'center',
+      justifyContent: 'center',
     }}>
 
       {/* Main Layout: Left Panel | Center Area | Right Panel */}
       <div style={{
         display: 'flex',
-        gap: '2rem',
-        alignItems: 'flex-start',
+        gap: '1rem',
+        alignItems: 'center',
         justifyContent: 'center',
-        flex: 1,
+        width: '100%',
+        maxWidth: '1400px',
       }}>
 
         {/* Left Panel - Green Team */}
         <div style={{
-          width: '280px',
+          width: '200px',
+          minWidth: '200px',
           background: 'rgba(255, 255, 255, 0.1)',
           backdropFilter: 'blur(20px)',
           border: '2px solid rgba(16, 185, 129, 0.3)',
           borderRadius: '1.5rem',
-          padding: '2rem 1.5rem',
+          padding: '1.5rem 1rem',
           display: 'flex',
           flexDirection: 'column',
-          gap: '1rem',
+          gap: '0.75rem',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
         }}>
           {/* Team Icon */}
@@ -181,14 +226,14 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               البطاقات الممتلكة
             </div>
 
-            {teamCards.green.length > 0 ? (
+            {localTeamCards.green.length > 0 ? (
               <div style={{
                 display: 'flex',
                 flexWrap: 'wrap',
                 gap: '0.5rem',
                 justifyContent: 'center',
               }}>
-                {teamCards.green.map((card, idx) => (
+                {localTeamCards.green.map((card, idx) => (
                   <div
                     key={idx}
                     style={{
@@ -226,27 +271,17 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '2rem',
+          justifyContent: 'center',
+          gap: '1rem',
         }}>
-          {/* Title */}
-          <h1 style={{
-            fontSize: '3rem',
-            fontWeight: 900,
-            background: 'linear-gradient(135deg, #f97316, #ec4899, #a855f7)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            margin: 0,
-            textAlign: 'center',
-          }}>
-            حرب الحروف
-          </h1>
 
           {/* Grid Area */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            minHeight: '500px',
+            flex: 1,
+            width: '100%',
           }}>
             {cells.length === 0 ? (
               <div style={{
@@ -275,15 +310,16 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
 
         {/* Right Panel - Red Team */}
         <div style={{
-          width: '280px',
+          width: '200px',
+          minWidth: '200px',
           background: 'rgba(255, 255, 255, 0.1)',
           backdropFilter: 'blur(20px)',
           border: '2px solid rgba(239, 68, 68, 0.3)',
           borderRadius: '1.5rem',
-          padding: '2rem 1.5rem',
+          padding: '1.5rem 1rem',
           display: 'flex',
           flexDirection: 'column',
-          gap: '1rem',
+          gap: '0.75rem',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
         }}>
           {/* Team Icon */}
@@ -340,14 +376,14 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               البطاقات الممتلكة
             </div>
 
-            {teamCards.red.length > 0 ? (
+            {localTeamCards.red.length > 0 ? (
               <div style={{
                 display: 'flex',
                 flexWrap: 'wrap',
                 gap: '0.5rem',
                 justifyContent: 'center',
               }}>
-                {teamCards.red.map((card, idx) => (
+                {localTeamCards.red.map((card, idx) => (
                   <div
                     key={idx}
                     style={{
@@ -379,6 +415,25 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {/* عداد نتيجة المباراة */}
+      <MatchScoreTracker
+        greenScore={localScores.green}
+        redScore={localScores.red}
+        greenTeamName={settings.teamNames.green}
+        redTeamName={settings.teamNames.red}
+        totalRounds={settings.rounds}
+        currentRound={localCurrentRound}
+      />
+
+      {/* عداد سلسلة الإجابات */}
+      <StreakVisualizer
+        greenStreak={localStreak.green}
+        redStreak={localStreak.red}
+        greenTeamName={settings.teamNames.green}
+        redTeamName={settings.teamNames.red}
+        enabled={settings.enableStreakReward ?? false}
+      />
 
       {/* نافذة السؤال (اختيارية) */}
       {settings.showQuestionsToTeams && currentQuestion && selectedCell && (
@@ -441,6 +496,52 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         />
       )}
 
+      {/* إعلان الحرف العشوائي */}
+      {showRandomLetterAnnouncement && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(236, 72, 153, 0.95))',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+        }}>
+          <div style={{
+            fontSize: '8rem',
+            marginBottom: '2rem',
+            animation: 'bounce 0.6s ease-in-out infinite',
+          }}>
+            🎲
+          </div>
+          <h1 style={{
+            fontSize: '3.5rem',
+            fontWeight: 900,
+            color: 'white',
+            textShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+            textAlign: 'center',
+            margin: 0,
+          }}>
+            حرف عشوائي!
+          </h1>
+          <p style={{
+            fontSize: '1.75rem',
+            color: 'rgba(255, 255, 255, 0.9)',
+            marginTop: '1.5rem',
+            textAlign: 'center',
+          }}>
+            من يجيب عليه سيحصل على بطاقة! 🎁
+          </p>
+          <style>{`
+            @keyframes bounce {
+              0%, 100% { transform: translateY(0) rotate(-5deg); }
+              50% { transform: translateY(-20px) rotate(5deg); }
+            }
+          `}</style>
+        </div>
+      )}
+
       {/* روليت البطاقات - متزامن مع شاشة المقدم */}
       {showRoulette && (
         <CardRoulette
@@ -451,8 +552,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         />
       )}
 
-      {/* نافذة الفوز */}
-      {winner && winMessage && (
+      {/* نافذة الفوز بالجولة - تظهر فقط إذا لم يكن هناك فائز بالمباراة */}
+      {winner && winMessage && !localMatchWinner && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -469,7 +570,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           <div style={{
             maxWidth: '800px',
             width: '90%',
-            background: winner === 'green' 
+            background: winner === 'green'
               ? 'linear-gradient(135deg, #10b981, #14b8a6)'
               : 'linear-gradient(135deg, #ef4444, #dc2626)',
             border: '6px solid white',
@@ -495,6 +596,30 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             </h2>
           </div>
         </div>
+      )}
+
+      {/* شاشة الفوز بالمباراة */}
+      {localMatchWinner && (
+        <MatchWinnerOverlay
+          winner={localMatchWinner}
+          winnerName={settings.teamNames[localMatchWinner]}
+          greenScore={localScores.green}
+          redScore={localScores.red}
+          greenTeamName={settings.teamNames.green}
+          redTeamName={settings.teamNames.red}
+          onNewSettings={() => {
+            // سيتم التحكم من شاشة المقدم - إغلاق النافذة فقط
+            setLocalMatchWinner(null);
+          }}
+          onRestartMatch={() => {
+            // سيتم التحكم من شاشة المقدم - إغلاق النافذة فقط
+            setLocalMatchWinner(null);
+          }}
+          onGoHome={() => {
+            // سيتم التحكم من شاشة المقدم - إغلاق النافذة فقط
+            setLocalMatchWinner(null);
+          }}
+        />
       )}
     </div>
   );

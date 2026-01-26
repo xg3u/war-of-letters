@@ -4,16 +4,13 @@
 
 import React from 'react';
 import { Users } from 'lucide-react';
-import type { CardType } from './ActionCardPanel';
-import { StreakVisualizer } from './StreakVisualizer';
+import type { CardType } from '../core/types';
 
 interface TeamPanelProps {
   teamName: string;
   score: number;
   cards: CardType[];
   teamColor: 'green' | 'red';
-  streak: number;
-  streakEnabled: boolean;
 }
 
 interface ScoreboardHeaderProps {
@@ -22,15 +19,12 @@ interface ScoreboardHeaderProps {
   matchScore: { green: number; red: number };
 }
 
-// Card Icons
+// أيقونات البطاقات الأربعة
 const CARD_ICONS: Record<CardType, string> = {
   freeze: '🧊',
   bomb: '💣',
   battle: '⚔️',
   shield: '🛡️',
-  demonShuffle: '👹',
-  speedUp: '⚡',
-  luck: '🍀',
 };
 
 /**
@@ -43,8 +37,6 @@ export const SharedTeamPanel: React.FC<TeamPanelProps> = ({
   score,
   cards,
   teamColor,
-  streak,
-  streakEnabled,
 }) => {
   const isGreen = teamColor === 'green';
   const colorValue = isGreen ? '#10b981' : '#ef4444';
@@ -172,13 +164,6 @@ export const SharedTeamPanel: React.FC<TeamPanelProps> = ({
           )}
         </div>
       </div>
-
-      {/* 🔥 Fire/Sparkle Streak Visualizer */}
-      <StreakVisualizer
-        streak={streak}
-        team={teamColor}
-        enabled={streakEnabled}
-      />
     </div>
   );
 };

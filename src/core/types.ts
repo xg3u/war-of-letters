@@ -15,18 +15,24 @@ export interface TeamData {
 }
 
 // ========== الخلية السداسية ==========
+export type CellStatus = 'unanswered' | 'green' | 'red' | 'destroyed';
+
 export interface HexCell {
   id: string;
   q: number;
   r: number;
   letter: string;
-  status: 'unanswered' | 'green' | 'red';
+  status: CellStatus;
   isGolden: boolean;
   hasCard: boolean;
-  frozenBy: Team; // null | 'red' | 'green'
-  freezeCounter: number; // عدد الأدوار المتبقية للتجميد
-  isShielded: boolean; // حماية من القنبلة والمعركة (حتى نهاية الجولة)
-  categoryId: string; // الكاتيجوري المرتبط بهذه الخلية
+  // التجميد
+  isFrozen: boolean;              // هل الخلية مجمدة؟
+  frozenBy: Team;                 // من جمّدها؟
+  freezeCounter: number;          // عدد الأسئلة المتبقية للتجميد
+  // الحماية
+  isShielded: boolean;            // هل الخلية محمية؟
+  shieldCounter: number;          // عدد الأسئلة المتبقية للحماية
+  categoryId: string;             // الكاتيجوري المرتبط بهذه الخلية
 }
 
 // ========== إعدادات اللعبة ==========
@@ -61,9 +67,6 @@ export interface GameSettings {
     bomb: boolean;
     battle: boolean;
     shield: boolean;
-    demonShuffle: boolean;
-    speedUp: boolean;
-    luck: boolean;
   };
   
   // مميزات خاصة
@@ -93,7 +96,9 @@ export interface Category {
 
 // ========== البطاقات (Action Cards) ==========
 export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
-export type CardType = 'freeze' | 'bomb' | 'battle' | 'shield' | 'demonShuffle' | 'speedUp' | 'luck';
+
+// البطاقات الأربعة الرئيسية فقط
+export type CardType = 'freeze' | 'bomb' | 'battle' | 'shield';
 
 export interface ActionCard {
   id: string;

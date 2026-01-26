@@ -1,18 +1,20 @@
 // src/components/LandingPage.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { CategoryCard } from './CategoryCard';
 import { ActionCardComponent } from './ActionCardComponent';
 import { categories } from '../lib/categories';
 import { actionCards } from '../lib/actionCards';
-import { 
-  Play, Moon, Sun, Sparkles, BookOpen, 
-  Trophy, ShieldCheck, Zap, HelpCircle 
+import {
+  Play, Moon, Sun, BookOpen,
+  Trophy, ShieldCheck, Zap, HelpCircle
 } from 'lucide-react';
 import { WelcomeModal } from './WelcomeModal';
 import { PaymentModal } from './PaymentModal';
+import HeaderImage from '../assets/ForDesign/Header.png';
 
-const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهويةئؤءآإ";
-const VIBRANT_COLORS = ['#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24', '#ec4899', '#14b8a6'];
+// الحروف العربية للتساقط
+const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهوي";
+const LETTER_COLORS = ['#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24', '#ec4899', '#14b8a6'];
 
 interface LandingPageProps {
   onOpenSettings: () => void;
@@ -26,24 +28,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
   });
   const [showPayment, setShowPayment] = useState(false);
 
+  // الحروف المتساقطة
+  const fallingLetters = useMemo(() =>
+    Array.from({ length: 40 }).map((_, i) => ({
+      id: i,
+      char: ARABIC_LETTERS[Math.floor(Math.random() * ARABIC_LETTERS.length)],
+      color: LETTER_COLORS[Math.floor(Math.random() * LETTER_COLORS.length)],
+      left: `${Math.random() * 100}%`,
+      duration: `${15 + Math.random() * 20}s`,
+      delay: `${Math.random() * 15}s`,
+      size: `${1.5 + Math.random() * 2}rem`,
+      opacity: 0.15 + Math.random() * 0.2,
+    }))
+  , []);
+
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
-
-  const fallingLetters = React.useMemo(() => 
-    Array.from({ length: 30 }).map((_, i) => ({
-      id: i,
-      char: ARABIC_LETTERS[Math.floor(Math.random() * ARABIC_LETTERS.length)],
-      color: VIBRANT_COLORS[Math.floor(Math.random() * VIBRANT_COLORS.length)],
-      left: `${Math.random() * 100}%`,
-      duration: `${Math.random() * 15 + 20}s`,
-      delay: `${Math.random() * 10}s`,
-      size: `clamp(2rem, 3vw, 3.5rem)`,
-    }))
-  , []);
 
   const colors = {
     bg: isDarkMode ? '#0a0118' : '#f8f9fa',
@@ -78,22 +82,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         />
       )}
 
-      {/* Falling Letters Layer */}
+      {/* الحروف المتساقطة */}
       <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 1 }}>
         {fallingLetters.map((letter) => (
-          <div key={letter.id} style={{
-            position: 'absolute',
-            left: letter.left,
-            top: '-10%',
-            fontSize: letter.size,
-            color: letter.color,
-            animation: `falling ${letter.duration} linear infinite`,
-            animationDelay: letter.delay,
-            textShadow: `0 0 15px ${letter.color}`,
-            fontWeight: 700,
-            opacity: isDarkMode ? 0.3 : 0.15,
-            fontFamily: 'Tajawal, sans-serif',
-          }}>
+          <div
+            key={letter.id}
+            style={{
+              position: 'absolute',
+              left: letter.left,
+              top: '-5%',
+              fontSize: letter.size,
+              color: letter.color,
+              opacity: isDarkMode ? letter.opacity : letter.opacity * 0.5,
+              fontWeight: 900,
+              fontFamily: 'Tajawal, sans-serif',
+              textShadow: `0 0 20px ${letter.color}60`,
+              animation: `letterFall ${letter.duration} linear infinite`,
+              animationDelay: letter.delay,
+              filter: 'blur(0.5px)',
+            }}
+          >
             {letter.char}
           </div>
         ))}
@@ -102,33 +110,92 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       {/* Header */}
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        background: isDarkMode ? 'rgba(26, 11, 46, 0.8)' : 'rgba(249, 115, 22, 0.9)',
-        backdropFilter: 'blur(10px)',
-        borderBottom: `2px solid ${colors.border}`,
+        background: 'linear-gradient(180deg, rgba(10, 1, 24, 0.95) 0%, rgba(10, 1, 24, 0.8) 70%, transparent 100%)',
+        padding: '0.5rem 0',
       }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <Sparkles size={32} color="white" />
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 900, margin: 0, color: 'white' }}>حرب الحروف</h1>
-          </div>
-          <nav style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '0 1rem',
+          position: 'relative',
+          width: '100%',
+          maxWidth: '1400px',
+          margin: '0 auto',
+        }}>
+          {/* صورة الهيدر مصغرة */}
+          <img
+            src={HeaderImage}
+            alt="حرب الحروف"
+            style={{
+              width: '100%',
+              maxWidth: '800px',
+              maxHeight: '180px',
+              objectFit: 'contain',
+              filter: 'drop-shadow(0 4px 20px rgba(168, 85, 247, 0.5))',
+              animation: 'headerGlow 3s ease-in-out infinite',
+            }}
+          />
+
+          {/* أزرار التنقل */}
+          <nav style={{
+            display: 'flex',
+            gap: '0.5rem',
+            alignItems: 'center',
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(15px)',
+            borderRadius: '2rem',
+            padding: '0.5rem 1rem',
+            marginTop: '0.5rem',
+            border: '1px solid rgba(168, 85, 247, 0.3)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+          }}>
             {['الرئيسية', 'الأسئلة', 'البطاقات', 'الدليل'].map((item, idx) => (
-              <button 
+              <button
                 key={item}
                 onClick={() => scrollToSection(['hero', 'categories', 'cards', 'guide'][idx])}
-                style={{ background: 'none', border: 'none', color: 'white', fontWeight: 700, cursor: 'pointer', padding: '0.5rem' }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'white',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: '0.5rem 0.75rem',
+                  fontSize: '0.85rem',
+                  transition: 'all 0.3s ease',
+                  borderRadius: '1rem',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(168, 85, 247, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'none';
+                }}
               >
                 {item}
               </button>
             ))}
-            <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', padding: '0.5rem', cursor: 'pointer' }}>
-              {isDarkMode ? <Sun size={20} color="white" /> : <Moon size={20} color="white" />}
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              style={{
+                background: 'rgba(255,255,255,0.2)',
+                border: 'none',
+                borderRadius: '50%',
+                padding: '0.5rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {isDarkMode ? <Sun size={18} color="white" /> : <Moon size={18} color="white" />}
             </button>
           </nav>
         </div>
       </header>
 
-      <main style={{ paddingTop: '6rem' }}>
+      <main style={{ paddingTop: '14rem' }}>
         
         {/* Hero Section */}
         <section id="hero" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
@@ -256,12 +323,52 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         </footer>
       </main>
 
+      {/* CSS Animations */}
       <style>{`
-        @keyframes falling {
-          0% { transform: translateY(-10vh) rotate(0deg); opacity: 0; }
-          10% { opacity: 0.4; }
-          90% { opacity: 0.4; }
-          100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+        @keyframes letterFall {
+          0% {
+            transform: translateY(-10vh) rotate(0deg);
+            opacity: 0;
+          }
+          5% {
+            opacity: 1;
+          }
+          95% {
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(110vh) rotate(360deg);
+            opacity: 0;
+          }
+        }
+
+        @keyframes headerGlow {
+          0%, 100% {
+            filter: drop-shadow(0 4px 20px rgba(168, 85, 247, 0.5));
+          }
+          50% {
+            filter: drop-shadow(0 4px 30px rgba(249, 115, 22, 0.6)) drop-shadow(0 0 40px rgba(236, 72, 153, 0.4));
+          }
+        }
+
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-10px);
+          }
+        }
+
+        @keyframes pulse {
+          0%, 100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: scale(1.05);
+            opacity: 0.9;
+          }
         }
       `}</style>
     </div>

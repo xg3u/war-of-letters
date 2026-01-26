@@ -3,7 +3,6 @@
 
 import React, { useState } from 'react';
 import {
-  Shuffle,
   Palette,
   CheckCircle2,
   RefreshCw,
@@ -13,18 +12,22 @@ import {
   Maximize,
   PartyPopper,
   Pause,
-  Dices
+  Dices,
+  Play
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
 import { getSmartQuestion } from '../utils/questionEngine';
 import { HexGrid } from './HexGrid';
-import { ActionCardPanel, type CardType } from './ActionCardPanel';
+import { ActionCardPanel } from './ActionCardPanel';
 import { CardAnimation } from './CardAnimation';
 import { CardRoulette } from './CardRoulette';
 import { ResultsOverlay } from './ResultsOverlay';
+import { StreakVisualizer } from './StreakVisualizer';
+import { MatchScoreTracker } from './MatchScoreTracker';
+import { MatchWinnerOverlay } from './MatchWinnerOverlay';
 import type { GameSettingsData } from './GameSettings';
-import type { HexCell as HexCellType } from '../core/types';
+import type { HexCell as HexCellType, CardType } from '../core/types';
 import { getWinStats } from '../utils/winChecker';
 
 interface HostScreenProps {
@@ -32,18 +35,15 @@ interface HostScreenProps {
   onBack: () => void;
 }
 
-// أيقونات البطاقات
+// أيقونات البطاقات الأربعة
 const CARD_ICONS: Record<CardType, string> = {
   freeze: '🧊',
   bomb: '💣',
   battle: '⚔️',
   shield: '🛡️',
-  demonShuffle: '👹',
-  speedUp: '⚡',
-  luck: '🍀',
 };
 
-export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
+export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const {
     cells,
     claimCell,
@@ -56,7 +56,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
     teamCards,
     addCardToTeam,
     isLocked,
-    setLocked
+    setLocked,
+    winStreak,
+    updateStreak,
+    currentRound,
+    matchWinner,
+    resetMatch,
   } = useGameStore();
 
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
@@ -70,11 +75,54 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
   const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
   const [isPaused, setIsPaused] = useState(false);
   const [pendingCard, setPendingCard] = useState<CardType | null>(null); // Card waiting to be awarded to winning team
+  const [showRandomLetterAnnouncement, setShowRandomLetterAnnouncement] = useState(false);
+  const [isRandomLetterMode, setIsRandomLetterMode] = useState(false); // Track if we're in random letter round start mode
+  const [hasTriggeredRandomLetter, setHasTriggeredRandomLetter] = useState(false); // Prevent re-triggering
+  const [roundStarted, setRoundStarted] = useState(false); // Control when round actually begins
+  const [isStreakRewardMode, setIsStreakRewardMode] = useState(false); // Track if roulette is from streak reward
+  const [streakRewardTeam, setStreakRewardTeam] = useState<'green' | 'red' | null>(null); // Team that earned streak reward
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
     initializeGrid(settings);
+    // Reset random letter trigger for new round
+    setHasTriggeredRandomLetter(false);
   }, [initializeGrid, settings]);
+
+  // ميزة الحرف العشوائي عند بداية الجولة - تنتظر ضغط زر "ابدأ الجولة"
+  React.useEffect(() => {
+    // Only trigger if: round started, cells exist, enableRandomLetter is on, and we haven't triggered yet
+    if (roundStarted && cells.length > 0 && settings.enableRandomLetter && !hasTriggeredRandomLetter && !isLocked) {
+      setHasTriggeredRandomLetter(true);
+      setIsRandomLetterMode(true);
+
+      // Lock the game during the random letter process
+      setLocked(true);
+
+      // Show announcement on both screens
+      const announcementMessage = '🎲 حرف عشوائي! من يجيب عليه سيحصل على بطاقة!';
+      setShowRandomLetterAnnouncement(true);
+
+      // Broadcast announcement to players screen
+      syncManager.broadcast({
+        type: 'RANDOM_LETTER_ANNOUNCEMENT',
+        message: announcementMessage,
+      });
+
+      // After showing announcement, start roulette
+      setTimeout(() => {
+        setShowRandomLetterAnnouncement(false);
+        setRouletteTriggerType('card');
+        setShowRoulette(true);
+
+        // Broadcast roulette start to players
+        syncManager.broadcast({
+          type: 'ROULETTE_START',
+          triggerType: 'card',
+        });
+      }, 2500);
+    }
+  }, [roundStarted, cells.length, settings.enableRandomLetter, hasTriggeredRandomLetter, isLocked, setLocked]);
 
   // المزامنة
   React.useEffect(() => {
@@ -92,6 +140,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
   };
 
   const handleCellSelect = async (cell: HexCellType) => {
+    // 🎮 لا يمكن اختيار خلية قبل بدء الجولة
+    if (!roundStarted) {
+      console.warn('⚠️ Action blocked: Round not started yet');
+      return;
+    }
+
     // 🔒 ACTION LOCK: Prevent cell selection during active processes
     if (isLocked) {
       console.warn('⚠️ Action blocked: Game is locked during roulette/question');
@@ -147,8 +201,50 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
       card,
     });
 
+    // 🔥 إذا كان الروليت من مكافأة السلسلة - منح البطاقة مباشرة للفريق
+    if (isStreakRewardMode && streakRewardTeam) {
+      addCardToTeam(streakRewardTeam, card);
+
+      const teamName = settings.teamNames[streakRewardTeam];
+      const rewardMessage = `🎉 مبروك ${teamName}! حصلت على بطاقة ${CARD_ICONS[card]} كمكافأة للسلسلة! 🔥`;
+
+      setCardAnimation({
+        type: card,
+        message: rewardMessage,
+      });
+
+      syncManager.broadcast({
+        type: 'STREAK_REWARD_CARD',
+        team: streakRewardTeam,
+        cardType: card,
+        message: rewardMessage,
+      });
+
+      // إعادة تعيين وضع السلسلة
+      setIsStreakRewardMode(false);
+      setStreakRewardTeam(null);
+
+      setTimeout(() => {
+        setCardAnimation(null);
+        setLocked(false);
+      }, 3500);
+
+      return; // لا حاجة لسؤال
+    }
+
     // Store pending card (to be awarded to team that answers correctly)
     setPendingCard(card);
+
+    // If in random letter mode, select a random non-golden cell
+    let targetCell = selectedCell;
+    if (isRandomLetterMode) {
+      const availableCells = cells.filter(c => c.status === 'unanswered' && !c.isGolden);
+      if (availableCells.length > 0) {
+        targetCell = availableCells[Math.floor(Math.random() * availableCells.length)];
+        setSelectedCell(targetCell);
+      }
+      setIsRandomLetterMode(false);
+    }
 
     // Show card found animation
     const cardFoundMessage = `ظهرت بطاقة ${CARD_ICONS[card]}! أجب على السؤال لتحصل عليها 🎁`;
@@ -169,7 +265,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
       // Fetch smart question from Supabase
       const question = await getSmartQuestion(
-        selectedCell?.letter || '',
+        targetCell?.letter || '',
         settings.selectedCategories
       );
 
@@ -177,7 +273,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
         setCurrentQuestion(question.question_text);
         setCurrentAnswer(question.correct_answer);
       } else {
-        setCurrentQuestion(`سؤال تجريبي للحرف "${selectedCell?.letter}"؟`);
+        setCurrentQuestion(`سؤال تجريبي للحرف "${targetCell?.letter}"؟`);
         setCurrentAnswer('إجابة تجريبية');
       }
       setShowQuestion(true);
@@ -216,13 +312,48 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
         }, 3000);
       }
 
+      // 🔥 تحديث سلسلة الإجابات (إذا مفعّل)
+      if (settings.enableStreakReward) {
+        const streakResult = updateStreak(team);
+
+        // إذا وصل الفريق لـ 3 إجابات متتالية
+        if (streakResult.streakReached && streakResult.team) {
+          // إظهار إعلان سلسلة الإجابات
+          const streakMessage = `🔥 ${settings.teamNames[streakResult.team]} أكمل 3 إجابات متتالية! 🎁`;
+
+          // بث إعلان السلسلة
+          syncManager.broadcast({
+            type: 'STREAK_REWARD_ANNOUNCEMENT',
+            team: streakResult.team,
+            message: streakMessage,
+          });
+
+          // تعيين وضع مكافأة السلسلة
+          setIsStreakRewardMode(true);
+          setStreakRewardTeam(streakResult.team);
+
+          // بعد تأخير قصير، إظهار الروليت
+          setTimeout(() => {
+            setRouletteTriggerType('card');
+            setShowRoulette(true);
+
+            syncManager.broadcast({
+              type: 'ROULETTE_START',
+              triggerType: 'card',
+            });
+          }, 2000);
+        }
+      }
+
       // Reset question UI
       setShowQuestion(false);
       setSelectedCell(null);
       setCurrentQuestion(null);
 
-      // 🔓 UNLOCK the game after answer is processed
-      setLocked(false);
+      // 🔓 UNLOCK the game after answer is processed (only if no streak reward)
+      if (!settings.enableStreakReward || winStreak[team] < 2) {
+        setLocked(false);
+      }
     }
   };
 
@@ -232,13 +363,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
 
   const handleCardUse = (cardType: CardType, targetCellId: string) => {
     const messages: Record<CardType, string> = {
-      freeze: 'تم تجميد الخلية! ❄️',
-      bomb: 'انفجار! 💣',
-      battle: 'معركة بين الفريقين! ⚔️',
-      shield: 'تم حماية الخلية! 🛡️',
-      demonShuffle: 'خلط عشوائي للحروف! 👹',
-      speedUp: 'تسريع الوقت! ⚡',
-      luck: 'حظ سعيد! 🍀',
+      freeze: 'تم تجميد الخلية لدورتين! ❄️',
+      bomb: 'انفجار! تم تدمير الحرف 💣',
+      battle: 'معركة! من يجيب يمتلك الحرف ⚔️',
+      shield: 'تم حماية الحرف لـ 5 أسئلة! 🛡️',
     };
 
     setCardAnimation({
@@ -288,11 +416,24 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
     }
   };
 
+  // بدء الجولة - يفعّل كل ميزات الجولة
+  const handleStartRound = () => {
+    setRoundStarted(true);
+
+    // بث إشارة بدء الجولة للاعبين
+    syncManager.broadcast({
+      type: 'ROUND_STARTED',
+    });
+  };
+
   // إعادة تعيين الجولة
   const handleResetRound = () => {
     if (window.confirm('هل تريد إعادة تعيين الجولة الحالية؟')) {
       resetGame();
       initializeGrid(settings);
+      // إعادة تعيين حالة بدء الجولة
+      setRoundStarted(false);
+      setHasTriggeredRandomLetter(false);
     }
   };
 
@@ -454,22 +595,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
         flexDirection: 'column',
         gap: '1.5rem',
       }}>
-        {/* العنوان */}
-        <div style={{
-          textAlign: 'center',
-        }}>
-          <h1 style={{
-            fontSize: '2.5rem',
-            fontWeight: 900,
-            margin: 0,
-            background: 'linear-gradient(135deg, #fbbf24 0%, #10b981 33%, #3b82f6 66%, #ef4444 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            textShadow: '0 0 30px rgba(255, 255, 255, 0.5)',
-          }}>
-            حرب الحروف
-          </h1>
-        </div>
 
         {/* الشبكة */}
         <div style={{
@@ -478,9 +603,106 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: '500px',
+          position: 'relative',
         }}>
+          {/* 🎮 زر بدء الجولة - يظهر قبل بدء الجولة */}
+          {!roundStarted && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.6)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 20,
+              gap: '2rem',
+            }}>
+              <div style={{
+                textAlign: 'center',
+                color: 'white',
+              }}>
+                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎮</div>
+                <h2 style={{
+                  fontSize: '2rem',
+                  fontWeight: 900,
+                  margin: 0,
+                  marginBottom: '0.5rem',
+                }}>
+                  جاهز للبدء؟
+                </h2>
+                <p style={{
+                  fontSize: '1.125rem',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  margin: 0,
+                }}>
+                  افتح شاشة اللاعبين أولاً ثم اضغط على زر البدء
+                </p>
+              </div>
+
+              <button
+                onClick={handleStartRound}
+                style={{
+                  padding: '1.5rem 4rem',
+                  fontSize: '1.75rem',
+                  fontWeight: 900,
+                  color: 'white',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  border: 'none',
+                  borderRadius: '1.5rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  boxShadow: '0 8px 32px rgba(16, 185, 129, 0.4), 0 0 60px rgba(16, 185, 129, 0.2)',
+                  transition: 'all 0.3s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.05)';
+                  e.currentTarget.style.boxShadow = '0 12px 40px rgba(16, 185, 129, 0.5), 0 0 80px rgba(16, 185, 129, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                  e.currentTarget.style.boxShadow = '0 8px 32px rgba(16, 185, 129, 0.4), 0 0 60px rgba(16, 185, 129, 0.2)';
+                }}
+              >
+                <Play size={32} fill="white" />
+                ابدأ الجولة
+              </button>
+
+              {/* زر فتح شاشة اللاعبين */}
+              <button
+                onClick={handleOpenPlayersScreen}
+                style={{
+                  padding: '1rem 2rem',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  color: '#14b8a6',
+                  background: 'rgba(20, 184, 166, 0.15)',
+                  border: '2px solid rgba(20, 184, 166, 0.5)',
+                  borderRadius: '1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(20, 184, 166, 0.25)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(20, 184, 166, 0.15)';
+                }}
+              >
+                <Tv size={20} />
+                فتح شاشة اللاعبين
+              </button>
+            </div>
+          )}
+
           {/* 🔒 Overlay when locked */}
-          {isLocked && (
+          {isLocked && roundStarted && (
             <div style={{
               position: 'absolute',
               top: 0,
@@ -561,7 +783,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
           <ControlButton onClick={() => setIsPaused(!isPaused)} color="#8b5cf6" icon={<Pause size={20} />} title="إيقاف مؤقت" disabled={isLocked} />
           <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={20} />} title="حرف عشوائي" disabled={isLocked} />
           <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={20} />} title="عكس الألوان" disabled={isLocked} />
-          <ControlButton onClick={handleRandomLetter} color="#10b981" icon={<Shuffle size={20} />} title="خلط" disabled={isLocked} />
           <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={20} />} title="شاشة اللاعبين" disabled={false} />
           <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={20} />} title="البطاقات" disabled={isLocked} />
         </div>
@@ -880,6 +1101,73 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
         />
       )}
 
+      {/* إعلان الحرف العشوائي */}
+      {showRandomLetterAnnouncement && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(236, 72, 153, 0.95))',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+        }}>
+          <div style={{
+            fontSize: '8rem',
+            marginBottom: '2rem',
+            animation: 'bounce 0.6s ease-in-out infinite',
+          }}>
+            🎲
+          </div>
+          <h1 style={{
+            fontSize: '3.5rem',
+            fontWeight: 900,
+            color: 'white',
+            textShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+            textAlign: 'center',
+            margin: 0,
+          }}>
+            حرف عشوائي!
+          </h1>
+          <p style={{
+            fontSize: '1.75rem',
+            color: 'rgba(255, 255, 255, 0.9)',
+            marginTop: '1.5rem',
+            textAlign: 'center',
+          }}>
+            من يجيب عليه سيحصل على بطاقة! 🎁
+          </p>
+          <style>{`
+            @keyframes bounce {
+              0%, 100% { transform: translateY(0) rotate(-5deg); }
+              50% { transform: translateY(-20px) rotate(5deg); }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* عداد نتيجة المباراة */}
+      <MatchScoreTracker
+        greenScore={scores.green}
+        redScore={scores.red}
+        greenTeamName={settings.teamNames.green}
+        redTeamName={settings.teamNames.red}
+        totalRounds={settings.rounds}
+        currentRound={currentRound}
+      />
+
+      {/* عداد سلسلة الإجابات */}
+      {roundStarted && (
+        <StreakVisualizer
+          greenStreak={winStreak.green}
+          redStreak={winStreak.red}
+          greenTeamName={settings.teamNames.green}
+          redTeamName={settings.teamNames.red}
+          enabled={settings.enableStreakReward}
+        />
+      )}
+
       {/* روليت البطاقات */}
       {showRoulette && (
         <CardRoulette
@@ -888,8 +1176,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
         />
       )}
 
-      {/* نافذة النتائج */}
-      {winner && winMessage && (
+      {/* نافذة النتائج - تظهر فقط إذا لم يكن هناك فائز بالمباراة */}
+      {winner && winMessage && !matchWinner && (
         <ResultsOverlay
           winner={winner}
           winType={(winMessage.includes('ربط الجدار') ? 'wall-to-wall' :
@@ -918,6 +1206,59 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings }) => {
               resetGame();
               initializeGrid();
             }
+
+            // إعادة تفعيل الحرف العشوائي للجولة الجديدة
+            setHasTriggeredRandomLetter(false);
+            // بدء الجولة تلقائياً
+            setRoundStarted(true);
+
+            // بث إشارة بدء الجولة للاعبين
+            syncManager.broadcast({
+              type: 'ROUND_STARTED',
+            });
+          }}
+        />
+      )}
+
+      {/* شاشة الفوز بالمباراة */}
+      {matchWinner && (
+        <MatchWinnerOverlay
+          winner={matchWinner}
+          winnerName={settings.teamNames[matchWinner]}
+          greenScore={scores.green}
+          redScore={scores.red}
+          greenTeamName={settings.teamNames.green}
+          redTeamName={settings.teamNames.red}
+          onNewSettings={() => {
+            // الذهاب لشاشة الإعدادات
+            resetMatch();
+            syncManager.broadcast({
+              type: 'MATCH_RESET',
+            });
+            // استخدام onBack للذهاب لشاشة الإعدادات
+            onBack();
+          }}
+          onRestartMatch={() => {
+            // إعادة نفس المباراة بنفس الإعدادات
+            resetMatch();
+            initializeGrid(settings);
+            setHasTriggeredRandomLetter(false);
+            setRoundStarted(false);
+
+            // بث إعادة تعيين المباراة
+            syncManager.broadcast({
+              type: 'MATCH_RESET',
+            });
+          }}
+          onGoHome={() => {
+            // العودة للصفحة الرئيسية (Landing Page)
+            resetMatch();
+            syncManager.broadcast({
+              type: 'MATCH_RESET',
+            });
+            // مسح الإعدادات والذهاب للصفحة الرئيسية
+            localStorage.removeItem('current-game-settings');
+            window.location.href = window.location.origin + window.location.pathname;
           }}
         />
       )}

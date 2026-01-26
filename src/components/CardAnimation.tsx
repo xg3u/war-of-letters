@@ -1,8 +1,8 @@
 // src/components/CardAnimation.tsx
-// أنيميشن البطاقات
+// أنيميشن البطاقات الأربعة
 
 import React, { useEffect, useState } from 'react';
-import type { CardType } from './ActionCardPanel';
+import type { CardType } from '../core/types';
 
 interface CardAnimationProps {
   type: CardType | 'cardFound';
@@ -10,24 +10,25 @@ interface CardAnimationProps {
   onComplete: () => void;
 }
 
-export const CardAnimation: React.FC<CardAnimationProps> = ({ 
-  type, 
+export const CardAnimation: React.FC<CardAnimationProps> = ({
+  type,
   message,
-  onComplete 
+  onComplete
 }) => {
   const [show, setShow] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setShow(false);
-      setTimeout(onComplete, 500);
-    }, 3000);
+      setTimeout(onComplete, 200);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [onComplete]);
 
   const getAnimationConfig = () => {
     switch (type) {
+      // 🧊 التجميد - تساقط الثلوج والشعور بالبرد
       case 'freeze':
         return {
           emoji: '🧊',
@@ -36,6 +37,8 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           particles: '❄️',
           background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
         };
+
+      // 💣 القنبلة - انفجار وتدمير
       case 'bomb':
         return {
           emoji: '💣',
@@ -44,6 +47,8 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           particles: '💥',
           background: 'linear-gradient(135deg, #ef4444, #dc2626)',
         };
+
+      // ⚔️ المعركة - ضرب سيوف وغبار
       case 'battle':
         return {
           emoji: '⚔️',
@@ -52,6 +57,8 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           particles: '⚡',
           background: 'linear-gradient(135deg, #fb923c, #ea580c)',
         };
+
+      // 🛡️ الدرع - حماية
       case 'shield':
         return {
           emoji: '🛡️',
@@ -60,30 +67,8 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           particles: '✨',
           background: 'linear-gradient(135deg, #34d399, #10b981)',
         };
-      case 'demonShuffle':
-        return {
-          emoji: '👹',
-          title: 'خلط الشيطان!',
-          color: '#a855f7',
-          particles: '🌀',
-          background: 'linear-gradient(135deg, #a855f7, #9333ea)',
-        };
-      case 'speedUp':
-        return {
-          emoji: '⚡',
-          title: 'تسريع!',
-          color: '#facc15',
-          particles: '💨',
-          background: 'linear-gradient(135deg, #facc15, #eab308)',
-        };
-      case 'luck':
-        return {
-          emoji: '🍀',
-          title: 'حظ سعيد!',
-          color: '#f472b6',
-          particles: '⭐',
-          background: 'linear-gradient(135deg, #f472b6, #ec4899)',
-        };
+
+      // 🎁 بطاقة مكتشفة
       case 'cardFound':
         return {
           emoji: '🎁',
@@ -92,6 +77,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           particles: '🎉',
           background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
         };
+
       default:
         return {
           emoji: '✨',

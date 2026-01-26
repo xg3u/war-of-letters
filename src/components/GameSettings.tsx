@@ -38,9 +38,6 @@ export interface GameSettingsData {
     bomb: boolean;
     battle: boolean;
     shield: boolean;
-    demonShuffle: boolean;
-    speedUp: boolean;
-    luck: boolean;
   };
   
   // مميزات خاصة
@@ -86,9 +83,6 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
       bomb: true,
       battle: true,
       shield: true,
-      demonShuffle: true,
-      speedUp: true,
-      luck: true,
     },
     
     // مميزات خاصة
@@ -383,7 +377,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           margin: '2rem 0',
         }} />
 
-        {/* آلية الفوز */}
+        {/* آلية الفوز - شرح */}
         <div style={{ marginBottom: '2rem' }}>
           <label style={{
             display: 'flex',
@@ -395,46 +389,119 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
             marginBottom: '1rem',
           }}>
             <Trophy size={24} color="#fbbf24" />
-            آلية الفوز
+            آلية الفوز في الجولة
           </label>
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '1rem',
+            background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1))',
+            border: '2px solid rgba(251, 191, 36, 0.4)',
+            borderRadius: '1.5rem',
+            padding: '1.5rem',
           }}>
-            {[
-              { id: 'wall-to-wall', label: 'من الجدار للجدار', icon: '🧱' },
-              { id: 'five-connected', label: 'خمس خلايا متصلة', icon: '5️⃣' },
-              { id: 'most-letters', label: 'الأكثر حروفاً', icon: '📊' },
-              { id: 'all', label: 'الكل (بالترتيب)', icon: '🏆' },
-            ].map((option) => (
-              <button
-                key={option.id}
-                onClick={() => setSettings({ ...settings, winCondition: option.id as any })}
-                style={{
-                  padding: '1.25rem',
-                  background: settings.winCondition === option.id
-                    ? 'linear-gradient(135deg, #fbbf24, #f59e0b)'
-                    : 'rgba(255, 255, 255, 0.1)',
-                  border: settings.winCondition === option.id
-                    ? '3px solid #fbbf24'
-                    : '2px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '1rem',
-                  color: 'white',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
+            <div style={{
+              display: 'flex',
+              gap: '2rem',
+              flexWrap: 'wrap',
+            }}>
+              {/* الفريق الأخضر */}
+              <div style={{
+                flex: 1,
+                minWidth: '250px',
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '2px solid rgba(16, 185, 129, 0.4)',
+                borderRadius: '1rem',
+                padding: '1.25rem',
+              }}>
+                <div style={{
                   display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '0.5rem',
-                }}
-              >
-                <span style={{ fontSize: '2rem' }}>{option.icon}</span>
-                <span style={{ fontSize: '0.95rem', fontWeight: 700, textAlign: 'center' }}>
-                  {option.label}
-                </span>
-              </button>
-            ))}
+                  gap: '0.75rem',
+                  marginBottom: '1rem',
+                }}>
+                  <span style={{ fontSize: '2rem' }}>🟢</span>
+                  <span style={{ color: '#10b981', fontWeight: 900, fontSize: '1.1rem' }}>
+                    {settings.teamNames.green}
+                  </span>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  color: 'white',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>↔️</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>الاتصال الأفقي</div>
+                    <div style={{ color: '#a5f3fc', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                      يفوز بتوصيل الحروف من اليمين لليسار
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* الفريق الأحمر */}
+              <div style={{
+                flex: 1,
+                minWidth: '250px',
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '2px solid rgba(239, 68, 68, 0.4)',
+                borderRadius: '1rem',
+                padding: '1.25rem',
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  marginBottom: '1rem',
+                }}>
+                  <span style={{ fontSize: '2rem' }}>🔴</span>
+                  <span style={{ color: '#ef4444', fontWeight: 900, fontSize: '1.1rem' }}>
+                    {settings.teamNames.red}
+                  </span>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  color: 'white',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>↕️</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>الاتصال العمودي</div>
+                    <div style={{ color: '#fca5a5', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                      يفوز بتوصيل الحروف من الأعلى للأسفل
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* نظام Best of */}
+            <div style={{
+              marginTop: '1.5rem',
+              padding: '1rem',
+              background: 'rgba(168, 85, 247, 0.15)',
+              border: '2px solid rgba(168, 85, 247, 0.3)',
+              borderRadius: '1rem',
+              textAlign: 'center',
+            }}>
+              <div style={{
+                color: '#c4b5fd',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+              }}>
+                🏆 نظام Best of {typeof settings.rounds === 'number' ? settings.rounds : '∞'}
+              </div>
+              <div style={{
+                color: 'white',
+                fontSize: '1rem',
+                fontWeight: 900,
+                marginTop: '0.5rem',
+              }}>
+                {typeof settings.rounds === 'number' && settings.rounds !== Infinity
+                  ? `أول فريق يفوز بـ ${Math.ceil(settings.rounds / 2)} جولات يكسب المباراة!`
+                  : 'عدد الجولات مفتوح - استمتعوا باللعب!'}
+              </div>
+            </div>
           </div>
         </div>
 
