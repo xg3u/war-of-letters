@@ -31,9 +31,11 @@ export const HexGrid: React.FC<HexGridProps> = ({
     status: isRed ? 'red' : 'green',
     isGolden: false,
     hasCard: false,
+    isFrozen: false,
     frozenBy: null,
     freezeCounter: 0,
     isShielded: false,
+    shieldCounter: 0,
     categoryId: '',
   });
 
@@ -87,12 +89,16 @@ export const HexGrid: React.FC<HexGridProps> = ({
   });
 
   return (
-    <div 
+    <div
       style={{
-        padding: '3px',
-        background: 'rgba(0, 0, 0, 0.8)',
-        borderRadius: '20px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        padding: '15px',
+        background: 'linear-gradient(145deg, rgba(15, 10, 35, 0.95) 0%, rgba(30, 20, 60, 0.9) 50%, rgba(15, 10, 35, 0.95) 100%)',
+        borderRadius: '24px',
+        boxShadow: `
+          0 25px 60px -12px rgba(0, 0, 0, 0.5),
+          0 0 40px rgba(139, 92, 246, 0.15),
+          inset 0 1px 0 rgba(255, 255, 255, 0.1)
+        `,
         maxWidth: '100%',
         margin: '0 auto',
         overflow: 'hidden',
@@ -100,8 +106,9 @@ export const HexGrid: React.FC<HexGridProps> = ({
         flexDirection: 'column',
         alignItems: 'center',
         transform: `scale(${zoom})`,
-        transition: 'transform 0.3s ease',
-        backdropFilter: 'blur(10px)',
+        transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        backdropFilter: 'blur(20px)',
+        border: '2px solid rgba(139, 92, 246, 0.2)',
       }}
     >
       {fullLayout.map((layoutRow, idx) => (

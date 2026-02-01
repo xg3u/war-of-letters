@@ -55,6 +55,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     resetGame,
     teamCards,
     addCardToTeam,
+    useCard,
     isLocked,
     setLocked,
     winStreak,
@@ -62,11 +63,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     currentRound,
     matchWinner,
     resetMatch,
+    decrementCounters,
   } = useGameStore();
 
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
   const [currentAnswer, setCurrentAnswer] = useState<string | null>(null);
+  const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
@@ -179,6 +182,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         if (question) {
           setCurrentQuestion(question.question_text);
           setCurrentAnswer(question.correct_answer);
+          setCurrentQuestionId(question.id);
 
           setShowQuestion(true);
         } else {
@@ -186,7 +190,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           setCurrentQuestion(`⚠️ لا توجد أسئلة متاحة للحرف "${cell.letter}" في التصنيفات المختارة!`);
           setShowQuestion(true);
           setCurrentAnswer('إجابة تجريبية');
-         
+          setCurrentQuestionId(null);
         }
       }
     }
@@ -272,9 +276,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       if (question) {
         setCurrentQuestion(question.question_text);
         setCurrentAnswer(question.correct_answer);
+        setCurrentQuestionId(question.id);
       } else {
         setCurrentQuestion(`سؤال تجريبي للحرف "${targetCell?.letter}"؟`);
         setCurrentAnswer('إجابة تجريبية');
+        setCurrentQuestionId(null);
       }
       setShowQuestion(true);
     }, 3500);
@@ -284,6 +290,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     if (selectedCell) {
       // Claim the cell for the winning team
       claimCell(selectedCell.id, team);
+
+      // تحديث عدادات التجميد والدرع بعد كل سؤال
+      decrementCounters();
 
       // Award pending card to the winning team (if any)
       if (pendingCard) {
@@ -349,6 +358,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       setShowQuestion(false);
       setSelectedCell(null);
       setCurrentQuestion(null);
+      setCurrentQuestionId(null);
 
       // 🔓 UNLOCK the game after answer is processed (only if no streak reward)
       if (!settings.enableStreakReward || winStreak[team] < 2) {
@@ -357,11 +367,35 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     }
   };
 
-  const handleChangeQuestion = () => {
-    setCurrentQuestion(`سؤال جديد للحرف "${selectedCell?.letter}"؟`);
+  const handleChangeQuestion = async () => {
+    if (!selectedCell?.letter) return;
+
+    // جلب سؤال جديد من قاعدة البيانات مع استبعاد السؤال الحالي
+    const newQuestion = await getSmartQuestion(
+      selectedCell.letter,
+      settings.selectedCategories,
+      currentQuestionId || undefined  // استبعاد السؤال الحالي
+    );
+
+    if (newQuestion) {
+      setCurrentQuestion(newQuestion.question_text);
+      setCurrentAnswer(newQuestion.correct_answer);
+      setCurrentQuestionId(newQuestion.id);  // تحديث معرف السؤال الجديد
+
+      // بث السؤال الجديد للاعبين
+      syncManager.broadcast({
+        type: 'QUESTION_CHANGED',
+        letter: selectedCell.letter,
+        question: newQuestion.question_text,
+      });
+    } else {
+      // لا توجد أسئلة أخرى
+      setCurrentQuestion(`⚠️ لا توجد أسئلة إضافية للحرف "${selectedCell.letter}"`);
+      setCurrentQuestionId(null);
+    }
   };
 
-  const handleCardUse = (cardType: CardType, targetCellId: string) => {
+  const handleCardUse = async (cardType: CardType, targetCellId: string, team: 'green' | 'red') => {
     const messages: Record<CardType, string> = {
       freeze: 'تم تجميد الخلية لدورتين! ❄️',
       bomb: 'انفجار! تم تدمير الحرف 💣',
@@ -369,17 +403,71 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       shield: 'تم حماية الحرف لـ 5 أسئلة! 🛡️',
     };
 
+    // استخدام البطاقة من المتجر
+    const result = useCard(team, cardType, targetCellId);
+
+    // عرض الأنيميشن
     setCardAnimation({
       type: cardType,
       message: messages[cardType],
     });
 
+    // بث رسالة استخدام البطاقة
     syncManager.broadcast({
-      type: 'CARD_USED',
+      type: 'CARD_ANIMATION',
       cardType,
       message: messages[cardType],
       targetCellId,
+      team,
     });
+
+    // إغلاق لوحة البطاقات
+    setShowCardPanel(false);
+
+    // إذا كانت بطاقة معركة، نحتاج لطرح سؤال فوراً
+    if (result.triggerBattle && result.battleCellId) {
+      // حفظ الحرف قبل تغيير الحالة (من الخلية الأصلية)
+      const originalCell = cells.find(c => c.id === result.battleCellId);
+      const battleLetter = originalCell?.letter || '';
+
+      // انتظار انتهاء الأنيميشن ثم طرح السؤال
+      setTimeout(async () => {
+        setCardAnimation(null);
+
+        // الحصول على أحدث حالة للخلايا من المتجر
+        const latestCells = useGameStore.getState().cells;
+        const targetCell = latestCells.find(c => c.id === result.battleCellId);
+
+        if (targetCell && battleLetter) {
+          setSelectedCell({ ...targetCell, letter: battleLetter });
+          setLocked(true);
+
+          // جلب سؤال جديد للمعركة
+          const question = await getSmartQuestion(
+            battleLetter,
+            settings.selectedCategories
+          );
+
+          if (question) {
+            setCurrentQuestion(question.question_text);
+            setCurrentAnswer(question.correct_answer);
+            setCurrentQuestionId(question.id);
+          } else {
+            setCurrentQuestion(`سؤال معركة للحرف "${battleLetter}"؟`);
+            setCurrentAnswer('إجابة تجريبية');
+            setCurrentQuestionId(null);
+          }
+          setShowQuestion(true);
+
+          // بث السؤال للاعبين
+          syncManager.broadcast({
+            type: 'BATTLE_QUESTION',
+            letter: battleLetter,
+            question: question?.question_text || `سؤال معركة للحرف "${battleLetter}"؟`,
+          });
+        }
+      }, 2500);
+    }
   };
 
   // عكس الألوان - تبديل الفرق
@@ -1086,8 +1174,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         <ActionCardPanel
           onCardUse={handleCardUse}
           enabledCards={settings.cardTypes}
-          selectedCell={selectedCell?.id || null}
+          cells={cells}
           teamCards={teamCards}
+          teamNames={settings.teamNames}
           onClose={() => setShowCardPanel(false)}
         />
       )}

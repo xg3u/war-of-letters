@@ -63,14 +63,20 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       } else if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
       } else if (data.type === 'CARD_USED') {
-        setCardAnimation({
-          type: data.cardType,
-          message: data.message,
-        });
+        // تحديث الخلايا بعد استخدام البطاقة (التجميد، القنبلة، الدرع، المعركة)
+        if (data.cells) {
+          syncFromExternal(data.cells);
+        }
         // تحديث البطاقات الممتلكة بعد استخدام بطاقة
         if (data.teamCards) {
           setLocalTeamCards(data.teamCards);
         }
+      } else if (data.type === 'CARD_ANIMATION') {
+        // أنيميشن البطاقة المنفصل
+        setCardAnimation({
+          type: data.cardType,
+          message: data.message,
+        });
       } else if (data.type === 'CARD_ADDED') {
         // تحديث البطاقات عند إضافة بطاقة جديدة
         if (data.teamCards) {
@@ -127,6 +133,11 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         setLocalMatchWinner(null);
         setLocalStreak({ green: 0, red: 0 });
         setLocalTeamCards({ green: [], red: [] });
+      } else if (data.type === 'COUNTERS_UPDATED') {
+        // تحديث عدادات التجميد والدرع
+        if (data.cells) {
+          syncFromExternal(data.cells);
+        }
       }
     });
     return unsubscribe;

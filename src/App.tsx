@@ -1,31 +1,49 @@
 // src/App.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { GameSettings } from './components/GameSettings';
 import { HostScreen } from './components/HostScreen';
 import { PlayersScreen } from './components/PlayersScreen';
 import { WelcomeModal } from './components/WelcomeModal';
 import { AnimatedBackground } from './components/AnimatedBackground';
+import { AuthGate } from './components/AuthGate';
+import { supabase } from './lib/supabase';
 import type { GameSettingsData } from './components/GameSettings';
 
 type Screen = 'landing' | 'settings' | 'host' | 'players';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = loading
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get('screen') as Screen) || 'landing';
   });
-  
+
   const [gameSettings, setGameSettings] = useState<GameSettingsData | null>(() => {
     // تحميل الإعدادات من localStorage
     const stored = localStorage.getItem('current-game-settings');
     return stored ? JSON.parse(stored) : null;
   });
-  
+
   const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
     const hideModal = localStorage.getItem('hideWelcomeModal');
     return hideModal !== 'true';
   });
+
+  // التحقق من حالة المصادقة عند بدء التطبيق
+  useEffect(() => {
+    // فحص الجلسة الحالية
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session);
+    });
+
+    // الاستماع لتغييرات حالة المصادقة
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleCloseWelcome = () => {
     setShowWelcomeModal(false);
@@ -38,6 +56,53 @@ function App() {
     setCurrentScreen('host');
   };
 
+  // حالة التحميل - انتظار فحص المصادقة
+  if (isAuthenticated === null) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)',
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '1.5rem',
+        }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            border: '4px solid rgba(168, 85, 247, 0.2)',
+            borderTopColor: '#a855f7',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+          }} />
+          <div style={{
+            color: '#e9d5ff',
+            fontSize: '1.25rem',
+            fontWeight: 700,
+          }}>
+            جاري التحميل...
+          </div>
+        </div>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // إذا لم يكن مسجل الدخول - عرض شاشة المصادقة
+  if (!isAuthenticated) {
+    return <AuthGate onVerified={() => setIsAuthenticated(true)} />;
+  }
+
+  // المستخدم مسجل الدخول - عرض التطبيق
   return (
     <div style={{ position: 'relative', minHeight: '100vh' }}>
       {/* الخلفية المتحركة */}
@@ -61,7 +126,7 @@ function App() {
 
       {/* شاشة المقدم */}
       {currentScreen === 'host' && gameSettings && (
-        <HostScreen 
+        <HostScreen
           settings={gameSettings}
           onBack={() => setCurrentScreen('settings')}
         />

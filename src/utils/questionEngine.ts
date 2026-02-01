@@ -12,34 +12,44 @@ interface WeightedQuestion extends Question {
 // ========== الدالة الرئيسية: getSmartQuestion ==========
 export const getSmartQuestion = async (
   letter: string,
-  selectedCategories: string[]
+  selectedCategories: string[],
+  excludeQuestionId?: string  // استبعاد سؤال معين (للتغيير)
 ): Promise<Question | null> => {
-  
+
   try {
     // 1. Pooling: جلب كل الأسئلة المطابقة
-    const pool = await fetchQuestionPool(letter, selectedCategories);
-    
+    let pool = await fetchQuestionPool(letter, selectedCategories);
+
     if (pool.length === 0) {
       console.warn('No questions found for letter:', letter);
       return null;
     }
-    
+
+    // 1.5 استبعاد السؤال المحدد (إذا وجد)
+    if (excludeQuestionId) {
+      pool = pool.filter(q => q.id !== excludeQuestionId);
+      if (pool.length === 0) {
+        console.warn('No other questions available after exclusion');
+        return null;
+      }
+    }
+
     // 2. جلب الأسئلة المشاهدة
     const seenQuestions = await getSeenQuestions();
-    
+
     // 3. Weighted Random: تطبيق الأوزان
     const weighted = applyWeights(pool, seenQuestions);
-    
+
     // 4. اختيار سؤال
     const selected = selectWeightedRandom(weighted);
-    
+
     // 5. تسجيل السؤال كمشاهد
     if (selected) {
       await markQuestionAsSeen(selected.id);
     }
-    
+
     return selected;
-    
+
   } catch (error) {
     console.error('Error in getSmartQuestion:', error);
     return null;

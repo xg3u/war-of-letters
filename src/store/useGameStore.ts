@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import type { HexCell, Team, GameSettings, CardType } from '../core/types';
 import { syncManager } from '../utils/SyncManager';
 import { checkWinCondition, getWinMessage } from '../utils/winChecker';
-import { applyCardEffect } from '../utils/cardPermissions';
+import { applyCardEffect, updateCardCounters } from '../utils/cardPermissions';
 
 interface GameStore {
   cells: HexCell[];
@@ -30,11 +30,12 @@ interface GameStore {
   resetGame: () => void;
   nextRound: () => void;
   addCardToTeam: (team: 'green' | 'red', card: CardType) => void;
-  useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null) => void;
+  useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null) => { triggerBattle?: boolean; battleCellId?: string };
   setLocked: (locked: boolean) => void; // 🔒 Lock/unlock game actions
   updateStreak: (winningTeam: 'green' | 'red') => { streakReached: boolean; team: 'green' | 'red' | null };
   resetStreak: () => void;
   resetMatch: () => void; // إعادة تعيين المباراة كاملة
+  decrementCounters: () => void; // تحديث عدادات التجميد والدرع بعد كل سؤال
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -242,17 +243,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  // استخدام بطاقة
-  useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null) => {
+  // استخدام بطاقة - تُرجع معلومات المعركة إذا كانت بطاقة معركة
+  useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null): { triggerBattle?: boolean; battleCellId?: string } => {
     const { cells, teamCards, settings } = get();
 
     // تطبيق تأثير البطاقة
-    const updatedCells = applyCardEffect(card, cells, targetCellId, team);
+    const result = applyCardEffect(card, cells, targetCellId, team);
+    const updatedCells = result.cells;
 
-    // إزالة البطاقة من رصيد الفريق
+    // إزالة البطاقة الأولى من نوعها من رصيد الفريق (ليس كل البطاقات)
+    const cardIndex = teamCards[team].indexOf(card);
     const newTeamCards = {
       ...teamCards,
-      [team]: teamCards[team].filter(c => c !== card),
+      [team]: cardIndex >= 0
+        ? [...teamCards[team].slice(0, cardIndex), ...teamCards[team].slice(cardIndex + 1)]
+        : teamCards[team],
     };
 
     set({ cells: updatedCells, teamCards: newTeamCards });
@@ -267,31 +272,39 @@ export const useGameStore = create<GameStore>((set, get) => ({
       teamCards: newTeamCards,
     });
 
-    // فحص الفوز بعد استخدام البطاقة
-    const winCheck = checkWinCondition(updatedCells, settings.winCondition, settings.teamColors);
+    // فحص الفوز بعد استخدام البطاقة (فقط للقنبلة لأنها قد تؤثر على الفوز)
+    if (card === 'bomb') {
+      const winCheck = checkWinCondition(updatedCells, settings.winCondition, settings.teamColors);
 
-    if (winCheck.winner) {
-      const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
-      const message = winCheck.message || getWinMessage(winCheck.winner, winCheck.winType!, teamName);
+      if (winCheck.winner) {
+        const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
+        const message = winCheck.message || getWinMessage(winCheck.winner, winCheck.winType!, teamName);
 
-      const { scores, currentRound } = get();
-      const newScores = { ...scores };
-      newScores[winCheck.winner as 'green' | 'red']++;
+        const { scores, currentRound } = get();
+        const newScores = { ...scores };
+        newScores[winCheck.winner as 'green' | 'red']++;
 
-      set({
-        winner: winCheck.winner,
-        winMessage: message,
-        scores: newScores,
-      });
+        set({
+          winner: winCheck.winner,
+          winMessage: message,
+          scores: newScores,
+        });
 
-      syncManager.broadcast({
-        type: 'GAME_WON',
-        winner: winCheck.winner,
-        winMessage: message,
-        scores: newScores,
-        round: currentRound,
-      });
+        syncManager.broadcast({
+          type: 'GAME_WON',
+          winner: winCheck.winner,
+          winMessage: message,
+          scores: newScores,
+          round: currentRound,
+        });
+      }
     }
+
+    // إرجاع معلومات المعركة إذا كانت بطاقة معركة
+    return {
+      triggerBattle: result.triggerBattle,
+      battleCellId: result.battleCellId,
+    };
   },
 
   // 🔒 Lock/Unlock Actions
@@ -361,6 +374,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     syncManager.broadcast({
       type: 'MATCH_RESET',
+    });
+  },
+
+  // تحديث عدادات التجميد والدرع بعد كل سؤال
+  decrementCounters: () => {
+    const { cells } = get();
+    const updatedCells = updateCardCounters(cells);
+
+    set({ cells: updatedCells });
+
+    // بث التحديث للشاشات الأخرى
+    syncManager.broadcast({
+      type: 'COUNTERS_UPDATED',
+      cells: updatedCells,
     });
   },
 }));
