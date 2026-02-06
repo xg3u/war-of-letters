@@ -32,14 +32,42 @@ function App() {
 
   // التحقق من حالة المصادقة عند بدء التطبيق
   useEffect(() => {
-    // فحص الجلسة الحالية
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-    });
+    const checkAuth = async () => {
+      try {
+        // فحص الجلسة الحالية
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Auth error:', error);
+          setIsAuthenticated(false);
+          return;
+        }
+
+        // التحقق من صلاحية الجلسة
+        if (session?.user) {
+          console.log('✅ User authenticated:', session.user.email);
+          setIsAuthenticated(true);
+        } else {
+          console.log('❌ No active session - showing AuthGate');
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        console.error('Auth check failed:', err);
+        setIsAuthenticated(false);
+      }
+    };
+
+    checkAuth();
 
     // الاستماع لتغييرات حالة المصادقة
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
+      if (session?.user) {
+        console.log('✅ Auth state changed - authenticated');
+        setIsAuthenticated(true);
+      } else {
+        console.log('❌ Auth state changed - not authenticated');
+        setIsAuthenticated(false);
+      }
     });
 
     return () => subscription.unsubscribe();

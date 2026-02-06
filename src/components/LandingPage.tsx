@@ -6,10 +6,11 @@ import { categories } from '../lib/categories';
 import { actionCards } from '../lib/actionCards';
 import {
   Play, Moon, Sun, BookOpen,
-  Trophy, ShieldCheck, Zap, HelpCircle
+  Trophy, ShieldCheck, Zap, HelpCircle, LogOut
 } from 'lucide-react';
 import { WelcomeModal } from './WelcomeModal';
 import { PaymentModal } from './PaymentModal';
+import { supabase } from '../lib/supabase';
 import HeaderImage from '../assets/ForDesign/Header.png';
 
 // الحروف العربية للتساقط
@@ -47,6 +48,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  };
+
+  // تسجيل الخروج
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.reload();
   };
 
   const colors = {
@@ -190,6 +197,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
               }}
             >
               {isDarkMode ? <Sun size={18} color="white" /> : <Moon size={18} color="white" />}
+            </button>
+            {/* زر تسجيل الخروج */}
+            <button
+              onClick={handleLogout}
+              title="تسجيل الخروج"
+              style={{
+                background: 'rgba(239, 68, 68, 0.3)',
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                borderRadius: '50%',
+                padding: '0.5rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.3s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
+              }}
+            >
+              <LogOut size={18} color="#ef4444" />
             </button>
           </nav>
         </div>

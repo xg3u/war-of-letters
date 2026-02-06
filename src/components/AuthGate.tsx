@@ -1,7 +1,7 @@
 // src/components/AuthGate.tsx
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
-import { Mail, ShieldCheck, ArrowRight, Lock, Sparkles, Moon, Sun } from 'lucide-react';
+import { Mail, ShieldCheck, ArrowRight, Sparkles, Moon, Sun, UserPlus, LogIn, User } from 'lucide-react';
 
 const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهوي";
 
@@ -9,15 +9,23 @@ const VIBRANT_COLORS = [
   '#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24',
 ];
 
+// التحقق من صحة الإيميل
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emailRegex.test(email);
+};
+
 export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) => {
   const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
   const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<'email' | 'otp'>('email');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [step, setStep] = useState<'form' | 'otp'>('form');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const fallingLetters = useMemo(() => 
+  const fallingLetters = useMemo(() =>
     Array.from({ length: 40 }).map((_, i) => ({
       id: i,
       char: ARABIC_LETTERS[Math.floor(Math.random() * ARABIC_LETTERS.length)],
@@ -29,84 +37,208 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
     }))
   , []);
 
-  const handleSendOTP = async () => {
+  // تسجيل الدخول - إرسال OTP
+  const handleLogin = async () => {
     if (!email) {
       setError('الرجاء إدخال البريد الإلكتروني');
       return;
     }
-    
-    setLoading(true);
-    setError('');
-    
-    // إرسال OTP كود بدل Magic Link
-    const { error: authError } = await supabase.auth.signInWithOtp({ 
-      email,
-      options: {
-        shouldCreateUser: false,
-        // هذا يجبر Supabase على إرسال OTP كود
-        data: {
-          type: 'email'
-        }
-      }
-    });
-    
-    if (!authError) {
-      setStep('otp');
-    } else {
-      setError('البريد الإلكتروني غير مسجل');
-    }
-    
-    setLoading(false);
-  };
 
-  const handleVerifyOTP = async () => {
-    if (otp.length !== 6) {
-      setError('الرجاء إدخال رمز التحقق كاملاً');
+    if (!isValidEmail(email)) {
+      setError('الرجاء إدخال بريد إلكتروني صحيح');
       return;
     }
 
     setLoading(true);
     setError('');
 
-    const { error: authError } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: 'email' // هذا مهم لتحديد نوع OTP
-    });
+    try {
+      // التحقق أولاً من وجود الإيميل في جدول buyers
+      const { data: existingUser } = await supabase
+        .from('buyers')
+        .select('email')
+        .eq('email', email)
+        .single();
 
-    if (!authError) {
-      onVerified();
-    } else {
-      setError('رمز التحقق غير صحيح');
+      if (!existingUser) {
+        setError('هذا البريد غير مسجل. الرجاء إنشاء حساب جديد أولاً');
+        setLoading(false);
+        return;
+      }
+
+      // الإيميل موجود، إرسال OTP
+      const { error: authError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false, // لا تنشئ حساب جديد
+        }
+      });
+
+      if (!authError) {
+        setStep('otp');
+      } else {
+        if (authError.message.includes('rate limit')) {
+          setError('تم إرسال عدة رسائل. الرجاء الانتظار قليلاً ثم المحاولة مرة أخرى');
+        } else if (authError.message.includes('invalid') || authError.message.includes('Invalid')) {
+          setError('البريد الإلكتروني غير صالح. الرجاء التحقق منه');
+        } else {
+          setError('حدث خطأ في إرسال رمز التحقق. الرجاء المحاولة مرة أخرى');
+          console.error('Login error:', authError.message);
+        }
+      }
+    } catch (err) {
+      setError('حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى');
+      console.error('Unexpected error:', err);
     }
 
     setLoading(false);
   };
 
-  // Google OAuth تسجيل دخول عبر
-  const handleGoogleSignIn = async () => {
+  // إنشاء حساب جديد - إرسال OTP
+  const handleRegister = async () => {
+    if (!firstName.trim()) {
+      setError('الرجاء إدخال الاسم الأول');
+      return;
+    }
+
+    if (!email) {
+      setError('الرجاء إدخال البريد الإلكتروني');
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError('الرجاء إدخال بريد إلكتروني صحيح (مثال: name@example.com)');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
-    const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
+    try {
+      // الخطوة 1: التحقق من عدم وجود الإيميل في جدول buyers
+      const { data: existingUser } = await supabase
+        .from('buyers')
+        .select('email')
+        .eq('email', email)
+        .single();
+
+      if (existingUser) {
+        setError('هذا البريد الإلكتروني مسجل مسبقاً. الرجاء تسجيل الدخول بدلاً من إنشاء حساب جديد');
+        setLoading(false);
+        return;
+      }
+
+      // الخطوة 2: إرسال OTP للتسجيل
+      const { error: authError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: true, // إنشاء حساب جديد
+          data: {
+            first_name: firstName.trim(),
+          }
+        }
+      });
+
+      if (!authError) {
+        setStep('otp');
+      } else {
+        if (authError.message.includes('rate limit')) {
+          setError('تم إرسال عدة رسائل. الرجاء الانتظار قليلاً ثم المحاولة مرة أخرى');
+        } else if (authError.message.includes('invalid') || authError.message.includes('Invalid')) {
+          setError('البريد الإلكتروني غير صالح. الرجاء التحقق منه');
+        } else {
+          setError('حدث خطأ في إنشاء الحساب. الرجاء المحاولة مرة أخرى');
+          console.error('Register error:', authError.message);
+        }
+      }
+    } catch (err) {
+      setError('حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى');
+      console.error('Unexpected error:', err);
+    }
+
+    setLoading(false);
+  };
+
+  // التحقق من رمز OTP
+  const handleVerifyOTP = async () => {
+    if (otp.length !== 6) {
+      setError('الرجاء إدخال رمز التحقق كاملاً (6 أرقام)');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const { data, error: authError } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: 'email'
+      });
+
+      if (!authError && data.user) {
+        // إذا كان التسجيل جديد، أضف المستخدم في جدول buyers
+        if (mode === 'register') {
+          // التحقق أولاً إذا المستخدم موجود في buyers
+          const { data: existingBuyer } = await supabase
+            .from('buyers')
+            .select('id')
+            .eq('email', email)
+            .single();
+
+          if (!existingBuyer) {
+            const { error: insertError } = await supabase
+              .from('buyers')
+              .insert({
+                id: data.user.id,
+                email: email,
+                plan_type: 'free', // الخطة الافتراضية
+              });
+
+            if (insertError) {
+              console.error('Error adding user to buyers:', insertError);
+              // نستمر حتى لو فشل الإدخال - المستخدم مسجل في auth
+            } else {
+              console.log('✅ User added to buyers table');
+            }
+          }
+        }
+
+        onVerified();
+      } else {
+        setError('رمز التحقق غير صحيح أو منتهي الصلاحية');
+      }
+    } catch (err) {
+      setError('حدث خطأ غير متوقع');
+      console.error('Verify OTP error:', err);
+    }
+
+    setLoading(false);
+  };
+
+  // إعادة إرسال رمز التحقق
+  const handleResendOTP = async () => {
+    setLoading(true);
+    setError('');
+
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email,
       options: {
-        redirectTo: `${window.location.origin}`,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
+        shouldCreateUser: mode === 'register',
+        data: mode === 'register' ? { first_name: firstName.trim() } : undefined
       }
     });
 
-    if (authError) {
-      setError('فشل تسجيل الدخول عبر Google');
-      setLoading(false);
+    if (!authError) {
+      setError('');
+      alert('تم إرسال رمز جديد إلى بريدك الإلكتروني');
+    } else {
+      setError('حدث خطأ في إعادة الإرسال');
     }
-    // سيتم إعادة التوجيه تلقائياً بعد النجاح
+
+    setLoading(false);
   };
 
-  // التدرجات المنفصلة لكل وضع
   const titleGradient = isDarkMode
     ? 'linear-gradient(135deg, #f97316 0%, #ec4899 30%, #a855f7 60%, #3b82f6 100%)'
     : 'linear-gradient(135deg, #ea580c 0%, #db2777 30%, #9333ea 60%, #2563eb 100%)';
@@ -115,77 +247,40 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
     <>
       <style>{`
         @keyframes letterFall {
-          0% {
-            transform: translateY(0) rotate(0deg);
-            opacity: 0;
-          }
-          10% {
-            opacity: 0.6;
-          }
-          90% {
-            opacity: 0.6;
-          }
-          100% {
-            transform: translateY(110vh) rotate(360deg);
-            opacity: 0;
-          }
+          0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+          10% { opacity: 0.6; }
+          90% { opacity: 0.6; }
+          100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
         }
-
         @keyframes gradientShift {
-          0%, 100% {
-            background-position: 0% 50%;
-          }
-          50% {
-            background-position: 100% 50%;
-          }
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
         }
-
         @keyframes gentlePulse {
-          0%, 100% {
-            opacity: 0.2;
-          }
-          50% {
-            opacity: 0.35;
-          }
+          0%, 100% { opacity: 0.2; }
+          50% { opacity: 0.35; }
         }
-
         @keyframes shimmer {
-          0% {
-            background-position: -200% center;
-          }
-          100% {
-            background-position: 200% center;
-          }
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
         }
-
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
-
         @keyframes float {
-          0%, 100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-10px);
-          }
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
         }
-
         .auth-container {
           position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          width: 100vw;
-          height: 100vh;
+          top: 0; left: 0; right: 0; bottom: 0;
+          width: 100vw; height: 100vh;
           display: flex;
           align-items: center;
           justify-content: center;
           overflow: hidden;
           transition: background-color 0.5s ease;
         }
-
         .auth-content {
           position: relative;
           z-index: 10;
@@ -193,7 +288,6 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
           max-width: 520px;
           padding: 0 1.5rem;
         }
-
         .game-title {
           background: ${titleGradient};
           -webkit-background-clip: text;
@@ -204,17 +298,17 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
         }
       `}</style>
 
-      <div 
-        className="auth-container" 
-        style={{ 
-          background: isDarkMode 
+      <div
+        className="auth-container"
+        style={{
+          background: isDarkMode
             ? 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)'
             : 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 50%, #e9d5ff 100%)',
           backgroundSize: '400% 400%',
           animation: 'gradientShift 15s ease infinite'
         }}
       >
-        
+
         {/* زر Dark/Light Mode */}
         <button
           onClick={() => setIsDarkMode(!isDarkMode)}
@@ -226,7 +320,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
             width: '3rem',
             height: '3rem',
             borderRadius: '50%',
-            background: isDarkMode 
+            background: isDarkMode
               ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))'
               : 'linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(236, 72, 153, 0.15))',
             backdropFilter: 'blur(10px)',
@@ -236,8 +330,8 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
             justifyContent: 'center',
             cursor: 'pointer',
             transition: 'all 0.3s ease',
-            boxShadow: isDarkMode 
-              ? '0 4px 20px rgba(168, 85, 247, 0.25)' 
+            boxShadow: isDarkMode
+              ? '0 4px 20px rgba(168, 85, 247, 0.25)'
               : '0 4px 20px rgba(124, 58, 237, 0.15)'
           }}
           onMouseEnter={(e) => {
@@ -280,71 +374,47 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
 
         {/* المحتوى */}
         <div className="auth-content">
-          
+
           {/* اسم اللعبة فوق الكارد */}
-          <div 
-            style={{
-              textAlign: 'center',
-              marginBottom: '2rem',
-              animation: 'float 3s ease-in-out infinite'
-            }}
-          >
-            <h1 
+          <div style={{ textAlign: 'center', marginBottom: '2rem', animation: 'float 3s ease-in-out infinite' }}>
+            <h1
               className="game-title"
               style={{
                 fontSize: '4rem',
                 fontWeight: 900,
                 letterSpacing: '-0.03em',
                 marginBottom: '0.5rem',
-                filter: isDarkMode 
+                filter: isDarkMode
                   ? 'drop-shadow(0 0 30px rgba(168, 85, 247, 0.4))'
                   : 'drop-shadow(0 0 20px rgba(124, 58, 237, 0.2))',
               }}
             >
               حرب الحروف
             </h1>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem'
-            }}>
-              <div 
-                style={{
-                  width: '2.5rem',
-                  height: '2px',
-                  background: isDarkMode
-                    ? 'linear-gradient(90deg, transparent, #a855f7, transparent)'
-                    : 'linear-gradient(90deg, transparent, #9333ea, transparent)'
-                }}
-              />
-              <Sparkles 
-                size={16} 
-                style={{ 
-                  color: isDarkMode ? '#fbbf24' : '#f59e0b',
-                  filter: 'drop-shadow(0 0 8px currentColor)'
-                }}
-              />
-              <div 
-                style={{
-                  width: '2.5rem',
-                  height: '2px',
-                  background: isDarkMode
-                    ? 'linear-gradient(90deg, transparent, #a855f7, transparent)'
-                    : 'linear-gradient(90deg, transparent, #9333ea, transparent)'
-                }}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              <div style={{
+                width: '2.5rem',
+                height: '2px',
+                background: isDarkMode
+                  ? 'linear-gradient(90deg, transparent, #a855f7, transparent)'
+                  : 'linear-gradient(90deg, transparent, #9333ea, transparent)'
+              }} />
+              <Sparkles size={16} style={{ color: isDarkMode ? '#fbbf24' : '#f59e0b', filter: 'drop-shadow(0 0 8px currentColor)' }} />
+              <div style={{
+                width: '2.5rem',
+                height: '2px',
+                background: isDarkMode
+                  ? 'linear-gradient(90deg, transparent, #a855f7, transparent)'
+                  : 'linear-gradient(90deg, transparent, #9333ea, transparent)'
+              }} />
             </div>
           </div>
 
           {/* التوهج الخارجي */}
-          <div 
+          <div
             style={{
               position: 'absolute',
-              left: '1.5rem',
-              right: '1.5rem',
-              top: '8rem',
-              bottom: 0,
+              left: '1.5rem', right: '1.5rem', top: '8rem', bottom: 0,
               borderRadius: '2rem',
               filter: 'blur(50px)',
               background: isDarkMode
@@ -356,29 +426,25 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
           />
 
           {/* الكارد الرئيسي */}
-          <div 
+          <div
             style={{
               position: 'relative',
               borderRadius: '2rem',
               padding: '2.5rem',
-              border: isDarkMode
-                ? '2px solid rgba(168, 85, 247, 0.25)'
-                : '2px solid rgba(124, 58, 237, 0.2)',
-              background: isDarkMode
-                ? 'rgba(26, 11, 46, 0.6)'
-                : 'rgba(255, 255, 255, 0.85)',
+              border: isDarkMode ? '2px solid rgba(168, 85, 247, 0.25)' : '2px solid rgba(124, 58, 237, 0.2)',
+              background: isDarkMode ? 'rgba(26, 11, 46, 0.6)' : 'rgba(255, 255, 255, 0.85)',
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)',
-              boxShadow: isDarkMode 
-                ? '0 0 60px rgba(168, 85, 247, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)' 
+              boxShadow: isDarkMode
+                ? '0 0 60px rgba(168, 85, 247, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1)'
                 : '0 10px 40px rgba(124, 58, 237, 0.15)',
               transition: 'all 0.5s ease'
             }}
           >
-            
+
             {/* الأيقونة */}
             <div style={{ position: 'relative', width: '4.5rem', height: '4.5rem', margin: '0 auto 1.5rem' }}>
-              <div 
+              <div
                 style={{
                   position: 'absolute',
                   inset: '-0.5rem',
@@ -389,7 +455,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   opacity: 0.4
                 }}
               />
-              <div 
+              <div
                 style={{
                   position: 'relative',
                   width: '100%',
@@ -402,8 +468,14 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   boxShadow: '0 8px 25px rgba(168, 85, 247, 0.35)'
                 }}
               >
-                <ShieldCheck size={36} color="white" strokeWidth={2.5} />
-                <Sparkles 
+                {step === 'otp' ? (
+                  <ShieldCheck size={36} color="white" strokeWidth={2.5} />
+                ) : mode === 'login' ? (
+                  <LogIn size={36} color="white" strokeWidth={2.5} />
+                ) : (
+                  <UserPlus size={36} color="white" strokeWidth={2.5} />
+                )}
+                <Sparkles
                   style={{
                     position: 'absolute',
                     top: '-0.5rem',
@@ -416,29 +488,43 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
               </div>
             </div>
 
-            {/* العنوان الفرعي */}
+            {/* العنوان */}
             <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-              <p style={{ 
-                color: isDarkMode ? '#e9d5ff' : '#7c3aed', 
-                fontSize: '2rem', 
+              <p style={{
+                color: isDarkMode ? '#e9d5ff' : '#7c3aed',
+                fontSize: '1.75rem',
                 fontWeight: 700,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.5rem'
               }}>
-                <Lock size={16} />
-                التحقق من الأيميل
+                {step === 'otp' ? (
+                  <>
+                    <ShieldCheck size={20} />
+                    تأكيد البريد الإلكتروني
+                  </>
+                ) : mode === 'login' ? (
+                  <>
+                    <LogIn size={20} />
+                    تسجيل الدخول
+                  </>
+                ) : (
+                  <>
+                    <UserPlus size={20} />
+                    إنشاء حساب جديد
+                  </>
+                )}
               </p>
             </div>
 
             {/* الخط الفاصل */}
-            <div 
+            <div
               style={{
                 height: '1px',
                 width: '100%',
                 marginBottom: '1.5rem',
-                background: isDarkMode 
+                background: isDarkMode
                   ? 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.4), transparent)'
                   : 'linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.25), transparent)'
               }}
@@ -446,7 +532,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
 
             {/* رسالة الخطأ */}
             {error && (
-              <div 
+              <div
                 style={{
                   marginBottom: '1rem',
                   padding: '0.75rem',
@@ -463,15 +549,62 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
               </div>
             )}
 
-            {step === 'email' ? (
+            {step === 'form' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                
-                {/* حقل البريد الإلكتروني - عريض */}
+
+                {/* حقل الاسم الأول - فقط في إنشاء الحساب */}
+                {mode === 'register' && (
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <User
+                      style={{
+                        position: 'absolute',
+                        right: '1rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        color: isDarkMode ? '#c084fc' : '#9333ea',
+                        zIndex: 2
+                      }}
+                      size={20}
+                    />
+                    <input
+                      type="text"
+                      placeholder="الاسم الأول"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
+                      style={{
+                        width: '100%',
+                        padding: '0.875rem 1rem 0.875rem 1rem',
+                        paddingRight: '3rem',
+                        borderRadius: '1rem',
+                        color: isDarkMode ? '#ffffff' : '#1a0b2e',
+                        fontSize: '0.95rem',
+                        fontWeight: 600,
+                        textAlign: 'right',
+                        outline: 'none',
+                        transition: 'all 0.3s',
+                        background: isDarkMode ? 'rgba(168, 85, 247, 0.08)' : 'rgba(255, 255, 255, 0.6)',
+                        border: isDarkMode ? '2px solid rgba(168, 85, 247, 0.2)' : '2px solid rgba(124, 58, 237, 0.2)',
+                        boxSizing: 'border-box',
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#10b981';
+                        e.target.style.boxShadow = '0 0 0 4px rgba(16, 185, 129, 0.1)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = isDarkMode ? 'rgba(168, 85, 247, 0.2)' : 'rgba(124, 58, 237, 0.2)';
+                        e.target.style.boxShadow = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* حقل البريد الإلكتروني */}
                 <div style={{ position: 'relative', width: '100%' }}>
-                  <Mail 
+                  <Mail
                     style={{
                       position: 'absolute',
-                      right: '25rem',
+                      right: '1rem',
                       top: '50%',
                       transform: 'translateY(-50%)',
                       color: isDarkMode ? '#c084fc' : '#9333ea',
@@ -481,13 +614,14 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   />
                   <input
                     type="email"
-                    placeholder= "أدخل بريدك الإلكتروني           "
+                    placeholder="البريد الإلكتروني (مثال: name@gmail.com)"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendOTP()}
+                    onKeyPress={(e) => e.key === 'Enter' && (mode === 'login' ? handleLogin() : handleRegister())}
                     style={{
-                      width: '85%',
-                      padding: '0.75rem 1rem 0.75rem 3rem',
+                      width: '100%',
+                      padding: '0.875rem 1rem 0.875rem 1rem',
+                      paddingRight: '3rem',
                       borderRadius: '1rem',
                       color: isDarkMode ? '#ffffff' : '#1a0b2e',
                       fontSize: '0.95rem',
@@ -495,63 +629,54 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                       textAlign: 'right',
                       outline: 'none',
                       transition: 'all 0.3s',
-                      background: isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.08)' 
-                        : 'rgba(255, 255, 255, 0.6)',
-                      border: isDarkMode
-                        ? '2px solid rgba(168, 85, 247, 0.2)'
-                        : '2px solid rgba(124, 58, 237, 0.2)',
+                      background: isDarkMode ? 'rgba(168, 85, 247, 0.08)' : 'rgba(255, 255, 255, 0.6)',
+                      border: isDarkMode ? '2px solid rgba(168, 85, 247, 0.2)' : '2px solid rgba(124, 58, 237, 0.2)',
+                      boxSizing: 'border-box',
                     }}
                     onFocus={(e) => {
                       e.target.style.borderColor = '#f97316';
-                      e.target.style.background = isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.12)' 
-                        : 'rgba(255, 255, 255, 0.9)';
                       e.target.style.boxShadow = '0 0 0 4px rgba(249, 115, 22, 0.1)';
                     }}
                     onBlur={(e) => {
-                      e.target.style.borderColor = isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.2)' 
-                        : 'rgba(124, 58, 237, 0.2)';
-                      e.target.style.background = isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.08)' 
-                        : 'rgba(255, 255, 255, 0.6)';
+                      e.target.style.borderColor = isDarkMode ? 'rgba(168, 85, 247, 0.2)' : 'rgba(124, 58, 237, 0.2)';
                       e.target.style.boxShadow = 'none';
                     }}
                   />
                 </div>
 
-                {/* زر الإرسال */}
+                {/* زر إرسال رمز التحقق */}
                 <button
-                  onClick={handleSendOTP}
-                  disabled={loading || !email}
+                  onClick={mode === 'login' ? handleLogin : handleRegister}
+                  disabled={loading || !email || (mode === 'register' && !firstName.trim())}
                   style={{
                     width: '100%',
-                    padding: '0.75rem',
+                    padding: '0.875rem',
                     borderRadius: '1rem',
                     color: 'white',
                     fontWeight: 900,
-                    fontSize: '0.95rem',
+                    fontSize: '1rem',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '0.5rem',
                     transition: 'all 0.3s',
-                    cursor: loading || !email ? 'not-allowed' : 'pointer',
-                    opacity: loading || !email ? 0.5 : 1,
+                    cursor: loading || !email || (mode === 'register' && !firstName.trim()) ? 'not-allowed' : 'pointer',
+                    opacity: loading || !email || (mode === 'register' && !firstName.trim()) ? 0.5 : 1,
                     border: 'none',
-                    background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
-                    boxShadow: '0 4px 20px rgba(249, 115, 22, 0.3)'
+                    background: mode === 'login'
+                      ? 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)'
+                      : 'linear-gradient(135deg, #10b981 0%, #14b8a6 50%, #06b6d4 100%)',
+                    boxShadow: mode === 'login'
+                      ? '0 4px 20px rgba(249, 115, 22, 0.3)'
+                      : '0 4px 20px rgba(16, 185, 129, 0.3)'
                   }}
                   onMouseEnter={(e) => {
-                    if (!loading && email) {
+                    if (!loading && email && (mode === 'login' || firstName.trim())) {
                       e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 6px 30px rgba(249, 115, 22, 0.4)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(249, 115, 22, 0.3)';
                   }}
                 >
                   {loading ? (
@@ -574,13 +699,8 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   )}
                 </button>
 
-                {/* خط فاصل "أو" */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  margin: '0.5rem 0',
-                }}>
+                {/* خط فاصل */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.5rem 0' }}>
                   <div style={{
                     flex: 1,
                     height: '1px',
@@ -602,72 +722,66 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   }} />
                 </div>
 
-                {/* زر Google OAuth */}
+                {/* زر التبديل بين تسجيل الدخول وإنشاء حساب */}
                 <button
-                  onClick={handleGoogleSignIn}
-                  disabled={loading}
+                  onClick={() => {
+                    setMode(mode === 'login' ? 'register' : 'login');
+                    setError('');
+                    setFirstName('');
+                  }}
                   style={{
                     width: '100%',
-                    padding: '0.75rem',
+                    padding: '0.875rem',
                     borderRadius: '1rem',
-                    color: isDarkMode ? 'white' : '#1a0b2e',
-                    fontWeight: 900,
+                    color: isDarkMode ? '#e9d5ff' : '#7c3aed',
+                    fontWeight: 700,
                     fontSize: '0.95rem',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '0.75rem',
+                    gap: '0.5rem',
                     transition: 'all 0.3s',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.5 : 1,
-                    border: `2px solid ${isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(124, 58, 237, 0.2)'}`,
-                    background: isDarkMode
-                      ? 'rgba(255, 255, 255, 0.1)'
-                      : 'white',
-                    boxShadow: isDarkMode
-                      ? '0 4px 20px rgba(255, 255, 255, 0.1)'
-                      : '0 4px 20px rgba(124, 58, 237, 0.15)'
+                    cursor: 'pointer',
+                    border: `2px solid ${isDarkMode ? 'rgba(168, 85, 247, 0.3)' : 'rgba(124, 58, 237, 0.2)'}`,
+                    background: isDarkMode ? 'rgba(168, 85, 247, 0.1)' : 'rgba(124, 58, 237, 0.05)',
                   }}
                   onMouseEnter={(e) => {
-                    if (!loading) {
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = isDarkMode
-                        ? '0 6px 30px rgba(255, 255, 255, 0.15)'
-                        : '0 6px 30px rgba(124, 58, 237, 0.2)';
-                    }
+                    e.currentTarget.style.background = isDarkMode ? 'rgba(168, 85, 247, 0.2)' : 'rgba(124, 58, 237, 0.1)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = isDarkMode
-                      ? '0 4px 20px rgba(255, 255, 255, 0.1)'
-                      : '0 4px 20px rgba(124, 58, 237, 0.15)';
+                    e.currentTarget.style.background = isDarkMode ? 'rgba(168, 85, 247, 0.1)' : 'rgba(124, 58, 237, 0.05)';
                   }}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                  </svg>
-                  تسجيل الدخول عبر Google
+                  {mode === 'login' ? (
+                    <>
+                      <UserPlus size={20} />
+                      ليس لديك حساب؟ أنشئ حساباً جديداً
+                    </>
+                  ) : (
+                    <>
+                      <LogIn size={20} />
+                      لديك حساب؟ سجل دخولك
+                    </>
+                  )}
                 </button>
               </div>
             ) : (
+              /* شاشة إدخال رمز التحقق */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                
+
                 {/* رسالة تأكيد الإرسال */}
                 <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
-                  <p style={{ 
-                    color: isDarkMode ? '#e9d5ff' : '#7c3aed', 
-                    fontWeight: 600, 
-                    marginBottom: '0.25rem', 
-                    fontSize: '0.875rem' 
+                  <p style={{
+                    color: isDarkMode ? '#e9d5ff' : '#7c3aed',
+                    fontWeight: 600,
+                    marginBottom: '0.25rem',
+                    fontSize: '0.875rem'
                   }}>
-                    تم إرسال الرمز إلى
+                    تم إرسال رمز التحقق إلى
                   </p>
-                  <p style={{ 
-                    color: '#f97316', 
-                    fontWeight: 900, 
+                  <p style={{
+                    color: '#f97316',
+                    fontWeight: 900,
                     fontSize: '1.125rem',
                     filter: 'drop-shadow(0 0 10px rgba(249, 115, 22, 0.3))'
                   }}>
@@ -675,9 +789,9 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   </p>
                 </div>
 
-                {/* حقل OTP - عريض */}
-                <div style={{ position: 'relative', width: '85%' }}>
-                  <Lock 
+                {/* حقل OTP */}
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <ShieldCheck
                     style={{
                       position: 'absolute',
                       right: '1rem',
@@ -697,36 +811,26 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                     onKeyPress={(e) => e.key === 'Enter' && handleVerifyOTP()}
                     style={{
                       width: '100%',
-                      padding: '0.75rem 1rem 0.75rem 3rem',
+                      padding: '1rem',
+                      paddingRight: '3rem',
                       borderRadius: '1rem',
                       color: isDarkMode ? '#ffffff' : '#1a0b2e',
-                      fontSize: '1.5rem',
+                      fontSize: '1.75rem',
                       fontWeight: 900,
                       textAlign: 'center',
                       outline: 'none',
                       transition: 'all 0.3s',
-                      background: isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.08)' 
-                        : 'rgba(255, 255, 255, 0.6)',
-                      border: isDarkMode
-                        ? '2px solid rgba(168, 85, 247, 0.2)'
-                        : '2px solid rgba(124, 58, 237, 0.2)',
-                      letterSpacing: '0.4em'
+                      background: isDarkMode ? 'rgba(168, 85, 247, 0.08)' : 'rgba(255, 255, 255, 0.6)',
+                      border: isDarkMode ? '2px solid rgba(168, 85, 247, 0.2)' : '2px solid rgba(124, 58, 237, 0.2)',
+                      letterSpacing: '0.5em',
+                      boxSizing: 'border-box',
                     }}
                     onFocus={(e) => {
                       e.target.style.borderColor = '#a855f7';
-                      e.target.style.background = isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.12)' 
-                        : 'rgba(255, 255, 255, 0.9)';
                       e.target.style.boxShadow = '0 0 0 4px rgba(168, 85, 247, 0.1)';
                     }}
                     onBlur={(e) => {
-                      e.target.style.borderColor = isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.2)' 
-                        : 'rgba(124, 58, 237, 0.2)';
-                      e.target.style.background = isDarkMode 
-                        ? 'rgba(168, 85, 247, 0.08)' 
-                        : 'rgba(255, 255, 255, 0.6)';
+                      e.target.style.borderColor = isDarkMode ? 'rgba(168, 85, 247, 0.2)' : 'rgba(124, 58, 237, 0.2)';
                       e.target.style.boxShadow = 'none';
                     }}
                   />
@@ -738,11 +842,11 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   disabled={loading || otp.length !== 6}
                   style={{
                     width: '100%',
-                    padding: '0.75rem',
+                    padding: '0.875rem',
                     borderRadius: '1rem',
                     color: 'white',
                     fontWeight: 900,
-                    fontSize: '0.95rem',
+                    fontSize: '1rem',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -757,12 +861,10 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   onMouseEnter={(e) => {
                     if (!loading && otp.length === 6) {
                       e.currentTarget.style.transform = 'translateY(-2px)';
-                      e.currentTarget.style.boxShadow = '0 6px 30px rgba(168, 85, 247, 0.4)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(168, 85, 247, 0.3)';
                   }}
                 >
                   {loading ? (
@@ -780,18 +882,15 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                   ) : (
                     <>
                       <ShieldCheck size={22} />
-                      تأكيد ودخول اللعبة
+                      تأكيد والدخول
                     </>
                   )}
                 </button>
 
-                {/* زر العودة */}
+                {/* زر إعادة الإرسال */}
                 <button
-                  onClick={() => {
-                    setStep('email');
-                    setOtp('');
-                    setError('');
-                  }}
+                  onClick={handleResendOTP}
+                  disabled={loading}
                   style={{
                     width: '100%',
                     color: isDarkMode ? '#e9d5ff' : '#7c3aed',
@@ -801,7 +900,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                     padding: '0.5rem',
                     background: 'transparent',
                     border: 'none',
-                    cursor: 'pointer'
+                    cursor: loading ? 'not-allowed' : 'pointer'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.color = '#f97316';
@@ -810,7 +909,35 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                     e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : '#7c3aed';
                   }}
                 >
-                  ← تغيير البريد الإلكتروني
+                  لم يصلك الرمز؟ إعادة الإرسال
+                </button>
+
+                {/* زر العودة */}
+                <button
+                  onClick={() => {
+                    setStep('form');
+                    setOtp('');
+                    setError('');
+                  }}
+                  style={{
+                    width: '100%',
+                    color: isDarkMode ? 'rgba(233, 213, 255, 0.6)' : 'rgba(124, 58, 237, 0.6)',
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    transition: 'all 0.3s',
+                    padding: '0.5rem',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = isDarkMode ? '#e9d5ff' : '#7c3aed';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = isDarkMode ? 'rgba(233, 213, 255, 0.6)' : 'rgba(124, 58, 237, 0.6)';
+                  }}
+                >
+                  ← العودة لتغيير البيانات
                 </button>
               </div>
             )}

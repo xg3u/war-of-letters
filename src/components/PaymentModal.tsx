@@ -2,7 +2,8 @@
 // نافذة الدفع المحاكاة (Mocked Payment UI)
 
 import React, { useState } from 'react';
-import { CreditCard, Check, X, Sparkles } from 'lucide-react';
+import { CreditCard, Check, X, Sparkles, Loader2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface PaymentModalProps {
   onClose: () => void;
@@ -12,54 +13,64 @@ interface PaymentModalProps {
 export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }) => {
   const [selectedPlan, setSelectedPlan] = useState<'single' | 'lifetime' | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handlePayment = () => {
-    // 💳 PAYMENT LOGIC (MOCKED - FOR DEMONSTRATION ONLY)
-    //
-    // Production Implementation Guide:
-    // --------------------------------
-    // 1. Payment Gateway Integration Options:
-    //    - Stripe: https://stripe.com/docs/payments
-    //    - PayPal: https://developer.paypal.com/
-    //    - Apple Pay / Google Pay
-    //    - Local Saudi Payment: Moyasar, Tap, HyperPay
-    //
-    // 2. Backend API Endpoint Example:
-    //    POST /api/payments/create-checkout-session
-    //    Body: { plan: 'single' | 'lifetime', amount: 1.99 | 29.99 }
-    //    Response: { sessionId, checkoutUrl }
-    //
-    // 3. Success Webhook:
-    //    POST /api/payments/webhook
-    //    Verify payment signature, update user subscription in database
-    //
-    // 4. Security Requirements:
-    //    - Never store credit card details locally
-    //    - Use HTTPS for all payment transactions
-    //    - Implement CSRF protection
-    //    - Validate all payments server-side
-    //
-    // 5. Database Schema (Supabase):
-    //    CREATE TABLE user_subscriptions (
-    //      id UUID PRIMARY KEY,
-    //      user_id UUID REFERENCES auth.users(id),
-    //      plan_type VARCHAR(20),
-    //      amount DECIMAL(10,2),
-    //      payment_status VARCHAR(20),
-    //      transaction_id VARCHAR(100),
-    //      created_at TIMESTAMP DEFAULT NOW()
-    //    );
-    //
-    // Mock Implementation:
-    console.log(`Processing payment for ${selectedPlan} plan...`);
-    console.log(`Amount: ${selectedPlan === 'single' ? '3.99' : '29.99'} SAR`);
+  const handlePayment = async () => {
+    if (!selectedPlan) return;
 
-    // Simulate payment processing
-    setShowSuccess(true);
+    setIsProcessing(true);
+    setError(null);
 
-    setTimeout(() => {
-      onSuccess();
-    }, 1000);
+    try {
+      // الحصول على المستخدم الحالي
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        throw new Error('يجب تسجيل الدخول أولاً');
+      }
+
+      // حساب تاريخ انتهاء الصلاحية
+      // باقة single: 72 ساعة (3 أيام)
+      // باقة lifetime: null (بدون انتهاء)
+      let expiresAt: string | null = null;
+
+      if (selectedPlan === 'single') {
+        const expiryDate = new Date();
+        expiryDate.setHours(expiryDate.getHours() + 72); // إضافة 72 ساعة
+        expiresAt = expiryDate.toISOString();
+      }
+
+      // تحديث جدول buyers
+      const { error: updateError } = await supabase
+        .from('buyers')
+        .update({
+          plan_type: selectedPlan,
+          expires_at: expiresAt,
+          subscription_status: 'active'
+        })
+        .eq('email', user.email);
+
+      if (updateError) {
+        throw new Error('فشل في تحديث الاشتراك: ' + updateError.message);
+      }
+
+      console.log(`✅ Payment successful for ${selectedPlan} plan`);
+      console.log(`Amount: ${selectedPlan === 'single' ? '3.99' : '29.99'} SAR`);
+      console.log(`Expires at: ${expiresAt || 'Never (Lifetime)'}`);
+
+      setShowSuccess(true);
+
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (showSuccess) {
@@ -348,14 +359,29 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
           </div>
         </div>
 
+        {/* رسالة الخطأ */}
+        {error && (
+          <div style={{
+            padding: '1rem',
+            background: 'rgba(239, 68, 68, 0.2)',
+            border: '2px solid rgba(239, 68, 68, 0.5)',
+            borderRadius: '1rem',
+            color: '#fca5a5',
+            textAlign: 'center',
+            marginBottom: '1rem',
+          }}>
+            {error}
+          </div>
+        )}
+
         {/* زر الدفع */}
         <button
           onClick={handlePayment}
-          disabled={!selectedPlan}
+          disabled={!selectedPlan || isProcessing}
           style={{
             width: '100%',
             padding: '1.5rem',
-            background: selectedPlan
+            background: selectedPlan && !isProcessing
               ? 'linear-gradient(135deg, #10b981, #14b8a6)'
               : 'rgba(255, 255, 255, 0.1)',
             border: 'none',
@@ -363,8 +389,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
             color: 'white',
             fontSize: '1.25rem',
             fontWeight: 900,
-            cursor: selectedPlan ? 'pointer' : 'not-allowed',
-            opacity: selectedPlan ? 1 : 0.5,
+            cursor: selectedPlan && !isProcessing ? 'pointer' : 'not-allowed',
+            opacity: selectedPlan && !isProcessing ? 1 : 0.5,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -372,8 +398,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
             transition: 'all 0.3s',
           }}
         >
-          <CreditCard size={28} />
-          {selectedPlan ? 'إتمام الدفع' : 'اختر الباقة أولاً'}
+          {isProcessing ? (
+            <>
+              <Loader2 size={28} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+              جاري المعالجة...
+            </>
+          ) : (
+            <>
+              <CreditCard size={28} />
+              {selectedPlan ? 'إتمام الدفع' : 'اختر الباقة أولاً'}
+            </>
+          )}
         </button>
 
         {/* ملاحظة */}
@@ -397,6 +432,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
           to {
             transform: scale(1);
             opacity: 1;
+          }
+        }
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
           }
         }
       `}</style>
