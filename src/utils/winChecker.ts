@@ -17,36 +17,63 @@ interface WinCheckResult {
 export const checkWinCondition = (
   cells: HexCell[],
   winCondition: WinCondition,
-  _teamColors: {
+  teamColors: {
     green: 'horizontal' | 'vertical' | 'both';
     red: 'horizontal' | 'vertical' | 'both'
   }
 ): WinCheckResult => {
 
   // ===== شرط الفوز الأساسي: ربط الجدار للجدار =====
-  // 🟢 الأخضر: أفقي فقط (يسار → يمين)
-  // 🔴 الأحمر: عمودي فقط (أعلى → أسفل)
+  // الاتجاه يعتمد على teamColors (يتغير عند عكس الألوان)
+  // 🟢 الأخضر: افتراضياً أفقي (يسار → يمين)، يصير عمودي عند العكس
+  // 🔴 الأحمر: افتراضياً عمودي (أعلى → أسفل)، يصير أفقي عند العكس
 
   if (winCondition === 'wall-to-wall' || winCondition === 'all' || winCondition === 'five-connected') {
 
-    // فحص فوز الأخضر (أفقي: q=0 → q=4)
-    const greenWin = checkHorizontalWin(cells, 'green');
-    if (greenWin.connected && greenWin.pathLength >= 5) {
-      return {
-        winner: 'green',
-        winType: 'wall-to-wall',
-        message: `🎉 الفريق الأخضر ربط ${greenWin.pathLength} خلايا من اليسار لليمين!`
-      };
+    // فحص فوز الأخضر بناءً على اتجاهه
+    if (teamColors.green === 'horizontal') {
+      // الأخضر أفقي: q=0 → q=4
+      const greenWin = checkHorizontalWin(cells, 'green');
+      if (greenWin.connected && greenWin.pathLength >= 5) {
+        return {
+          winner: 'green',
+          winType: 'wall-to-wall',
+          message: `🎉 الفريق الأخضر ربط ${greenWin.pathLength} خلايا من اليسار لليمين!`
+        };
+      }
+    } else {
+      // الأخضر عمودي: r=0 → r=4
+      const greenWin = checkVerticalWin(cells, 'green');
+      if (greenWin.connected && greenWin.pathLength >= 5) {
+        return {
+          winner: 'green',
+          winType: 'wall-to-wall',
+          message: `🎉 الفريق الأخضر ربط ${greenWin.pathLength} خلايا من الأعلى للأسفل!`
+        };
+      }
     }
 
-    // فحص فوز الأحمر (عمودي: r=0 → r=4)
-    const redWin = checkVerticalWin(cells, 'red');
-    if (redWin.connected && redWin.pathLength >= 5) {
-      return {
-        winner: 'red',
-        winType: 'wall-to-wall',
-        message: `🎉 الفريق الأحمر ربط ${redWin.pathLength} خلايا من الأعلى للأسفل!`
-      };
+    // فحص فوز الأحمر بناءً على اتجاهه
+    if (teamColors.red === 'vertical') {
+      // الأحمر عمودي: r=0 → r=4
+      const redWin = checkVerticalWin(cells, 'red');
+      if (redWin.connected && redWin.pathLength >= 5) {
+        return {
+          winner: 'red',
+          winType: 'wall-to-wall',
+          message: `🎉 الفريق الأحمر ربط ${redWin.pathLength} خلايا من الأعلى للأسفل!`
+        };
+      }
+    } else {
+      // الأحمر أفقي: q=0 → q=4
+      const redWin = checkHorizontalWin(cells, 'red');
+      if (redWin.connected && redWin.pathLength >= 5) {
+        return {
+          winner: 'red',
+          winType: 'wall-to-wall',
+          message: `🎉 الفريق الأحمر ربط ${redWin.pathLength} خلايا من اليسار لليمين!`
+        };
+      }
     }
   }
 

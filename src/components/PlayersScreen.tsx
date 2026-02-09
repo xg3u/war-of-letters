@@ -11,6 +11,8 @@ import { CardRoulette } from './CardRoulette';
 import { StreakVisualizer } from './StreakVisualizer';
 import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
+import { ResultsOverlay } from './ResultsOverlay';
+import { getWinStats } from '../utils/winChecker';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
 
@@ -33,7 +35,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   currentQuestion,
   selectedCell,
 }) => {
-  const { cells, syncFromExternal, winner, winMessage, scores, teamCards, winStreak, currentRound } = useGameStore();
+  const { cells, syncFromExternal, scores, teamCards, winStreak, currentRound } = useGameStore();
   const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [zoom, setZoom] = React.useState(1);
   const [showRoulette, setShowRoulette] = React.useState(false);
@@ -45,6 +47,10 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const [localCurrentRound, setLocalCurrentRound] = React.useState(currentRound);
   const [localMatchWinner, setLocalMatchWinner] = React.useState<'green' | 'red' | null>(null);
   const [localTeamCards, setLocalTeamCards] = React.useState(teamCards);
+  const [colorsSwapped, setColorsSwapped] = React.useState(false); // حالة عكس الألوان
+  const [localWinner, setLocalWinner] = React.useState<'green' | 'red' | null>(null); // فائز الجولة
+  const [localWinMessage, setLocalWinMessage] = React.useState<string | null>(null); // رسالة الفوز
+  const [isPaused, setIsPaused] = React.useState(false); // حالة الإيقاف المؤقت
 
   // المزامنة فقط
   React.useEffect(() => {
@@ -122,6 +128,13 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         if (data.round) {
           setLocalCurrentRound(data.round);
         }
+        // تحديث فائز الجولة ورسالة الفوز
+        if (data.winner) {
+          setLocalWinner(data.winner);
+        }
+        if (data.winMessage) {
+          setLocalWinMessage(data.winMessage);
+        }
         // فحص الفوز بالمباراة
         if (data.matchWinner) {
           setLocalMatchWinner(data.matchWinner);
@@ -133,11 +146,25 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         setLocalMatchWinner(null);
         setLocalStreak({ green: 0, red: 0 });
         setLocalTeamCards({ green: [], red: [] });
+        setLocalWinner(null);
+        setLocalWinMessage(null);
+      } else if (data.type === 'ROUND_STARTED') {
+        // بدء جولة جديدة - إعادة تعيين الفائز
+        setLocalWinner(null);
+        setLocalWinMessage(null);
       } else if (data.type === 'COUNTERS_UPDATED') {
         // تحديث عدادات التجميد والدرع
         if (data.cells) {
           syncFromExternal(data.cells);
         }
+      } else if (data.type === 'SETTINGS_UPDATED') {
+        // تحديث الإعدادات وحالة عكس الألوان
+        if (data.colorsSwapped !== undefined) {
+          setColorsSwapped(data.colorsSwapped);
+        }
+      } else if (data.type === 'GAME_PAUSED') {
+        // تحديث حالة الإيقاف المؤقت
+        setIsPaused(data.isPaused);
       }
     });
     return unsubscribe;
@@ -314,6 +341,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
                 zoom={zoom}
                 scale={1}
                 showCardIndicator={false}
+                colorsSwapped={colorsSwapped}
               />
             )}
           </div>
@@ -564,49 +592,18 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       )}
 
       {/* نافذة الفوز بالجولة - تظهر فقط إذا لم يكن هناك فائز بالمباراة */}
-      {winner && winMessage && !localMatchWinner && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.9)',
-          backdropFilter: 'blur(15px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 3000,
-        }}>
-          <div style={{
-            maxWidth: '800px',
-            width: '90%',
-            background: winner === 'green'
-              ? 'linear-gradient(135deg, #10b981, #14b8a6)'
-              : 'linear-gradient(135deg, #ef4444, #dc2626)',
-            border: '6px solid white',
-            borderRadius: '2rem',
-            padding: '4rem',
-            textAlign: 'center',
-          }}>
-            <div style={{
-              fontSize: '8rem',
-              marginBottom: '2rem',
-            }}>
-              🏆
-            </div>
-
-            <h2 style={{
-              fontSize: '4rem',
-              fontWeight: 900,
-              color: 'white',
-              margin: 0,
-              textShadow: '0 4px 10px rgba(0, 0, 0, 0.5)',
-            }}>
-              {winMessage}
-            </h2>
-          </div>
-        </div>
+      {localWinner && localWinMessage && !localMatchWinner && (
+        <ResultsOverlay
+          winner={localWinner}
+          winType={(localWinMessage.includes('ربط') ? 'wall-to-wall' :
+                   localWinMessage.includes('5 خلايا') ? 'five-connected' :
+                   'most-letters') as 'wall-to-wall' | 'five-connected' | 'most-letters'}
+          winMessage={localWinMessage}
+          greenScore={getWinStats(cells).greenCount}
+          redScore={getWinStats(cells).redCount}
+          greenTeamName={settings.teamNames.green}
+          redTeamName={settings.teamNames.red}
+        />
       )}
 
       {/* شاشة الفوز بالمباراة */}
@@ -631,6 +628,67 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             setLocalMatchWinner(null);
           }}
         />
+      )}
+
+      {/* شاشة الإيقاف المؤقت - مطابقة لتصميم شاشة المقدم */}
+      {isPaused && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 3000,
+        }}>
+          {/* أيقونة الإيقاف الزرقاء */}
+          <div style={{
+            width: '80px',
+            height: '80px',
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '1.5rem',
+            boxShadow: '0 8px 32px rgba(59, 130, 246, 0.4)',
+          }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ width: '8px', height: '32px', background: 'white', borderRadius: '4px' }} />
+              <div style={{ width: '8px', height: '32px', background: 'white', borderRadius: '4px' }} />
+            </div>
+          </div>
+
+          {/* صندوق النص */}
+          <div style={{
+            background: 'rgba(139, 92, 246, 0.3)',
+            border: '2px solid rgba(139, 92, 246, 0.5)',
+            borderRadius: '1rem',
+            padding: '1.5rem 3rem',
+            marginBottom: '1.5rem',
+          }}>
+            <h2 style={{
+              fontSize: '1.75rem',
+              fontWeight: 700,
+              color: 'white',
+              margin: 0,
+              textAlign: 'center',
+            }}>
+              اللعبة متوقفة مؤقتاً
+            </h2>
+          </div>
+
+          {/* رسالة الانتظار */}
+          <p style={{
+            fontSize: '1.1rem',
+            color: 'rgba(255, 255, 255, 0.7)',
+            margin: 0,
+          }}>
+            في انتظار استئناف اللعبة من المقدم...
+          </p>
+        </div>
       )}
     </div>
   );

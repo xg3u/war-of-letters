@@ -13,7 +13,7 @@ interface WeightedQuestion extends Question {
 export const getSmartQuestion = async (
   letter: string,
   selectedCategories: string[],
-  excludeQuestionId?: string  // استبعاد سؤال معين (للتغيير)
+  excludeQuestionIds?: string | string[]  // استبعاد سؤال أو أكثر (للتغيير)
 ): Promise<Question | null> => {
 
   try {
@@ -25,9 +25,10 @@ export const getSmartQuestion = async (
       return null;
     }
 
-    // 1.5 استبعاد السؤال المحدد (إذا وجد)
-    if (excludeQuestionId) {
-      pool = pool.filter(q => q.id !== excludeQuestionId);
+    // 1.5 استبعاد الأسئلة المحددة (إذا وجدت)
+    if (excludeQuestionIds) {
+      const idsToExclude = Array.isArray(excludeQuestionIds) ? excludeQuestionIds : [excludeQuestionIds];
+      pool = pool.filter(q => !idsToExclude.includes(q.id));
       if (pool.length === 0) {
         console.warn('No other questions available after exclusion');
         return null;

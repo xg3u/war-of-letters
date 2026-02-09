@@ -10,7 +10,6 @@ import {
   Tv,
   Sparkles,
   Maximize,
-  PartyPopper,
   Pause,
   Dices,
   Play
@@ -77,6 +76,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [showRoulette, setShowRoulette] = useState(false);
   const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
   const [isPaused, setIsPaused] = useState(false);
+  const [colorsSwapped, setColorsSwapped] = useState(false); // حالة عكس الألوان
   const [pendingCard, setPendingCard] = useState<CardType | null>(null); // Card waiting to be awarded to winning team
   const [showRandomLetterAnnouncement, setShowRandomLetterAnnouncement] = useState(false);
   const [isRandomLetterMode, setIsRandomLetterMode] = useState(false); // Track if we're in random letter round start mode
@@ -84,6 +84,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [roundStarted, setRoundStarted] = useState(false); // Control when round actually begins
   const [isStreakRewardMode, setIsStreakRewardMode] = useState(false); // Track if roulette is from streak reward
   const [streakRewardTeam, setStreakRewardTeam] = useState<'green' | 'red' | null>(null); // Team that earned streak reward
+  const [excludedQuestionIds, setExcludedQuestionIds] = useState<string[]>([]); // الأسئلة المستبعدة عند تغيير السؤال
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
@@ -149,6 +150,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       return;
     }
 
+    // ⏸️ لا يمكن اختيار خلية أثناء الإيقاف المؤقت
+    if (isPaused) {
+      console.warn('⚠️ Action blocked: Game is paused');
+      return;
+    }
+
     // 🔒 ACTION LOCK: Prevent cell selection during active processes
     if (isLocked) {
       console.warn('⚠️ Action blocked: Game is locked during roulette/question');
@@ -157,6 +164,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
     if (cell.status === 'unanswered') {
       setSelectedCell(cell);
+      setExcludedQuestionIds([]); // تصفير الأسئلة المستبعدة عند اختيار خلية جديدة
 
       // 🔒 LOCK the game when starting roulette or question
       setLocked(true);
@@ -370,17 +378,23 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const handleChangeQuestion = async () => {
     if (!selectedCell?.letter) return;
 
-    // جلب سؤال جديد من قاعدة البيانات مع استبعاد السؤال الحالي
+    // إضافة السؤال الحالي لقائمة المستبعدة
+    const updatedExcluded = currentQuestionId
+      ? [...excludedQuestionIds, currentQuestionId]
+      : excludedQuestionIds;
+    setExcludedQuestionIds(updatedExcluded);
+
+    // جلب سؤال جديد مع استبعاد كل الأسئلة السابقة
     const newQuestion = await getSmartQuestion(
       selectedCell.letter,
       settings.selectedCategories,
-      currentQuestionId || undefined  // استبعاد السؤال الحالي
+      updatedExcluded
     );
 
     if (newQuestion) {
       setCurrentQuestion(newQuestion.question_text);
       setCurrentAnswer(newQuestion.correct_answer);
-      setCurrentQuestionId(newQuestion.id);  // تحديث معرف السؤال الجديد
+      setCurrentQuestionId(newQuestion.id);
 
       // بث السؤال الجديد للاعبين
       syncManager.broadcast({
@@ -470,10 +484,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     }
   };
 
-  // عكس الألوان - تبديل الفرق
+  // عكس الألوان - تبديل الفرق واتجاهات الفوز
   const handleToggleColors = () => {
+    // عكس حالة الألوان
+    const newColorsSwapped = !colorsSwapped;
+    setColorsSwapped(newColorsSwapped);
+
     // Swap wall/perimeter win directions (horizontal ↔ vertical)
-    // Do NOT swap cell ownership
     const updatedSettings = {
       ...settings,
       teamColors: {
@@ -485,10 +502,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     // Update local storage
     localStorage.setItem('current-game-settings', JSON.stringify(updatedSettings));
 
-    // Broadcast settings update
+    // Broadcast settings update + colors swapped state
     syncManager.broadcast({
       type: 'SETTINGS_UPDATED',
       settings: updatedSettings,
+      colorsSwapped: newColorsSwapped,
     });
 
     // Reinitialize grid with new settings (preserves current cell states)
@@ -532,12 +550,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     } else {
       document.exitFullscreen();
     }
-  };
-
-  // Confetti
-  const handleConfetti = () => {
-    // يمكن إضافة مكتبة confetti لاحقاً
-    console.log('🎉 Confetti!');
   };
 
   return (
@@ -790,7 +802,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           )}
 
           {/* 🔒 Overlay when locked */}
-          {isLocked && roundStarted && (
+          {isLocked && roundStarted && !isPaused && (
             <div style={{
               position: 'absolute',
               top: 0,
@@ -818,12 +830,74 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               </div>
             </div>
           )}
+
+          {/* ⏸️ Overlay when paused */}
+          {isPaused && roundStarted && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.7)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 15,
+              pointerEvents: 'all',
+              gap: '1.5rem',
+            }}>
+              <div style={{ fontSize: '5rem' }}>⏸️</div>
+              <div style={{
+                background: 'rgba(139, 92, 246, 0.3)',
+                border: '3px solid rgba(139, 92, 246, 0.6)',
+                borderRadius: '1.5rem',
+                padding: '1.5rem 3rem',
+                color: 'white',
+                fontSize: '2rem',
+                fontWeight: 900,
+                textAlign: 'center',
+              }}>
+                اللعبة متوقفة مؤقتاً
+              </div>
+              <button
+                onClick={() => {
+                  setIsPaused(false);
+                  // إرسال البث لشاشة اللاعبين
+                  syncManager.broadcast({
+                    type: 'GAME_PAUSED',
+                    isPaused: false,
+                  });
+                }}
+                style={{
+                  padding: '1rem 2.5rem',
+                  fontSize: '1.25rem',
+                  fontWeight: 900,
+                  color: 'white',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  border: 'none',
+                  borderRadius: '1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  boxShadow: '0 4px 20px rgba(16, 185, 129, 0.4)',
+                }}
+              >
+                <Play size={24} fill="white" />
+                استمرار
+              </button>
+            </div>
+          )}
           <HexGrid
             cells={cells}
             onCellClick={handleCellSelect}
             selectedCellId={selectedCell?.id}
             zoom={zoom}
             scale={1}
+            colorsSwapped={colorsSwapped}
           />
         </div>
 
@@ -867,8 +941,15 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           {/* الأزرار - 🔒 معطلة أثناء القفل */}
           <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={20} />} title="إعادة الجولة" disabled={isLocked} />
           <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={20} />} title="ملء الشاشة" disabled={false} />
-          <ControlButton onClick={handleConfetti} color="#fbbf24" icon={<PartyPopper size={20} />} title="احتفال" disabled={false} />
-          <ControlButton onClick={() => setIsPaused(!isPaused)} color="#8b5cf6" icon={<Pause size={20} />} title="إيقاف مؤقت" disabled={isLocked} />
+          <ControlButton onClick={() => {
+            const newPausedState = !isPaused;
+            setIsPaused(newPausedState);
+            // بث حالة الإيقاف المؤقت لشاشة اللاعبين
+            syncManager.broadcast({
+              type: 'GAME_PAUSED',
+              isPaused: newPausedState,
+            });
+          }} color={isPaused ? "#10b981" : "#8b5cf6"} icon={isPaused ? <Play size={20} /> : <Pause size={20} />} title={isPaused ? "استمرار" : "إيقاف مؤقت"} disabled={isLocked} />
           <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={20} />} title="حرف عشوائي" disabled={isLocked} />
           <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={20} />} title="عكس الألوان" disabled={isLocked} />
           <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={20} />} title="شاشة اللاعبين" disabled={false} />

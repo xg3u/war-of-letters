@@ -28,6 +28,55 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
     return hideModal !== 'true';
   });
   const [showPayment, setShowPayment] = useState(false);
+  const [isCheckingSubscription, setIsCheckingSubscription] = useState(false);
+
+  // التحقق من حالة الاشتراك
+  const checkSubscriptionAndProceed = async () => {
+    setIsCheckingSubscription(true);
+
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        // المستخدم غير مسجل دخول - عرض شاشة الدفع
+        setShowPayment(true);
+        return;
+      }
+
+      // جلب بيانات الاشتراك من جدول buyers
+      const { data: buyerData, error: buyerError } = await supabase
+        .from('buyers')
+        .select('plan_type, subscription_status, expires_at')
+        .eq('email', user.email)
+        .single();
+
+      if (buyerError || !buyerData) {
+        // لا يوجد سجل للمستخدم - عرض شاشة الدفع
+        setShowPayment(true);
+        return;
+      }
+
+      // التحقق من صلاحية الاشتراك
+      const isActive = buyerData.subscription_status === 'active';
+      const isLifetime = buyerData.plan_type === 'lifetime';
+      const hasValidExpiry = buyerData.expires_at ? new Date(buyerData.expires_at) > new Date() : false;
+
+      if (isActive && (isLifetime || hasValidExpiry)) {
+        // الاشتراك نشط - الدخول مباشرة للإعدادات
+        console.log('✅ Active subscription found, proceeding to settings');
+        onOpenSettings();
+      } else {
+        // الاشتراك منتهي أو غير نشط - عرض شاشة الدفع
+        console.log('⚠️ No active subscription, showing payment modal');
+        setShowPayment(true);
+      }
+    } catch (err) {
+      console.error('Error checking subscription:', err);
+      setShowPayment(true);
+    } finally {
+      setIsCheckingSubscription(false);
+    }
+  };
 
   // الحروف المتساقطة
   const fallingLetters = useMemo(() =>
@@ -58,7 +107,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
 
   const colors = {
     bg: isDarkMode ? '#0a0118' : '#f8f9fa',
-    bgGradient: isDarkMode 
+    bgGradient: isDarkMode
       ? 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)'
       : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%)',
     cardBg: isDarkMode ? 'rgba(26, 11, 46, 0.7)' : 'rgba(255, 255, 255, 0.9)',
@@ -77,7 +126,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       overflowX: 'hidden',
       direction: 'rtl',
     }}>
-      
+
       {showWelcome && <WelcomeModal onClose={() => setShowWelcome(false)} />}
       {showPayment && (
         <PaymentModal
@@ -114,124 +163,171 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         ))}
       </div>
 
-      {/* Header */}
+      {/* Header - تصميم عصري واحترافي */}
       <header style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        background: 'linear-gradient(180deg, rgba(10, 1, 24, 0.95) 0%, rgba(10, 1, 24, 0.8) 70%, transparent 100%)',
-        padding: '0.5rem 0',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 100,
+        background: isDarkMode
+          ? 'linear-gradient(180deg, rgba(10, 1, 24, 0.98) 0%, rgba(10, 1, 24, 0.9) 50%, rgba(10, 1, 24, 0.7) 100%)'
+          : 'linear-gradient(180deg, rgba(248, 249, 250, 0.98) 0%, rgba(248, 249, 250, 0.9) 50%, rgba(248, 249, 250, 0.7) 100%)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: `1px solid ${isDarkMode ? 'rgba(168, 85, 247, 0.2)' : 'rgba(124, 58, 237, 0.15)'}`,
       }}>
         <div style={{
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
-          padding: '0 1rem',
-          position: 'relative',
-          width: '100%',
+          justifyContent: 'space-between',
+          padding: '0.75rem 2rem',
           maxWidth: '1400px',
           margin: '0 auto',
         }}>
-          {/* صورة الهيدر مصغرة */}
-          <img
-            src={HeaderImage}
-            alt="حرب الحروف"
-            style={{
-              width: '100%',
-              maxWidth: '800px',
-              maxHeight: '180px',
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 4px 20px rgba(168, 85, 247, 0.5))',
-              animation: 'headerGlow 3s ease-in-out infinite',
-            }}
-          />
+          {/* الشعار واسم اللعبة */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+          }}>
+            <img
+              src={HeaderImage}
+              alt="حرب الحروف"
+              style={{
+                height: '50px',
+                objectFit: 'contain',
+                filter: isDarkMode ? 'drop-shadow(0 2px 8px rgba(168, 85, 247, 0.4))' : 'none',
+              }}
+            />
+          </div>
 
-          {/* أزرار التنقل */}
+          {/* قائمة التنقل المركزية */}
           <nav style={{
             display: 'flex',
-            gap: '0.5rem',
+            gap: '0.25rem',
             alignItems: 'center',
-            background: 'rgba(0, 0, 0, 0.6)',
-            backdropFilter: 'blur(15px)',
-            borderRadius: '2rem',
-            padding: '0.5rem 1rem',
-            marginTop: '0.5rem',
-            border: '1px solid rgba(168, 85, 247, 0.3)',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+            background: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+            borderRadius: '1rem',
+            padding: '0.35rem',
+            border: `1px solid ${isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
           }}>
-            {['الرئيسية', 'الأسئلة', 'البطاقات', 'الدليل'].map((item, idx) => (
+            {[
+              { label: 'الرئيسية', section: 'hero', icon: '🏠' },
+              { label: 'الأسئلة', section: 'categories', icon: '❓' },
+              { label: 'البطاقات', section: 'cards', icon: '🃏' },
+              { label: 'الدليل', section: 'guide', icon: '📖' },
+            ].map((item) => (
               <button
-                key={item}
-                onClick={() => scrollToSection(['hero', 'categories', 'cards', 'guide'][idx])}
+                key={item.section}
+                onClick={() => scrollToSection(item.section)}
                 style={{
-                  background: 'none',
+                  background: 'transparent',
                   border: 'none',
-                  color: 'white',
-                  fontWeight: 700,
+                  color: isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)',
+                  fontWeight: 600,
                   cursor: 'pointer',
-                  padding: '0.5rem 0.75rem',
-                  fontSize: '0.85rem',
-                  transition: 'all 0.3s ease',
-                  borderRadius: '1rem',
+                  padding: '0.6rem 1rem',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s ease',
+                  borderRadius: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(168, 85, 247, 0.3)';
+                  e.currentTarget.style.background = isDarkMode
+                    ? 'rgba(168, 85, 247, 0.2)'
+                    : 'rgba(124, 58, 237, 0.1)';
+                  e.currentTarget.style.color = isDarkMode ? '#ffffff' : '#7c3aed';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'none';
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)';
                 }}
               >
-                {item}
+                <span style={{ fontSize: '1rem' }}>{item.icon}</span>
+                {item.label}
               </button>
             ))}
+          </nav>
+
+          {/* أزرار الإجراءات */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}>
+            {/* زر الوضع الداكن/الفاتح */}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               style={{
-                background: 'rgba(255,255,255,0.2)',
-                border: 'none',
-                borderRadius: '50%',
-                padding: '0.5rem',
+                background: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                border: `1px solid ${isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)'}`,
+                borderRadius: '0.75rem',
+                padding: '0.6rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                transition: 'all 0.2s ease',
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = isDarkMode
+                  ? 'rgba(255, 255, 255, 0.15)'
+                  : 'rgba(0, 0, 0, 0.1)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = isDarkMode
+                  ? 'rgba(255, 255, 255, 0.1)'
+                  : 'rgba(0, 0, 0, 0.05)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title={isDarkMode ? 'الوضع الفاتح' : 'الوضع الداكن'}
             >
-              {isDarkMode ? <Sun size={18} color="white" /> : <Moon size={18} color="white" />}
+              {isDarkMode ? <Sun size={20} color="#fbbf24" /> : <Moon size={20} color="#7c3aed" />}
             </button>
+
             {/* زر تسجيل الخروج */}
             <button
               onClick={handleLogout}
               title="تسجيل الخروج"
               style={{
-                background: 'rgba(239, 68, 68, 0.3)',
-                border: '1px solid rgba(239, 68, 68, 0.5)',
-                borderRadius: '50%',
-                padding: '0.5rem',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '0.75rem',
+                padding: '0.6rem 1rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.3s ease',
+                gap: '0.5rem',
+                transition: 'all 0.2s ease',
+                color: '#ef4444',
+                fontWeight: 600,
+                fontSize: '0.9rem',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.5)';
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                e.currentTarget.style.transform = 'scale(1.02)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.3)';
+                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
+                e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              <LogOut size={18} color="#ef4444" />
+              <LogOut size={18} />
+              <span>خروج</span>
             </button>
-          </nav>
+          </div>
         </div>
       </header>
 
-      <main style={{ paddingTop: '14rem' }}>
-        
+      <main style={{ paddingTop: '5rem' }}>
+
         {/* Hero Section */}
         <section id="hero" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ 
-            maxWidth: '700px', width: '100%', padding: '3rem', borderRadius: '3rem', 
+          <div style={{
+            maxWidth: '700px', width: '100%', padding: '3rem', borderRadius: '3rem',
             background: colors.cardBg, backdropFilter: 'blur(20px)', border: `2px solid ${colors.border}`,
             textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
           }}>
@@ -240,17 +336,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
               معركة المعرفة الكبرى
             </h2>
             <p style={{ fontSize: '1.25rem', fontWeight: 600, color: colors.textSecondary, marginBottom: '2rem' }}>
-              تحدَّ أصدقاءك في أول لعبة لوحية إلكترونية تعتمد على الذكاء وبناء الجسور
+              تحدَّ أصدقاءك في أول لعبة لوحية إلكترونية تعتمد على الذكاء وبناء الجسور
             </p>
-            <button 
-              onClick={() => setShowPayment(true)}
-              style={{ 
+            <button
+              onClick={checkSubscriptionAndProceed}
+              disabled={isCheckingSubscription}
+              style={{
                 width: '100%', padding: '1.5rem', borderRadius: '1.5rem', background: 'linear-gradient(135deg, #f97316, #ec4899)',
-                color: 'white', fontSize: '1.5rem', fontWeight: 900, border: 'none', cursor: 'pointer',
-                boxShadow: '0 10px 30px rgba(249, 115, 22, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem'
+                color: 'white', fontSize: '1.5rem', fontWeight: 900, border: 'none', cursor: isCheckingSubscription ? 'wait' : 'pointer',
+                boxShadow: '0 10px 30px rgba(249, 115, 22, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem',
+                opacity: isCheckingSubscription ? 0.7 : 1,
               }}
             >
-              <Play fill="white" /> ابدأ التحدي الآن
+              {isCheckingSubscription ? (
+                <>⏳ جاري التحقق...</>
+              ) : (
+                <><Play fill="white" /> ابدأ التحدي الآن</>
+              )}
             </button>
           </div>
         </section>
@@ -268,11 +370,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
           </div>
         </section>
 
-
-
-
-                {/* Cards Section */}
-        <section id="cards" style={{ padding: '6rem 2rem' }}>
+        {/* Cards Section */}
+        <section id="cards" style={{ padding: '4rem 2rem' }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
             <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
               <h2 style={{ fontSize: '3rem', fontWeight: 900 }}>🃏 البطاقات الإستراتيجية</h2>
@@ -283,70 +382,407 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
           </div>
         </section>
 
-
-        {/* Game Guide Section - الدليل الجديد */}
-        <section id="guide" style={{ padding: '6rem 2rem', background: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)' }}>
-          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-            <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-              <div style={{ display: 'inline-flex', padding: '1rem', borderRadius: '1.5rem', background: 'rgba(168, 85, 247, 0.1)', marginBottom: '1rem' }}>
-                <BookOpen size={40} color="#a855f7" />
+        {/* Game Guide Section - الدليل الشامل */}
+        <section id="guide" style={{ padding: '4rem 2rem', background: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.5)' }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+            {/* العنوان */}
+            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+              <div style={{
+                display: 'inline-flex',
+                padding: '1rem 2rem',
+                borderRadius: '1.5rem',
+                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                marginBottom: '1rem',
+                gap: '0.75rem',
+                alignItems: 'center',
+              }}>
+                <BookOpen size={32} color="#a855f7" />
+                <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#a855f7' }}>الدليل الشامل</span>
               </div>
-              <h2 style={{ fontSize: '3.5rem', fontWeight: 900, margin: 0 }}>دليل المحاربين</h2>
-              <p style={{ fontSize: '1.2rem', color: colors.textSecondary }}>تعلم قوانين اللعبة لتصبح بطلاً</p>
+              <h2 style={{ fontSize: '2.5rem', fontWeight: 900, margin: '0.5rem 0' }}>كل ما تحتاج معرفته عن اللعبة</h2>
+              <p style={{ fontSize: '1.1rem', color: colors.textSecondary, maxWidth: '600px', margin: '0 auto' }}>
+                اقرأ هذا الدليل بعناية لتفهم آليات اللعبة وتصبح محترفاً
+              </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
-              {/* منطق الفوز */}
-              <div style={{ padding: '2rem', borderRadius: '2rem', background: colors.cardBg, border: `1px solid ${colors.border}` }}>
-                <Trophy size={32} color="#f97316" style={{ marginBottom: '1rem' }} />
-                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>كيف تحقق النصر؟</h3>
-                <ul style={{ paddingRight: '1.2rem', lineHeight: '1.8', fontWeight: 500 }}>
-                  <li><b>الجسر الرأسي:</b> اربط مساراً متصلاً من الصف الأول إلى الصف الخامس.</li>
-                  <li><b>الجسر الأفقي:</b> اربط مساراً من أقصى اليمين إلى أقصى اليسار.</li>
-                  <li><b>الارتباط الصارم:</b> يجب أن تلمس الخلايا بعضها؛ لا يحسب الفوز إذا انتهى المسار في جوانب غير متقابلة.</li>
-                </ul>
+            {/* القسم الأول: فكرة اللعبة وطريقة الفوز */}
+            <div style={{
+              background: colors.cardBg,
+              borderRadius: '2rem',
+              padding: '2rem',
+              marginBottom: '2rem',
+              border: `2px solid ${colors.border}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '1rem',
+                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Trophy size={28} color="white" />
+                </div>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>فكرة اللعبة وطرق الفوز</h3>
               </div>
 
-              {/* بطاقات النخبة */}
-              <div style={{ padding: '2rem', borderRadius: '2rem', background: colors.cardBg, border: `1px solid ${colors.border}` }}>
-                <Zap size={32} color="#ec4899" style={{ marginBottom: '1rem' }} />
-                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>ترسانة البطاقات</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div>❄️ <b>تجميد:</b> شل حرفاً أبيض لمدة دورتين.</div>
-                  <div>⚔️ <b>معركة:</b> تحدَّ الخصم لسرقة حرف يملكه بسؤال جديد.</div>
-                  <div>💣 <b>قنبلة:</b> فجر ملكية الخصم وأعد الحرف للحالة البيضاء.</div>
-                  <div>🛡️ <b>الدرع:</b> حماية مطلقة لحروفك لمدة 3 دورات كاملة.</div>
+              <div style={{
+                background: isDarkMode ? 'rgba(249, 115, 22, 0.1)' : 'rgba(249, 115, 22, 0.05)',
+                borderRadius: '1rem',
+                padding: '1.5rem',
+                marginBottom: '1.5rem',
+                border: '1px solid rgba(249, 115, 22, 0.2)',
+              }}>
+                <p style={{ margin: 0, lineHeight: 1.8, fontSize: '1.05rem' }}>
+                  <b>حرب الحروف</b> هي لعبة استراتيجية بين فريقين (أخضر وأحمر). الهدف هو بناء <b>جسر متصل</b> من الحروف
+                  يربط جانبي الملعب. كل فريق له اتجاه فوز مختلف!
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', maxWidth: '700px', margin: '0 auto' }}>
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05))',
+                  borderRadius: '1rem',
+                  padding: '1.5rem',
+                  border: '2px solid rgba(16, 185, 129, 0.3)',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🟢</div>
+                  <h4 style={{ color: '#10b981', fontWeight: 800, marginBottom: '0.75rem', fontSize: '1.25rem' }}>الفريق الأخضر</h4>
+                  <p style={{ margin: 0, fontSize: '1rem', lineHeight: 1.7 }}>
+                    يفوز بربط جسر <b>عمودي</b> من الأعلى إلى الأسفل (من الصف الأول إلى الصف الخامس)
+                  </p>
+                </div>
+
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05))',
+                  borderRadius: '1rem',
+                  padding: '1.5rem',
+                  border: '2px solid rgba(239, 68, 68, 0.3)',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔴</div>
+                  <h4 style={{ color: '#ef4444', fontWeight: 800, marginBottom: '0.75rem', fontSize: '1.25rem' }}>الفريق الأحمر</h4>
+                  <p style={{ margin: 0, fontSize: '1rem', lineHeight: 1.7 }}>
+                    يفوز بربط جسر <b>أفقي</b> من اليمين إلى اليسار (من العمود الأول إلى العمود الخامس)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* القسم الثاني: طرق الحصول على البطاقات */}
+            <div style={{
+              background: colors.cardBg,
+              borderRadius: '2rem',
+              padding: '2rem',
+              marginBottom: '2rem',
+              border: `2px solid ${colors.border}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '1rem',
+                  background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>🎁</span>
+                </div>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>طرق الحصول على البطاقات</h3>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
+                <div style={{
+                  background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                  borderRadius: '1rem',
+                  padding: '1.25rem',
+                  border: `1px solid ${colors.border}`,
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🃏</div>
+                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#ec4899' }}>البطاقات المخفية</h4>
+                  <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                    بعض الخلايا تحتوي على بطاقات مخفية. عند الإجابة الصحيحة على سؤال الخلية، تحصل على بطاقة عشوائية!
+                  </p>
+                </div>
+
+                <div style={{
+                  background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                  borderRadius: '1rem',
+                  padding: '1.25rem',
+                  border: `1px solid ${colors.border}`,
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✨</div>
+                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#fbbf24' }}>الحرف الذهبي</h4>
+                  <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                    الخلايا الذهبية المتوهجة تمنحك بطاقة مباشرة عند الإجابة الصحيحة. ابحث عنها!
+                  </p>
+                </div>
+
+                <div style={{
+                  background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                  borderRadius: '1rem',
+                  padding: '1.25rem',
+                  border: `1px solid ${colors.border}`,
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔥</div>
+                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#f97316' }}>سلسلة الانتصارات</h4>
+                  <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                    أجب على <b>3 أسئلة صحيحة متتالية</b> واحصل على بطاقة مكافأة تلقائياً!
+                  </p>
+                </div>
+
+                <div style={{
+                  background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+                  borderRadius: '1rem',
+                  padding: '1.25rem',
+                  border: `1px solid ${colors.border}`,
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🎲</div>
+                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#3b82f6' }}>الحرف العشوائي</h4>
+                  <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                    في بداية كل جولة، يظهر حرف عشوائي. من يجيب عليه أولاً يحصل على بطاقة!
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* القسم الثالث: شرح البطاقات بالتفصيل */}
+            <div style={{
+              background: colors.cardBg,
+              borderRadius: '2rem',
+              padding: '2rem',
+              marginBottom: '2rem',
+              border: `2px solid ${colors.border}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '1rem',
+                  background: 'linear-gradient(135deg, #ec4899, #db2777)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Zap size={28} color="white" />
+                </div>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>البطاقات الأربعة وتأثيراتها</h3>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                {/* بطاقة التجميد */}
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05))',
+                  borderRadius: '1.25rem',
+                  padding: '1.5rem',
+                  border: '2px solid rgba(59, 130, 246, 0.3)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '2.5rem' }}>🧊</span>
+                    <div>
+                      <h4 style={{ margin: 0, fontWeight: 800, color: '#3b82f6', fontSize: '1.25rem' }}>بطاقة التجميد</h4>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Freeze Card</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>الهدف:</b> خلية فارغة (بيضاء) فقط</p>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>التأثير:</b> تجميد الخلية لمدة <b>دورتين</b></p>
+                    <p style={{ margin: 0, color: '#60a5fa' }}>
+                      <b>الفائدة:</b> الخلية المجمدة لا يمكن لأي فريق اختيارها حتى ينتهي التجميد. استخدمها لقطع طريق الخصم!
+                    </p>
+                  </div>
+                </div>
+
+                {/* بطاقة القنبلة */}
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.05))',
+                  borderRadius: '1.25rem',
+                  padding: '1.5rem',
+                  border: '2px solid rgba(239, 68, 68, 0.3)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '2.5rem' }}>💣</span>
+                    <div>
+                      <h4 style={{ margin: 0, fontWeight: 800, color: '#ef4444', fontSize: '1.25rem' }}>بطاقة القنبلة</h4>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Bomb Card</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>الهدف:</b> خلية يملكها الخصم فقط</p>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>التأثير:</b> تفجير الخلية وإعادتها <b>فارغة</b></p>
+                    <p style={{ margin: 0, color: '#f87171' }}>
+                      <b>الفائدة:</b> دمر تقدم الخصم! الخلية تعود بيضاء ويمكن لأي فريق المنافسة عليها من جديد.
+                    </p>
+                  </div>
+                </div>
+
+                {/* بطاقة المعركة */}
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(234, 88, 12, 0.05))',
+                  borderRadius: '1.25rem',
+                  padding: '1.5rem',
+                  border: '2px solid rgba(249, 115, 22, 0.3)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '2.5rem' }}>⚔️</span>
+                    <div>
+                      <h4 style={{ margin: 0, fontWeight: 800, color: '#f97316', fontSize: '1.25rem' }}>بطاقة المعركة</h4>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Battle Card</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>الهدف:</b> خلية يملكها الخصم</p>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>التأثير:</b> تحدي على سؤال جديد</p>
+                    <p style={{ margin: 0, color: '#fb923c' }}>
+                      <b>الفائدة:</b> إذا أجبت صح تسرق الخلية! إذا أخطأت تبقى للخصم. فرصة ذهبية لقلب الموازين!
+                    </p>
+                  </div>
+                </div>
+
+                {/* بطاقة الدرع */}
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.05))',
+                  borderRadius: '1.25rem',
+                  padding: '1.5rem',
+                  border: '2px solid rgba(16, 185, 129, 0.3)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '2.5rem' }}>🛡️</span>
+                    <div>
+                      <h4 style={{ margin: 0, fontWeight: 800, color: '#10b981', fontSize: '1.25rem' }}>بطاقة الدرع</h4>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Shield Card</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>الهدف:</b> خلية تملكها أنت</p>
+                    <p style={{ margin: '0 0 0.75rem 0' }}><b>التأثير:</b> حماية لمدة <b>3 دورات</b></p>
+                    <p style={{ margin: 0, color: '#34d399' }}>
+                      <b>الفائدة:</b> الخلية المحمية لا تتأثر بالقنبلة أو المعركة! احمِ خلاياك الاستراتيجية.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* القسم الرابع: قواعد مهمة */}
+            <div style={{
+              background: colors.cardBg,
+              borderRadius: '2rem',
+              padding: '2rem',
+              border: `2px solid ${colors.border}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '1rem',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <ShieldCheck size={28} color="white" />
+                </div>
+                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>قواعد مهمة يجب معرفتها</h3>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  alignItems: 'flex-start',
+                  background: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                  padding: '1rem',
+                  borderRadius: '1rem',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>📝</span>
+                  <div>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: 700 }}>قاعدة الحرف</h4>
+                    <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                      الإجابة يجب أن تبدأ بنفس حرف الخلية المختارة (يُتجاهل "ال" التعريف)
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  alignItems: 'flex-start',
+                  background: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                  padding: '1rem',
+                  borderRadius: '1rem',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>👨‍⚖️</span>
+                  <div>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: 700 }}>المقدم هو الحكم</h4>
+                    <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                      قرار المقدم نهائي في قبول الإجابات واستخدام البطاقات
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  alignItems: 'flex-start',
+                  background: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                  padding: '1rem',
+                  borderRadius: '1rem',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>🎯</span>
+                  <div>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: 700 }}>المباراة والجولات</h4>
+                    <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                      المباراة تتكون من عدة جولات. من يفوز بأغلب الجولات يفوز بالمباراة!
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  alignItems: 'flex-start',
+                  background: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                  padding: '1rem',
+                  borderRadius: '1rem',
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>📱</span>
+                  <div>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontWeight: 700 }}>شاشتين متزامنتين</h4>
+                    <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
+                      افتح شاشة المقدم + شاشة اللاعبين على جهازين للتجربة المثالية!
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* قوانين اللعبة */}
-              <div style={{ padding: '2rem', borderRadius: '2rem', background: colors.cardBg, border: `1px solid ${colors.border}` }}>
-                <ShieldCheck size={32} color="#10b981" style={{ marginBottom: '1rem' }} />
-                <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>قواعد السلوك</h3>
-                <ul style={{ paddingRight: '1.2rem', lineHeight: '1.8', fontWeight: 500 }}>
-                  <li><b>قاعدة الحرف:</b> يجب أن تبدأ الإجابة بنفس حرف الخلية (تجاهل الـ التعريف).</li>
-                  <li><b>صلاحية البطاقات:</b> تُطلب البطاقات شفهياً من المقدم؛ وكلمته هي الفصل.</li>
-                  <li><b>الحصول على الكروت:</b> تظهر خلف الحروف، الحروف الذهبية، أو عند الفوز بـ 3 دورات متتالية.</li>
-                </ul>
+              {/* نصيحة ختامية */}
+              <div style={{
+                marginTop: '1.5rem',
+                padding: '1.25rem',
+                borderRadius: '1rem',
+                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(236, 72, 153, 0.1))',
+                border: '1px dashed rgba(168, 85, 247, 0.3)',
+                textAlign: 'center',
+              }}>
+                <HelpCircle size={24} color="#a855f7" style={{ marginBottom: '0.5rem' }} />
+                <p style={{ margin: 0, fontWeight: 600, lineHeight: 1.6 }}>
+                  <b>نصيحة:</b> استخدم البطاقات بحكمة! لا تستخدمها عشوائياً، بل احتفظ بها للحظات الحاسمة.
+                  بطاقة المعركة ممتازة لسرقة خلية استراتيجية، والدرع مثالي لحماية خلية قريبة من إكمال جسرك!
+                </p>
               </div>
-            </div>
-
-            {/* نظام الفوز المصور - مفهوم بصري */}
-            <div style={{ 
-              marginTop: '4rem', padding: '3rem', borderRadius: '2.5rem', 
-              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(249, 115, 22, 0.1))',
-              border: `1px dashed ${colors.border}`, textAlign: 'center'
-            }}>
-              <HelpCircle size={40} color={colors.textSecondary} style={{ marginBottom: '1rem' }} />
-              <h4 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>تلميح تكتيكي</h4>
-              <p style={{ maxWidth: '800px', margin: '0 auto', lineHeight: '1.6', fontWeight: 500 }}>
-                عند استخدام بطاقة <b>المعركة</b>، اختر الحرف الذي يمثل "حجر الزاوية" في جسر خصمك لتقطعه وتكمل جسرك الخاص. المقدم هو الحكم الوحيد الذي يحدد من نطق بالطلب أولاً!
-              </p>
             </div>
           </div>
         </section>
-
-        
 
         <footer style={{ padding: '4rem 2rem', textAlign: 'center', borderTop: `1px solid ${colors.border}` }}>
           <p style={{ fontWeight: 700, color: colors.textSecondary }}>Meshal-ALshammari || xg3u</p>

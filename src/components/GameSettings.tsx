@@ -639,7 +639,17 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
               <input
                 type="checkbox"
                 checked={settings.enableCards}
-                onChange={(e) => setSettings({ ...settings, enableCards: e.target.checked })}
+                onChange={(e) => {
+                  const isEnabled = e.target.checked;
+                  setSettings({
+                    ...settings,
+                    enableCards: isEnabled,
+                    enableRandomLetter: isEnabled,
+                    enableStreakReward: isEnabled,
+                    enableHiddenCards: isEnabled,
+                    enableGoldenLetter: isEnabled,
+                  });
+                }}
                 style={{
                   width: '1.5rem',
                   height: '1.5rem',

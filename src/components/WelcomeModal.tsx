@@ -157,11 +157,39 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               lineHeight: '1.8',
               marginBottom: '1rem',
             }}>
-              لعبة تنافسية ممتعة تختبر معلوماتك في مختلف المجالات! أجب عن الأسئلة من 6 فئات متنوعة واجمع النقاط لتصبح بطل المعرفة!
+              لعبة استراتيجية بين فريقين (أخضر وأحمر). الهدف هو بناء <strong>جسر متصل</strong> من الحروف يربط جانبي الملعب!
             </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '1rem',
+            }}>
+              <div style={{
+                background: 'rgba(16, 185, 129, 0.15)',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🟢</div>
+                <strong style={{ color: '#10b981' }}>الأخضر</strong>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#e9d5ff' }}>جسر عمودي ↕️</p>
+              </div>
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                borderRadius: '0.75rem',
+                padding: '1rem',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔴</div>
+                <strong style={{ color: '#ef4444' }}>الأحمر</strong>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#e9d5ff' }}>جسر أفقي ↔️</p>
+              </div>
+            </div>
           </div>
 
-          {/* الفئات */}
+          {/* البطاقات الإستراتيجية */}
           <div style={{ marginBottom: '2rem' }}>
             <h3 style={{
               fontSize: '1.5rem',
@@ -172,39 +200,8 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               alignItems: 'center',
               gap: '0.5rem',
             }}>
-              🎯 أنواع الأسئلة
-            </h3>
-            <div style={{
-              background: 'rgba(168, 85, 247, 0.1)',
-              borderRadius: '1rem',
-              padding: '1.5rem',
-              border: '1px solid rgba(168, 85, 247, 0.2)',
-            }}>
-              <p style={{
-                color: '#e9d5ff',
-                fontSize: '1rem',
-                lineHeight: '1.8',
-              }}>
-                ⚽ <strong>رياضة</strong> • 📜 <strong>تاريخ</strong> • 🔬 <strong>علوم</strong> • 🌍 <strong>جغرافيا</strong>
-                <br />
-                🎭 <strong>ثقافة</strong> • 💻 <strong>تقنية</strong> • 🕌 <strong>إسلامية</strong> • 🎲 <strong>عامة</strong>
-              </p>
-            </div>
-          </div>
-
-          {/* البطاقات الإستراتيجية */}
-          <div style={{ marginBottom: '2.5rem' }}>
-            <h3 style={{
-              fontSize: '1.5rem',
-              fontWeight: 900,
-              color: 'white',
-              marginBottom: '1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
               <Zap size={24} color="#ec4899" />
-              البطاقات الإستراتيجية
+              البطاقات الأربعة
             </h3>
             <div style={{
               background: 'rgba(236, 72, 153, 0.1)',
@@ -212,25 +209,60 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               padding: '1.5rem',
               border: '1px solid rgba(236, 72, 153, 0.2)',
             }}>
-              <p style={{
-                color: '#e9d5ff',
-                fontSize: '1rem',
-                lineHeight: '1.8',
-                marginBottom: '1rem',
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '0.75rem',
               }}>
-                استخدم البطاقات الخاصة لتغيير مجرى المعركة! كل بطاقة لها قوة فريدة:
-              </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🧊</span>
+                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>تجميد:</strong> جمّد خلية فارغة</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>💣</span>
+                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>قنبلة:</strong> دمّر خلية الخصم</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>⚔️</span>
+                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>معركة:</strong> تحدي لسرقة خلية</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '1.25rem' }}>🛡️</span>
+                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>درع:</strong> احمِ خليتك</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* طرق الحصول على البطاقات */}
+          <div style={{ marginBottom: '2rem' }}>
+            <h3 style={{
+              fontSize: '1.5rem',
+              fontWeight: 900,
+              color: 'white',
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              🎁 كيف تحصل على البطاقات؟
+            </h3>
+            <div style={{
+              background: 'rgba(168, 85, 247, 0.1)',
+              borderRadius: '1rem',
+              padding: '1.25rem',
+              border: '1px solid rgba(168, 85, 247, 0.2)',
+            }}>
               <ul style={{
                 color: '#e9d5ff',
                 fontSize: '0.95rem',
-                lineHeight: '1.8',
+                lineHeight: '2',
                 paddingRight: '1.5rem',
                 margin: 0,
               }}>
-                <li>🧊 <strong>تجميد:</strong> أوقف منافسك لجولة كاملة</li>
-                <li>💣 <strong>قنبلة:</strong> احذف نصف نقاط خصمك</li>
-                <li>🛡️ <strong>درع:</strong> احمِ نفسك من الهجمات</li>
-                <li>🎲 <strong>حظ:</strong> احصل على نقاط إضافية عشوائية</li>
+                <li>🃏 بعض الخلايا تحتوي على بطاقات مخفية</li>
+                <li>✨ الحروف الذهبية تمنحك بطاقة</li>
+                <li>🔥 3 إجابات صحيحة متتالية = بطاقة مكافأة</li>
               </ul>
             </div>
           </div>
@@ -256,7 +288,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
                 color: 'white',
                 margin: 0,
               }}>
-                نصيحة ذهبية
+                قاعدة مهمة
               </h4>
             </div>
             <p style={{
@@ -265,7 +297,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               lineHeight: '1.8',
               margin: 0,
             }}>
-              استخدم البطاقات في الوقت المناسب! التوقيت الصحيح هو مفتاح الفوز. 🎯
+              الإجابة يجب أن تبدأ بنفس حرف الخلية المختارة! 📝
             </p>
           </div>
 

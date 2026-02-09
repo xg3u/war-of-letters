@@ -12,6 +12,7 @@ interface HexGridProps {
   zoom?: number;
   scale?: number;
   showCardIndicator?: boolean; // إظهار مؤشر البطاقات (للمقدم فقط)
+  colorsSwapped?: boolean; // عكس ألوان الحدود (الأخضر يصير أحمر والعكس)
 }
 
 export const HexGrid: React.FC<HexGridProps> = ({
@@ -20,24 +21,29 @@ export const HexGrid: React.FC<HexGridProps> = ({
   selectedCellId = null,
   zoom = 1,
   scale = 1,
-  showCardIndicator = true // افتراضياً يظهر للمقدم
+  showCardIndicator = true, // افتراضياً يظهر للمقدم
+  colorsSwapped = false // عكس الألوان
 }) => {
-  // خلية زينة
-  const createDecorativeCell = (id: string, isRed: boolean = false): HexCellType => ({
-    id,
-    q: 0,
-    r: 0,
-    letter: '',
-    status: isRed ? 'red' : 'green',
-    isGolden: false,
-    hasCard: false,
-    isFrozen: false,
-    frozenBy: null,
-    freezeCounter: 0,
-    isShielded: false,
-    shieldCounter: 0,
-    categoryId: '',
-  });
+  // خلية زينة - مع دعم عكس الألوان
+  const createDecorativeCell = (id: string, isRed: boolean = false): HexCellType => {
+    // إذا كانت الألوان معكوسة، نعكس الأحمر والأخضر
+    const actualIsRed = colorsSwapped ? !isRed : isRed;
+    return {
+      id,
+      q: 0,
+      r: 0,
+      letter: '',
+      status: actualIsRed ? 'red' : 'green',
+      isGolden: false,
+      hasCard: false,
+      isFrozen: false,
+      frozenBy: null,
+      freezeCounter: 0,
+      isShielded: false,
+      shieldCounter: 0,
+      categoryId: '',
+    };
+  };
 
   // تقسيم الخلايا (5x5)
   const gameRows: HexCellType[][] = [];
