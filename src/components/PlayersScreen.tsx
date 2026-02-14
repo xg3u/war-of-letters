@@ -201,14 +201,14 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           width: '200px',
           minWidth: '200px',
           background: 'rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(20px)',
+          backdropFilter: 'blur(10px)',
           border: '2px solid rgba(16, 185, 129, 0.3)',
           borderRadius: '1.5rem',
           padding: '1.5rem 1rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.75rem',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.15)',
         }}>
           {/* Team Icon */}
           <div style={{
@@ -240,7 +240,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             fontSize: '4rem',
             fontWeight: 900,
             color: '#10b981',
-            textShadow: '0 4px 12px rgba(16, 185, 129, 0.5)',
+            textShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
             lineHeight: 1,
             textAlign: 'center',
           }}>
@@ -352,14 +352,14 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           width: '200px',
           minWidth: '200px',
           background: 'rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(20px)',
+          backdropFilter: 'blur(10px)',
           border: '2px solid rgba(239, 68, 68, 0.3)',
           borderRadius: '1.5rem',
           padding: '1.5rem 1rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '0.75rem',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.15)',
         }}>
           {/* Team Icon */}
           <div style={{
@@ -391,7 +391,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             fontSize: '4rem',
             fontWeight: 900,
             color: '#ef4444',
-            textShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
+            textShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
             lineHeight: 1,
             textAlign: 'center',
           }}>
@@ -558,7 +558,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             fontSize: '3.5rem',
             fontWeight: 900,
             color: 'white',
-            textShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+            textShadow: '0 2px 10px rgba(0, 0, 0, 0.25)',
             textAlign: 'center',
             margin: 0,
           }}>
@@ -636,7 +636,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           position: 'fixed',
           inset: 0,
           background: 'rgba(0, 0, 0, 0.7)',
-          backdropFilter: 'blur(8px)',
+          backdropFilter: 'blur(5px)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -653,7 +653,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: '1.5rem',
-            boxShadow: '0 8px 32px rgba(59, 130, 246, 0.4)',
+            boxShadow: '0 6px 20px rgba(59, 130, 246, 0.3)',
           }}>
             <div style={{ display: 'flex', gap: '8px' }}>
               <div style={{ width: '8px', height: '32px', background: 'white', borderRadius: '4px' }} />

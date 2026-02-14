@@ -101,7 +101,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       right: 0,
       bottom: 0,
       background: 'rgba(0, 0, 0, 0.85)',
-      backdropFilter: 'blur(10px)',
+      backdropFilter: 'blur(6px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -109,17 +109,18 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       animation: 'fadeIn 0.3s ease',
     }}>
       {/* الجزيئات المتحركة */}
-      {[...Array(20)].map((_, i) => (
+      {[...Array(8)].map((_, i) => (
         <div
           key={i}
           style={{
             position: 'absolute',
-            fontSize: '2rem',
-            animation: `float ${2 + Math.random() * 2}s ease-in-out infinite`,
+            fontSize: '1.75rem',
+            animation: `float ${2.5 + Math.random() * 2}s ease-in-out infinite`,
             animationDelay: `${Math.random() * 2}s`,
             left: `${Math.random() * 100}%`,
             top: `${Math.random() * 100}%`,
-            opacity: 0.6,
+            opacity: 0.5,
+            willChange: 'transform',
           }}
         >
           {config.particles}
@@ -133,7 +134,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
         borderRadius: '2rem',
         padding: '3rem',
         textAlign: 'center',
-        boxShadow: `0 20px 60px ${config.color}80`,
+        boxShadow: `0 12px 35px ${config.color}60`,
         animation: 'scaleIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
         maxWidth: '500px',
         position: 'relative',
@@ -154,7 +155,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           fontWeight: 900,
           color: 'white',
           margin: '0 0 1rem 0',
-          textShadow: '0 4px 10px rgba(0, 0, 0, 0.5)',
+          textShadow: '0 2px 6px rgba(0, 0, 0, 0.4)',
         }}>
           {config.title}
         </h2>
@@ -166,7 +167,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
             fontWeight: 700,
             color: 'white',
             margin: 0,
-            textShadow: '0 2px 5px rgba(0, 0, 0, 0.3)',
+            textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
           }}>
             {message}
           </p>
@@ -179,38 +180,19 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
             from { opacity: 0; }
             to { opacity: 1; }
           }
-
           @keyframes scaleIn {
-            from {
-              opacity: 0;
-              transform: scale(0.5) rotate(-10deg);
-            }
-            to {
-              opacity: 1;
-              transform: scale(1) rotate(0deg);
-            }
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
           }
-
           @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-20px); }
+            0%, 100% { transform: translate3d(0, 0, 0); }
+            50% { transform: translate3d(0, -15px, 0); }
           }
-
           @keyframes float {
-            0%, 100% {
-              transform: translateY(0) rotate(0deg);
-              opacity: 0;
-            }
-            10% {
-              opacity: 0.6;
-            }
-            90% {
-              opacity: 0.6;
-            }
-            100% {
-              transform: translateY(-100vh) rotate(360deg);
-              opacity: 0;
-            }
+            0% { transform: translate3d(0, 0, 0); opacity: 0; }
+            10% { opacity: 0.5; }
+            90% { opacity: 0.5; }
+            100% { transform: translate3d(0, -80vh, 0); opacity: 0; }
           }
         `}
       </style>

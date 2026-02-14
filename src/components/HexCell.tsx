@@ -77,74 +77,41 @@ export const HexCell: React.FC<HexCellProps> = ({
     return 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.9) 50%, rgba(241,245,249,0.85) 100%)';
   };
 
-  // الظل المتوهج
+  // الظل المتوهج - مبسط للأداء
   const getBoxShadow = () => {
     if (cell.status === 'destroyed') {
-      return 'inset 0 0 20px rgba(0,0,0,0.8), 0 2px 8px rgba(0,0,0,0.5)';
+      return 'inset 0 0 15px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.4)';
     }
 
     if (cell.isFrozen) {
-      return `
-        0 0 20px rgba(56, 189, 248, 0.6),
-        0 0 40px rgba(14, 165, 233, 0.4),
-        inset 0 0 15px rgba(255, 255, 255, 0.3),
-        0 4px 15px rgba(0, 0, 0, 0.2)
-      `;
+      return '0 0 15px rgba(56, 189, 248, 0.5), 0 4px 12px rgba(0, 0, 0, 0.2)';
     }
 
     if (cell.isShielded) {
-      return `
-        0 0 25px rgba(16, 185, 129, 0.5),
-        0 0 50px rgba(16, 185, 129, 0.3),
-        inset 0 0 10px rgba(255, 255, 255, 0.2),
-        0 4px 15px rgba(0, 0, 0, 0.2)
-      `;
+      return '0 0 15px rgba(16, 185, 129, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2)';
     }
 
     if (isSelected) {
-      return `
-        0 0 30px rgba(251, 191, 36, 0.7),
-        0 0 60px rgba(251, 191, 36, 0.4),
-        0 8px 25px rgba(0, 0, 0, 0.3)
-      `;
+      return '0 0 20px rgba(251, 191, 36, 0.6), 0 6px 20px rgba(0, 0, 0, 0.25)';
     }
 
     if (cell.isGolden && cell.status === 'unanswered') {
-      return `
-        0 0 20px rgba(250, 204, 21, 0.5),
-        0 0 40px rgba(234, 179, 8, 0.3),
-        0 4px 15px rgba(0, 0, 0, 0.2)
-      `;
+      return '0 0 15px rgba(250, 204, 21, 0.4), 0 4px 12px rgba(0, 0, 0, 0.15)';
     }
 
     if (cell.status === 'green') {
-      return `
-        0 0 15px rgba(34, 197, 94, 0.4),
-        inset 0 2px 4px rgba(255, 255, 255, 0.3),
-        0 4px 12px rgba(0, 0, 0, 0.15)
-      `;
+      return '0 0 10px rgba(34, 197, 94, 0.3), 0 3px 10px rgba(0, 0, 0, 0.12)';
     }
 
     if (cell.status === 'red') {
-      return `
-        0 0 15px rgba(239, 68, 68, 0.4),
-        inset 0 2px 4px rgba(255, 255, 255, 0.3),
-        0 4px 12px rgba(0, 0, 0, 0.15)
-      `;
+      return '0 0 10px rgba(239, 68, 68, 0.3), 0 3px 10px rgba(0, 0, 0, 0.12)';
     }
 
     if (isHovered) {
-      return `
-        0 8px 25px rgba(0, 0, 0, 0.2),
-        inset 0 2px 4px rgba(255, 255, 255, 0.5),
-        0 0 15px rgba(168, 85, 247, 0.3)
-      `;
+      return '0 6px 18px rgba(0, 0, 0, 0.15), 0 0 10px rgba(168, 85, 247, 0.2)';
     }
 
-    return `
-      0 4px 12px rgba(0, 0, 0, 0.1),
-      inset 0 2px 4px rgba(255, 255, 255, 0.5)
-    `;
+    return '0 3px 8px rgba(0, 0, 0, 0.08)';
   };
 
   // الحدود
@@ -186,7 +153,7 @@ export const HexCell: React.FC<HexCellProps> = ({
     fontFamily: "'Tajawal', sans-serif",
     fontWeight: 900,
     cursor: isClickable ? 'pointer' : 'not-allowed',
-    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+    transition: 'transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease',
     position: 'relative',
     background: getBackground(),
     boxShadow: getBoxShadow(),
@@ -194,13 +161,14 @@ export const HexCell: React.FC<HexCellProps> = ({
     color: (isCollected || isDecorative || cell.isFrozen) ? 'white' : '#1e293b',
     opacity: cell.status === 'destroyed' ? 0.5 : 1,
     transform: isSelected
-      ? 'scale(1.15) translateY(-5px)'
+      ? 'scale(1.15) translate3d(0, -5px, 0)'
       : isHovered && isClickable
-        ? 'scale(1.08) translateY(-3px)'
-        : 'scale(1)',
+        ? 'scale(1.08) translate3d(0, -3px, 0)'
+        : 'scale(1) translate3d(0, 0, 0)',
     zIndex: isSelected ? 10 : isHovered ? 5 : 1,
     userSelect: 'none',
     overflow: 'hidden',
+    willChange: 'transform',
   };
 
   return (
@@ -280,12 +248,12 @@ export const HexCell: React.FC<HexCellProps> = ({
           position: 'relative',
           zIndex: 2,
           textShadow: cell.isFrozen
-            ? '0 0 10px rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.3)'
+            ? '0 1px 3px rgba(0,0,0,0.3)'
             : cell.isGolden && cell.status === 'unanswered'
-              ? '0 0 15px rgba(255,255,255,0.9), 0 0 30px rgba(250,204,21,0.6)'
+              ? '0 0 8px rgba(255,255,255,0.7)'
               : (cell.status === 'green' || cell.status === 'red')
-                ? '0 2px 4px rgba(0,0,0,0.3)'
-                : '0 1px 2px rgba(0,0,0,0.1)',
+                ? '0 1px 3px rgba(0,0,0,0.3)'
+                : 'none',
           color: cell.isFrozen
             ? '#fff'
             : (cell.isGolden && cell.status === 'unanswered')
@@ -303,7 +271,6 @@ export const HexCell: React.FC<HexCellProps> = ({
           top: `${5 * scale}px`,
           right: `${8 * scale}px`,
           fontSize: `${14 * scale}px`,
-          filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))',
           animation: 'cardBounce 2s ease-in-out infinite',
         }}>
           🎁
@@ -342,7 +309,6 @@ export const HexCell: React.FC<HexCellProps> = ({
           right: `${6 * scale}px`,
           fontSize: `${16 * scale}px`,
           animation: 'frozenIcon 2s ease-in-out infinite',
-          filter: 'drop-shadow(0 0 5px rgba(56, 189, 248, 0.8))',
         }}>
           ❄️
         </div>
@@ -374,7 +340,6 @@ export const HexCell: React.FC<HexCellProps> = ({
           left: `${6 * scale}px`,
           fontSize: `${14 * scale}px`,
           animation: 'shieldGlow 2s ease-in-out infinite',
-          filter: 'drop-shadow(0 0 5px rgba(16, 185, 129, 0.8))',
         }}>
           🛡️
         </div>
@@ -406,7 +371,7 @@ export const HexCell: React.FC<HexCellProps> = ({
           overflow: 'hidden',
           pointerEvents: 'none',
         }}>
-          {[...Array(8)].map((_, i) => (
+          {[...Array(4)].map((_, i) => (
             <div
               key={i}
               style={{
@@ -427,61 +392,28 @@ export const HexCell: React.FC<HexCellProps> = ({
       {/* الأنيميشنات */}
       <style>{`
         @keyframes sparkle {
-          0%, 100% {
-            opacity: 1;
-            transform: scale(1) rotate(0deg);
-          }
-          50% {
-            opacity: 0.6;
-            transform: scale(1.2) rotate(180deg);
-          }
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.15); }
         }
-
         @keyframes cardBounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-3px); }
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          50% { transform: translate3d(0, -3px, 0); }
         }
-
         @keyframes frozenIcon {
-          0%, 100% {
-            transform: scale(1) rotate(0deg);
-            opacity: 1;
-          }
-          50% {
-            transform: scale(1.1) rotate(10deg);
-            opacity: 0.8;
-          }
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.1); opacity: 0.8; }
         }
-
         @keyframes shieldPulse {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 0.6;
-          }
-          50% {
-            transform: scale(1.1);
-            opacity: 0.3;
-          }
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.08); opacity: 0.3; }
         }
-
         @keyframes shieldGlow {
-          0%, 100% {
-            filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.8));
-          }
-          50% {
-            filter: drop-shadow(0 0 15px rgba(16, 185, 129, 1));
-          }
+          0%, 100% { opacity: 0.8; }
+          50% { opacity: 1; }
         }
-
         @keyframes snowfall {
-          0% {
-            transform: translateY(0) rotate(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(100px) rotate(360deg);
-            opacity: 0;
-          }
+          0% { transform: translate3d(0, 0, 0); opacity: 1; }
+          100% { transform: translate3d(0, 100px, 0) rotate(360deg); opacity: 0; }
         }
       `}</style>
     </div>

@@ -572,11 +572,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         {/* بطاقة الفريق */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(20px)',
+          backdropFilter: 'blur(10px)',
           border: '2px solid rgba(16, 185, 129, 0.3)',
           borderRadius: '1.5rem',
           padding: '2rem 1.5rem',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.15)',
         }}>
           {/* اسم الفريق */}
           <div style={{
@@ -594,7 +594,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
+              boxShadow: '0 3px 10px rgba(16, 185, 129, 0.3)',
             }}>
               <Users size={28} color="white" />
             </div>
@@ -626,7 +626,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               fontSize: '4rem',
               fontWeight: 900,
               color: '#10b981',
-              textShadow: '0 4px 12px rgba(16, 185, 129, 0.5)',
+              textShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
               lineHeight: 1,
             }}>
               {scores.green}
@@ -711,7 +711,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               position: 'absolute',
               inset: 0,
               background: 'rgba(0, 0, 0, 0.6)',
-              backdropFilter: 'blur(8px)',
+              backdropFilter: 'blur(5px)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -755,16 +755,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '1rem',
-                  boxShadow: '0 8px 32px rgba(16, 185, 129, 0.4), 0 0 60px rgba(16, 185, 129, 0.2)',
+                  boxShadow: '0 6px 24px rgba(16, 185, 129, 0.35)',
                   transition: 'all 0.3s ease',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'scale(1.05)';
-                  e.currentTarget.style.boxShadow = '0 12px 40px rgba(16, 185, 129, 0.5), 0 0 80px rgba(16, 185, 129, 0.3)';
+                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(16, 185, 129, 0.45)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'scale(1)';
-                  e.currentTarget.style.boxShadow = '0 8px 32px rgba(16, 185, 129, 0.4), 0 0 60px rgba(16, 185, 129, 0.2)';
+                  e.currentTarget.style.boxShadow = '0 6px 24px rgba(16, 185, 129, 0.35)';
                 }}
               >
                 <Play size={32} fill="white" />
@@ -809,8 +809,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               left: 0,
               right: 0,
               bottom: 0,
-              background: 'rgba(0, 0, 0, 0.3)',
-              backdropFilter: 'blur(2px)',
+              background: 'rgba(0, 0, 0, 0.25)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -839,8 +838,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               left: 0,
               right: 0,
               bottom: 0,
-              background: 'rgba(0, 0, 0, 0.7)',
-              backdropFilter: 'blur(8px)',
+              background: 'rgba(0, 0, 0, 0.65)',
+              backdropFilter: 'blur(5px)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -907,12 +906,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           alignItems: 'center',
           justifyContent: 'center',
           gap: '1.75rem',
-          background: 'rgba(0, 0, 0, 0.3)',
-          backdropFilter: 'blur(20px)',
+          background: 'rgba(0, 0, 0, 0.35)',
+          backdropFilter: 'blur(10px)',
           padding: '1rem 1.5rem',
           borderRadius: '2rem',
           border: '2px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
           alignSelf: 'center',
         }}>
           {/* Zoom Slider */}
@@ -967,11 +966,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         {/* بطاقة الفريق */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(20px)',
+          backdropFilter: 'blur(10px)',
           border: '2px solid rgba(239, 68, 68, 0.3)',
           borderRadius: '1.5rem',
           padding: '2rem 1.5rem',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.15)',
         }}>
           {/* اسم الفريق */}
           <div style={{
@@ -989,7 +988,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
+              boxShadow: '0 3px 10px rgba(239, 68, 68, 0.3)',
             }}>
               <Users size={28} color="white" />
             </div>
@@ -1021,7 +1020,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               fontSize: '4rem',
               fontWeight: 900,
               color: '#ef4444',
-              textShadow: '0 4px 12px rgba(239, 68, 68, 0.5)',
+              textShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
               lineHeight: 1,
             }}>
               {scores.red}
@@ -1092,7 +1091,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           right: 0,
           bottom: 0,
           background: 'rgba(0, 0, 0, 0.8)',
-          backdropFilter: 'blur(10px)',
+          backdropFilter: 'blur(6px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

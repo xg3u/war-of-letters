@@ -94,10 +94,10 @@ const StreakCounter: React.FC<{
     display: 'flex',
     alignItems: 'center',
     gap: '0.75rem',
-    backdropFilter: 'blur(10px)',
-    transition: 'all 0.3s ease',
+    backdropFilter: 'blur(6px)',
+    transition: 'transform 0.3s ease, box-shadow 0.3s ease',
     transform: streak > 0 ? 'scale(1.05)' : 'scale(1)',
-    boxShadow: streak > 0 ? `0 4px 20px ${color}40` : 'none',
+    boxShadow: streak > 0 ? `0 3px 12px ${color}30` : 'none',
   }}>
     <div style={{
       display: 'flex',
@@ -113,8 +113,7 @@ const StreakCounter: React.FC<{
           style={{
             transition: 'all 0.3s ease',
             transform: i <= streak ? 'scale(1.1)' : 'scale(0.9)',
-            filter: i <= streak ? `drop-shadow(0 0 6px ${color})` : 'none',
-            animation: i <= streak ? 'flameFlicker 0.5s ease-in-out infinite' : 'none',
+            animation: i <= streak ? 'flameFlicker 0.8s ease-in-out infinite' : 'none',
           }}
         />
       ))}
@@ -177,11 +176,7 @@ const StreakReminder: React.FC<{
           overflow: 'hidden',
           position: 'relative',
           background: `linear-gradient(145deg, ${color}20, ${color}40)`,
-          boxShadow: `
-            0 20px 40px ${color}50,
-            0 0 0 3px ${color},
-            inset 0 2px 4px rgba(255,255,255,0.3)
-          `,
+          boxShadow: `0 8px 24px ${color}40, 0 0 0 3px ${color}`,
         }}>
           <img
             src={characterImage}
@@ -190,7 +185,6 @@ const StreakReminder: React.FC<{
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
             }}
           />
 
@@ -223,16 +217,12 @@ const StreakReminder: React.FC<{
       }}>
         {/* خلفية الفقاعة */}
         <div style={{
-          background: `linear-gradient(135deg, rgba(0,0,0,0.8), rgba(0,0,0,0.9))`,
-          backdropFilter: 'blur(20px)',
+          background: `linear-gradient(135deg, rgba(0,0,0,0.85), rgba(0,0,0,0.9))`,
+          backdropFilter: 'blur(8px)',
           borderRadius: '1.25rem',
           padding: '1rem 1.25rem',
           border: `2px solid ${color}`,
-          boxShadow: `
-            0 10px 30px rgba(0,0,0,0.4),
-            0 0 20px ${color}30,
-            inset 0 1px 0 rgba(255,255,255,0.1)
-          `,
+          boxShadow: `0 8px 24px rgba(0,0,0,0.3), 0 0 12px ${color}20`,
         }}>
           {/* العنوان */}
           <div style={{
@@ -249,7 +239,7 @@ const StreakReminder: React.FC<{
               borderRadius: '1rem',
               fontSize: '0.875rem',
               fontWeight: 900,
-              boxShadow: `0 2px 10px ${color}50`,
+              boxShadow: `0 2px 6px ${color}40`,
             }}>
               ⚡ سلسلة الإجابات
             </span>
@@ -303,36 +293,24 @@ const StreakReminder: React.FC<{
 
       <style>{`
         @keyframes slideInCharacter {
-          from {
-            opacity: 0;
-            transform: translateY(80px) scale(0.8);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
+          from { opacity: 0; transform: translate3d(0, 60px, 0) scale(0.85); }
+          to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
         }
         @keyframes characterFloat {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-8px); }
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          50% { transform: translate3d(0, -6px, 0); }
         }
         @keyframes glowPulse {
-          0%, 100% { opacity: 0.5; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.1); }
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.05); }
         }
         @keyframes fireWiggle {
-          0%, 100% { transform: rotate(-10deg) scale(1); }
-          50% { transform: rotate(10deg) scale(1.1); }
+          0%, 100% { transform: rotate(-8deg); }
+          50% { transform: rotate(8deg); }
         }
         @keyframes bubbleAppear {
-          from {
-            opacity: 0;
-            transform: scale(0.9) translateX(${position === 'left' ? '-20px' : '20px'});
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateX(0);
-          }
+          from { opacity: 0; transform: scale(0.9); }
+          to { opacity: 1; transform: scale(1); }
         }
       `}</style>
     </div>

@@ -132,17 +132,18 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
       {/* الكونفيتي عند النتيجة */}
       {showResult && (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-          {[...Array(50)].map((_, i) => (
+          {[...Array(18)].map((_, i) => (
             <div key={i} style={{
               position: 'absolute',
               left: `${Math.random() * 100}%`,
               top: '-10px',
-              width: `${Math.random() * 10 + 5}px`,
-              height: `${Math.random() * 10 + 5}px`,
+              width: `${Math.random() * 8 + 4}px`,
+              height: `${Math.random() * 8 + 4}px`,
               background: ['#fbbf24', '#ec4899', '#8b5cf6', '#10b981', '#3b82f6', '#ef4444'][Math.floor(Math.random() * 6)],
               borderRadius: Math.random() > 0.5 ? '50%' : '2px',
               animation: `fall ${Math.random() * 2 + 2}s linear forwards`,
-              animationDelay: `${Math.random() * 0.8}s`,
+              animationDelay: `${Math.random() * 0.5}s`,
+              willChange: 'transform',
             }} />
           ))}
         </div>
@@ -159,7 +160,6 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
           fontSize: '4rem',
           marginBottom: '1rem',
           animation: isSpinning ? 'bounce 0.6s ease-in-out infinite' : 'none',
-          filter: 'drop-shadow(0 0 20px rgba(251, 191, 36, 0.6))',
         }}>
           {showResult ? '🎉' : triggerIcon}
         </div>
@@ -167,7 +167,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
           fontSize: '2.5rem',
           fontWeight: 900,
           color: '#fbbf24',
-          textShadow: '0 0 30px rgba(251, 191, 36, 0.5)',
+          textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
           margin: 0,
         }}>
           {showResult ? 'مبروك!' : triggerText}
@@ -189,8 +189,8 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
             : `linear-gradient(145deg, ${currentCard.color}80, ${currentCard.color}40)`,
           border: `4px solid ${showResult ? displayCard.color : 'rgba(255,255,255,0.3)'}`,
           boxShadow: showResult
-            ? `0 0 60px ${displayCard.color}80, 0 20px 40px rgba(0,0,0,0.4), inset 0 0 30px rgba(255,255,255,0.2)`
-            : '0 10px 30px rgba(0,0,0,0.3)',
+            ? `0 0 30px ${displayCard.color}60, 0 12px 30px rgba(0,0,0,0.3)`
+            : '0 8px 20px rgba(0,0,0,0.25)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -203,7 +203,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
           {/* الأيقونة */}
           <div style={{
             fontSize: '5rem',
-            filter: showResult ? 'drop-shadow(0 0 20px white)' : 'none',
+            filter: 'none',
             animation: showResult ? 'iconBounce 0.6s ease-out' : 'none',
           }}>
             {showResult ? displayCard.icon : currentCard.icon}
@@ -214,7 +214,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
             fontSize: '1.5rem',
             fontWeight: 900,
             color: 'white',
-            textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+            textShadow: '0 1px 4px rgba(0,0,0,0.4)',
           }}>
             {showResult ? displayCard.name : currentCard.name}
           </div>
@@ -233,7 +233,6 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
               borderLeft: '15px solid transparent',
               borderRight: '15px solid transparent',
               borderTop: '20px solid #fbbf24',
-              filter: 'drop-shadow(0 0 10px rgba(251, 191, 36, 0.8))',
               animation: 'arrowPulse 0.5s ease-in-out infinite',
             }} />
             <div style={{
@@ -246,7 +245,6 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
               borderLeft: '15px solid transparent',
               borderRight: '15px solid transparent',
               borderBottom: '20px solid #fbbf24',
-              filter: 'drop-shadow(0 0 10px rgba(251, 191, 36, 0.8))',
               animation: 'arrowPulse 0.5s ease-in-out infinite',
             }} />
           </>
@@ -263,7 +261,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         padding: '1rem 1.5rem',
         background: 'rgba(0,0,0,0.3)',
         borderRadius: '1rem',
-        backdropFilter: 'blur(10px)',
+        backdropFilter: 'blur(6px)',
       }}>
         {CARDS.map((card, idx) => {
           const isActive = showResult
@@ -284,7 +282,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
               fontSize: '1.5rem',
               transition: 'all 0.2s ease',
               transform: isActive ? 'scale(1.15)' : 'scale(1)',
-              boxShadow: isActive ? `0 0 20px ${card.color}80` : 'none',
+              boxShadow: isActive ? `0 0 12px ${card.color}60` : 'none',
             }}>
               {card.icon}
             </div>
@@ -335,36 +333,35 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
           50% { opacity: 0.7; }
         }
         @keyframes bounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-10px); }
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          50% { transform: translate3d(0, -10px, 0); }
         }
         @keyframes cardSpin {
-          0% { transform: scale(0.95) rotateY(0deg); }
-          50% { transform: scale(0.98) rotateY(5deg); }
-          100% { transform: scale(0.95) rotateY(0deg); }
+          0% { transform: scale(0.95); }
+          50% { transform: scale(0.98); }
+          100% { transform: scale(0.95); }
         }
         @keyframes cardReveal {
-          0% { transform: scale(0.8) rotateY(180deg); opacity: 0; }
-          50% { transform: scale(1.2) rotateY(90deg); }
-          100% { transform: scale(1.1) rotateY(0deg); opacity: 1; }
+          0% { transform: scale(0.8); opacity: 0; }
+          60% { transform: scale(1.15); }
+          100% { transform: scale(1.1); opacity: 1; }
         }
         @keyframes iconBounce {
           0% { transform: scale(0); }
-          50% { transform: scale(1.3); }
-          70% { transform: scale(0.9); }
+          60% { transform: scale(1.2); }
           100% { transform: scale(1); }
         }
         @keyframes arrowPulse {
           0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
-          50% { opacity: 0.7; transform: translateX(-50%) scale(0.9); }
+          50% { opacity: 0.6; transform: translateX(-50%) scale(0.9); }
         }
         @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translate3d(0, 15px, 0); }
+          to { opacity: 1; transform: translate3d(0, 0, 0); }
         }
         @keyframes fall {
-          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+          0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 1; }
+          100% { transform: translate3d(0, 100vh, 0) rotate(540deg); opacity: 0; }
         }
       `}</style>
     </div>

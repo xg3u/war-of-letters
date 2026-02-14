@@ -80,15 +80,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
 
   // الحروف المتساقطة
   const fallingLetters = useMemo(() =>
-    Array.from({ length: 40 }).map((_, i) => ({
+    Array.from({ length: 18 }).map((_, i) => ({
       id: i,
       char: ARABIC_LETTERS[Math.floor(Math.random() * ARABIC_LETTERS.length)],
       color: LETTER_COLORS[Math.floor(Math.random() * LETTER_COLORS.length)],
       left: `${Math.random() * 100}%`,
-      duration: `${15 + Math.random() * 20}s`,
+      duration: `${18 + Math.random() * 22}s`,
       delay: `${Math.random() * 15}s`,
       size: `${1.5 + Math.random() * 2}rem`,
-      opacity: 0.15 + Math.random() * 0.2,
+      opacity: 0.12 + Math.random() * 0.15,
     }))
   , []);
 
@@ -121,7 +121,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       minHeight: '100vh',
       background: colors.bgGradient,
       color: colors.text,
-      transition: 'all 0.5s ease',
+      transition: 'background 0.5s ease, color 0.3s ease',
       position: 'relative',
       overflowX: 'hidden',
       direction: 'rtl',
@@ -152,10 +152,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
               opacity: isDarkMode ? letter.opacity : letter.opacity * 0.5,
               fontWeight: 900,
               fontFamily: 'Tajawal, sans-serif',
-              textShadow: `0 0 20px ${letter.color}60`,
               animation: `letterFall ${letter.duration} linear infinite`,
               animationDelay: letter.delay,
-              filter: 'blur(0.5px)',
+              willChange: 'transform',
             }}
           >
             {letter.char}
@@ -173,7 +172,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         background: isDarkMode
           ? 'linear-gradient(180deg, rgba(10, 1, 24, 0.98) 0%, rgba(10, 1, 24, 0.9) 50%, rgba(10, 1, 24, 0.7) 100%)'
           : 'linear-gradient(180deg, rgba(248, 249, 250, 0.98) 0%, rgba(248, 249, 250, 0.9) 50%, rgba(248, 249, 250, 0.7) 100%)',
-        backdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(12px)',
         borderBottom: `1px solid ${isDarkMode ? 'rgba(168, 85, 247, 0.2)' : 'rgba(124, 58, 237, 0.15)'}`,
       }}>
         <div style={{
@@ -794,48 +793,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       <style>{`
         @keyframes letterFall {
           0% {
-            transform: translateY(-10vh) rotate(0deg);
+            transform: translate3d(0, -10vh, 0) rotate(0deg);
             opacity: 0;
           }
-          5% {
-            opacity: 1;
-          }
-          95% {
-            opacity: 1;
-          }
+          5% { opacity: 1; }
+          95% { opacity: 1; }
           100% {
-            transform: translateY(110vh) rotate(360deg);
+            transform: translate3d(0, 110vh, 0) rotate(360deg);
             opacity: 0;
-          }
-        }
-
-        @keyframes headerGlow {
-          0%, 100% {
-            filter: drop-shadow(0 4px 20px rgba(168, 85, 247, 0.5));
-          }
-          50% {
-            filter: drop-shadow(0 4px 30px rgba(249, 115, 22, 0.6)) drop-shadow(0 0 40px rgba(236, 72, 153, 0.4));
           }
         }
 
         @keyframes float {
-          0%, 100% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(-10px);
-          }
+          0%, 100% { transform: translate3d(0, 0, 0); }
+          50% { transform: translate3d(0, -10px, 0); }
         }
 
         @keyframes pulse {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 1;
-          }
-          50% {
-            transform: scale(1.05);
-            opacity: 0.9;
-          }
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.05); opacity: 0.9; }
         }
       `}</style>
     </div>

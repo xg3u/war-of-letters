@@ -112,8 +112,8 @@ export const HexGrid: React.FC<HexGridProps> = ({
         flexDirection: 'column',
         alignItems: 'center',
         transform: `scale(${zoom})`,
-        transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-        backdropFilter: 'blur(20px)',
+        transition: 'transform 0.3s ease',
+        backdropFilter: 'blur(10px)',
         border: '2px solid rgba(139, 92, 246, 0.2)',
       }}
     >
