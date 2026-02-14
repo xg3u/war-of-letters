@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { HexCell } from './HexCell';
+import { useScreenSize } from '../hooks/useScreenSize';
 import type { HexCell as HexCellType } from '../core/types';
 
 interface HexGridProps {
@@ -24,6 +25,8 @@ export const HexGrid: React.FC<HexGridProps> = ({
   showCardIndicator = true, // افتراضياً يظهر للمقدم
   colorsSwapped = false // عكس الألوان
 }) => {
+  const { isMobile, isTablet } = useScreenSize();
+  const responsiveScale = scale * (isMobile ? 0.65 : isTablet ? 0.85 : 1);
   // خلية زينة - مع دعم عكس الألوان
   const createDecorativeCell = (id: string, isRed: boolean = false): HexCellType => {
     // إذا كانت الألوان معكوسة، نعكس الأحمر والأخضر
@@ -97,7 +100,7 @@ export const HexGrid: React.FC<HexGridProps> = ({
   return (
     <div
       style={{
-        padding: '15px',
+        padding: isMobile ? '8px' : '15px',
         background: 'linear-gradient(145deg, rgba(15, 10, 35, 0.95) 0%, rgba(30, 20, 60, 0.9) 50%, rgba(15, 10, 35, 0.95) 100%)',
         borderRadius: '24px',
         boxShadow: `
@@ -124,9 +127,9 @@ export const HexGrid: React.FC<HexGridProps> = ({
             display: 'flex',
             gap: '2px',
             justifyContent: 'center',
-            marginTop: idx === 0 ? 0 : `${-20 * scale}px`,
-            marginRight: layoutRow.rowIndex % 2 === 0 ? 0 : `${42 * scale}px`,
-            marginLeft: layoutRow.rowIndex % 2 === 0 ? `${42 * scale}px` : 0,
+            marginTop: idx === 0 ? 0 : `${-20 * responsiveScale}px`,
+            marginRight: layoutRow.rowIndex % 2 === 0 ? 0 : `${42 * responsiveScale}px`,
+            marginLeft: layoutRow.rowIndex % 2 === 0 ? `${42 * responsiveScale}px` : 0,
             transition: 'margin 0.3s ease',
           }}
         >
@@ -149,7 +152,7 @@ export const HexGrid: React.FC<HexGridProps> = ({
                 }
                 isDecorative={isDecorative}
                 isSelected={cell.id === selectedCellId}
-                scale={scale}
+                scale={responsiveScale}
                 showCardIndicator={showCardIndicator}
               />
             );

@@ -186,3 +186,27 @@ body {
 .border-glow {
   box-shadow: 0 0 20px currentColor, inset 0 0 20px currentColor;
 }
+
+/* ===== Responsive Media Queries ===== */
+
+/* Mobile: < 640px */
+@media (max-width: 639px) {
+  :root {
+    font-size: 14px;
+  }
+}
+
+/* Tablet: 640px - 1024px */
+@media (min-width: 640px) and (max-width: 1024px) {
+  :root {
+    font-size: 15px;
+  }
+}
+
+/* Touch-friendly targets */
+@media (hover: none) and (pointer: coarse) {
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

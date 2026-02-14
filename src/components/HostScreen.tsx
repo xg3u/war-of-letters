@@ -17,6 +17,7 @@ import {
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
 import { getSmartQuestion } from '../utils/questionEngine';
+import { useScreenSize } from '../hooks/useScreenSize';
 import { HexGrid } from './HexGrid';
 import { ActionCardPanel } from './ActionCardPanel';
 import { CardAnimation } from './CardAnimation';
@@ -85,6 +86,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [isStreakRewardMode, setIsStreakRewardMode] = useState(false); // Track if roulette is from streak reward
   const [streakRewardTeam, setStreakRewardTeam] = useState<'green' | 'red' | null>(null); // Team that earned streak reward
   const [excludedQuestionIds, setExcludedQuestionIds] = useState<string[]>([]); // الأسئلة المستبعدة عند تغيير السؤال
+
+  const { isMobile, isTablet, isDesktop } = useScreenSize();
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
@@ -556,13 +559,106 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     <div style={{
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 25%, #6366f1 50%, #4f46e5 75%, #3730a3 100%)',
-      padding: '1.5rem',
+      padding: isMobile ? '0.75rem' : isTablet ? '1rem' : '1.5rem',
       display: 'flex',
-      gap: '1.5rem',
+      flexDirection: isDesktop ? 'row' : 'column',
+      gap: isMobile ? '0.75rem' : '1.5rem',
       position: 'relative',
     }}>
 
-      {/* لوحة الفريق الأيمن (الأخضر) */}
+      {/* لوحتي الفريقين - صف أفقي على الموبايل/التابلت */}
+      {!isDesktop && (
+        <div style={{
+          display: 'flex',
+          gap: isMobile ? '0.5rem' : '1rem',
+          width: '100%',
+        }}>
+          {/* بطاقة الفريق الأخضر - مضغوطة */}
+          <div style={{
+            flex: 1,
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            border: '2px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: '1rem',
+            padding: isMobile ? '0.75rem' : '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '0.5rem' : '0.75rem',
+          }}>
+            <div style={{
+              width: isMobile ? '36px' : '42px',
+              height: isMobile ? '36px' : '42px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #10b981, #14b8a6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Users size={isMobile ? 18 : 22} color="white" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {settings.teamNames.green}
+              </div>
+              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
+                {scores.green}
+              </div>
+            </div>
+            {teamCards.green.length > 0 && (
+              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                {teamCards.green.map((card, idx) => (
+                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* بطاقة الفريق الأحمر - مضغوطة */}
+          <div style={{
+            flex: 1,
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            border: '2px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '1rem',
+            padding: isMobile ? '0.75rem' : '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '0.5rem' : '0.75rem',
+          }}>
+            <div style={{
+              width: isMobile ? '36px' : '42px',
+              height: isMobile ? '36px' : '42px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Users size={isMobile ? 18 : 22} color="white" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {settings.teamNames.red}
+              </div>
+              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
+                {scores.red}
+              </div>
+            </div>
+            {teamCards.red.length > 0 && (
+              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                {teamCards.red.map((card, idx) => (
+                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* لوحة الفريق الأيمن (الأخضر) - Desktop فقط */}
+      {isDesktop && (
       <div style={{
         width: '280px',
         display: 'flex',
@@ -687,13 +783,14 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           </div>
         </div>
       </div>
+      )}
 
       {/* المنطقة الوسطى */}
       <div style={{
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        gap: '1.5rem',
+        gap: isMobile ? '0.75rem' : '1.5rem',
       }}>
 
         {/* الشبكة */}
@@ -702,7 +799,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          minHeight: '500px',
+          minHeight: isMobile ? '250px' : isTablet ? '350px' : '500px',
           position: 'relative',
         }}>
           {/* 🎮 زر بدء الجولة - يظهر قبل بدء الجولة */}
@@ -723,9 +820,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                 textAlign: 'center',
                 color: 'white',
               }}>
-                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🎮</div>
+                <div style={{ fontSize: isMobile ? '2.5rem' : '4rem', marginBottom: isMobile ? '0.5rem' : '1rem' }}>🎮</div>
                 <h2 style={{
-                  fontSize: '2rem',
+                  fontSize: isMobile ? '1.25rem' : '2rem',
                   fontWeight: 900,
                   margin: 0,
                   marginBottom: '0.5rem',
@@ -733,7 +830,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                   جاهز للبدء؟
                 </h2>
                 <p style={{
-                  fontSize: '1.125rem',
+                  fontSize: isMobile ? '0.875rem' : '1.125rem',
                   color: 'rgba(255, 255, 255, 0.7)',
                   margin: 0,
                 }}>
@@ -744,8 +841,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               <button
                 onClick={handleStartRound}
                 style={{
-                  padding: '1.5rem 4rem',
-                  fontSize: '1.75rem',
+                  padding: isMobile ? '1rem 2.5rem' : '1.5rem 4rem',
+                  fontSize: isMobile ? '1.25rem' : '1.75rem',
                   fontWeight: 900,
                   color: 'white',
                   background: 'linear-gradient(135deg, #10b981, #059669)',
@@ -905,10 +1002,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '1.75rem',
+          gap: isMobile ? '0.5rem' : isTablet ? '1rem' : '1.75rem',
+          flexWrap: isMobile ? 'wrap' : 'nowrap',
           background: 'rgba(0, 0, 0, 0.35)',
           backdropFilter: 'blur(10px)',
-          padding: '1rem 1.5rem',
+          padding: isMobile ? '0.75rem' : '1rem 1.5rem',
           borderRadius: '2rem',
           border: '2px solid rgba(255, 255, 255, 0.1)',
           boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
@@ -956,7 +1054,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         </div>
       </div>
 
-      {/* لوحة الفريق الأيسر (الأحمر) */}
+      {/* لوحة الفريق الأيسر (الأحمر) - Desktop فقط */}
+      {isDesktop && (
       <div style={{
         width: '280px',
         display: 'flex',
@@ -1081,6 +1180,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           </div>
         </div>
       </div>
+      )}
 
       {/* نافذة السؤال */}
       {showQuestion && (

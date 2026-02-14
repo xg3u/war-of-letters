@@ -8,3 +8,6 @@ export type { GameState } from './useGameState';
 
 export { useSync, useSyncMinimal } from './useSync';
 export type { SyncCallbacks } from './useSync';
+
+export { useScreenSize } from './useScreenSize';
+export type { ScreenSize, ScreenInfo } from './useScreenSize';
