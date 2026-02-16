@@ -3,6 +3,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Target, Zap, Trophy } from 'lucide-react';
+import { useScreenSize } from '../hooks/useScreenSize';
+import { supabase } from '../lib/supabase';
 
 interface WelcomeModalProps {
   onClose: () => void;
@@ -10,15 +12,23 @@ interface WelcomeModalProps {
 
 export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
   const [dontShowAgain, setDontShowAgain] = useState(false);
+  const { isMobile, isTablet } = useScreenSize();
 
-  const handleClose = () => {
+  const handleClose = async () => {
+    // احفظ فقط إذا اختار المستخدم "لا تظهر مرة أخرى"
     if (dontShowAgain) {
-      localStorage.setItem('hideWelcomeModal', 'true');
+      // جلب معرف المستخدم الحالي
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const hideModalKey = `hideWelcomeModal_${user.id}`;
+        localStorage.setItem(hideModalKey, 'true');
+      }
     }
     onClose();
   };
 
   const handleSkip = () => {
+    // عند الضغط على X، لا نحفظ - الرسالة ستظهر مرة أخرى
     onClose();
   };
 
@@ -32,8 +42,8 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1rem',
-        background: 'rgba(0, 0, 0, 0.85)',
-        backdropFilter: 'blur(10px)',
+        background: 'linear-gradient(135deg, rgba(10, 1, 24, 0.75) 0%, rgba(26, 11, 46, 0.85) 50%, rgba(45, 17, 84, 0.75) 100%)',
+        backdropFilter: 'blur(20px)',
         animation: 'fadeIn 0.3s ease',
       }}
       onClick={handleSkip}
@@ -42,11 +52,11 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: '700px',
+          maxWidth: isMobile ? '95%' : '700px',
           width: '100%',
           maxHeight: '90vh',
           overflowY: 'auto',
-          borderRadius: '2rem',
+          borderRadius: isMobile ? '1rem' : '2rem',
           background: 'linear-gradient(135deg, #1a0b2e 0%, #2d1154 100%)',
           border: '2px solid rgba(168, 85, 247, 0.3)',
           boxShadow: '0 20px 60px rgba(168, 85, 247, 0.4)',
@@ -58,10 +68,10 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
           onClick={handleSkip}
           style={{
             position: 'absolute',
-            top: '1.5rem',
-            right: '1.5rem',
-            width: '2.5rem',
-            height: '2.5rem',
+            top: isMobile ? '1rem' : '1.5rem',
+            right: isMobile ? '1rem' : '1.5rem',
+            width: isMobile ? '2rem' : '2.5rem',
+            height: isMobile ? '2rem' : '2.5rem',
             borderRadius: '50%',
             background: 'rgba(255, 255, 255, 0.1)',
             border: '2px solid rgba(255, 255, 255, 0.2)',
@@ -85,17 +95,17 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
         </button>
 
         {/* المحتوى */}
-        <div style={{ padding: '3rem 2.5rem' }}>
-          
+        <div style={{ padding: isMobile ? '1.5rem 1.25rem' : '3rem 2.5rem' }}>
+
           {/* الأيقونة */}
           <div style={{
             display: 'flex',
             justifyContent: 'center',
-            marginBottom: '2rem',
+            marginBottom: isMobile ? '1rem' : '2rem',
           }}>
             <div style={{
-              width: '5rem',
-              height: '5rem',
+              width: isMobile ? '3.5rem' : '5rem',
+              height: isMobile ? '3.5rem' : '5rem',
               borderRadius: '1.5rem',
               background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
               display: 'flex',
@@ -104,13 +114,13 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               boxShadow: '0 10px 30px rgba(249, 115, 22, 0.4)',
               animation: 'float 3s ease-in-out infinite',
             }}>
-              <Sparkles size={40} color="white" strokeWidth={2.5} />
+              <Sparkles size={isMobile ? 28 : 40} color="white" strokeWidth={2.5} />
             </div>
           </div>
 
           {/* العنوان */}
           <h2 style={{
-            fontSize: '2.5rem',
+            fontSize: isMobile ? '1.5rem' : '2.5rem',
             fontWeight: 900,
             textAlign: 'center',
             marginBottom: '0.5rem',
@@ -124,8 +134,8 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
           <p style={{
             textAlign: 'center',
             color: '#e9d5ff',
-            fontSize: '1.125rem',
-            marginBottom: '2rem',
+            fontSize: isMobile ? '0.875rem' : '1.125rem',
+            marginBottom: isMobile ? '1rem' : '2rem',
           }}>
             استعد لخوض أقوى معركة معلومات باللغة العربية!
           </p>
@@ -134,35 +144,35 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
           <div style={{
             height: '1px',
             background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
-            marginBottom: '2rem',
+            marginBottom: isMobile ? '1rem' : '2rem',
           }} />
 
           {/* شرح اللعبة */}
-          <div style={{ marginBottom: '2rem' }}>
+          <div style={{ marginBottom: isMobile ? '1rem' : '2rem' }}>
             <h3 style={{
-              fontSize: '1.5rem',
+              fontSize: isMobile ? '1.1rem' : '1.5rem',
               fontWeight: 900,
               color: 'white',
-              marginBottom: '1.5rem',
+              marginBottom: isMobile ? '1rem' : '1.5rem',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
             }}>
-              <Target size={24} color="#f97316" />
+              <Target size={isMobile ? 20 : 24} color="#f97316" />
               فكرة اللعبة
             </h3>
             <p style={{
               color: '#e9d5ff',
-              fontSize: '1rem',
+              fontSize: isMobile ? '0.875rem' : '1rem',
               lineHeight: '1.8',
-              marginBottom: '1rem',
+              marginBottom: isMobile ? '0.75rem' : '1rem',
             }}>
               لعبة استراتيجية بين فريقين (أخضر وأحمر). الهدف هو بناء <strong>جسر متصل</strong> من الحروف يربط جانبي الملعب!
             </p>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '1rem',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              gap: isMobile ? '0.5rem' : '1rem',
             }}>
               <div style={{
                 background: 'rgba(16, 185, 129, 0.15)',
@@ -190,57 +200,57 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
           </div>
 
           {/* البطاقات الإستراتيجية */}
-          <div style={{ marginBottom: '2rem' }}>
+          <div style={{ marginBottom: isMobile ? '1rem' : '2rem' }}>
             <h3 style={{
-              fontSize: '1.5rem',
+              fontSize: isMobile ? '1.1rem' : '1.5rem',
               fontWeight: 900,
               color: 'white',
-              marginBottom: '1.5rem',
+              marginBottom: isMobile ? '1rem' : '1.5rem',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
             }}>
-              <Zap size={24} color="#ec4899" />
+              <Zap size={isMobile ? 20 : 24} color="#ec4899" />
               البطاقات الأربعة
             </h3>
             <div style={{
               background: 'rgba(236, 72, 153, 0.1)',
               borderRadius: '1rem',
-              padding: '1.5rem',
+              padding: isMobile ? '1rem' : '1.5rem',
               border: '1px solid rgba(236, 72, 153, 0.2)',
             }}>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '0.75rem',
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                gap: isMobile ? '0.5rem' : '0.75rem',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>🧊</span>
-                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>تجميد:</strong> جمّد خلية فارغة</span>
+                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>🧊</span>
+                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>تجميد:</strong> جمّد خلية فارغة</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>💣</span>
-                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>قنبلة:</strong> دمّر خلية الخصم</span>
+                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>💣</span>
+                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>قنبلة:</strong> دمّر خلية الخصم</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>⚔️</span>
-                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>معركة:</strong> تحدي لسرقة خلية</span>
+                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>⚔️</span>
+                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>معركة:</strong> تحدي لسرقة خلية</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>🛡️</span>
-                  <span style={{ color: '#e9d5ff', fontSize: '0.9rem' }}><strong>درع:</strong> احمِ خليتك</span>
+                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>🛡️</span>
+                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>درع:</strong> احمِ خليتك</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* طرق الحصول على البطاقات */}
-          <div style={{ marginBottom: '2rem' }}>
+          <div style={{ marginBottom: isMobile ? '1rem' : '2rem' }}>
             <h3 style={{
-              fontSize: '1.5rem',
+              fontSize: isMobile ? '1.1rem' : '1.5rem',
               fontWeight: 900,
               color: 'white',
-              marginBottom: '1rem',
+              marginBottom: isMobile ? '0.75rem' : '1rem',
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
@@ -250,14 +260,14 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
             <div style={{
               background: 'rgba(168, 85, 247, 0.1)',
               borderRadius: '1rem',
-              padding: '1.25rem',
+              padding: isMobile ? '1rem' : '1.25rem',
               border: '1px solid rgba(168, 85, 247, 0.2)',
             }}>
               <ul style={{
                 color: '#e9d5ff',
-                fontSize: '0.95rem',
+                fontSize: isMobile ? '0.8rem' : '0.95rem',
                 lineHeight: '2',
-                paddingRight: '1.5rem',
+                paddingRight: isMobile ? '1.25rem' : '1.5rem',
                 margin: 0,
               }}>
                 <li>🃏 بعض الخلايا تحتوي على بطاقات مخفية</li>
@@ -271,9 +281,9 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
           <div style={{
             background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(168, 85, 247, 0.1))',
             borderRadius: '1rem',
-            padding: '1.5rem',
+            padding: isMobile ? '1rem' : '1.5rem',
             border: '2px solid rgba(249, 115, 22, 0.3)',
-            marginBottom: '2rem',
+            marginBottom: isMobile ? '1rem' : '2rem',
           }}>
             <div style={{
               display: 'flex',
@@ -281,9 +291,9 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               gap: '0.75rem',
               marginBottom: '0.75rem',
             }}>
-              <Trophy size={24} color="#fbbf24" />
+              <Trophy size={isMobile ? 20 : 24} color="#fbbf24" />
               <h4 style={{
-                fontSize: '1.25rem',
+                fontSize: isMobile ? '1rem' : '1.25rem',
                 fontWeight: 900,
                 color: 'white',
                 margin: 0,
@@ -293,7 +303,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
             </div>
             <p style={{
               color: '#e9d5ff',
-              fontSize: '1rem',
+              fontSize: isMobile ? '0.875rem' : '1rem',
               lineHeight: '1.8',
               margin: 0,
             }}>
@@ -305,26 +315,29 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
           <div style={{
             height: '1px',
             background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
-            marginBottom: '2rem',
+            marginBottom: isMobile ? '1rem' : '2rem',
           }} />
 
-          {/* Checkbox عدم الإظهار */}
-          <label style={{
+          {/* Checkbox: لا تظهر مرة أخرى */}
+          <div style={{
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: '0.75rem',
+            marginBottom: isMobile ? '1rem' : '1.5rem',
+            padding: isMobile ? '0.75rem' : '1rem',
+            background: 'rgba(168, 85, 247, 0.1)',
+            borderRadius: '0.75rem',
+            border: '1px solid rgba(168, 85, 247, 0.2)',
             cursor: 'pointer',
-            marginBottom: '1.5rem',
-            padding: '1rem',
-            borderRadius: '1rem',
-            background: 'rgba(255, 255, 255, 0.05)',
             transition: 'all 0.2s',
           }}
+          onClick={() => setDontShowAgain(!dontShowAgain)}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+            e.currentTarget.style.background = 'rgba(168, 85, 247, 0.1)';
           }}
           >
             <input
@@ -332,32 +345,34 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               checked={dontShowAgain}
               onChange={(e) => setDontShowAgain(e.target.checked)}
               style={{
-                width: '1.25rem',
-                height: '1.25rem',
+                width: isMobile ? '1.25rem' : '1.5rem',
+                height: isMobile ? '1.25rem' : '1.5rem',
                 cursor: 'pointer',
                 accentColor: '#a855f7',
               }}
+              onClick={(e) => e.stopPropagation()}
             />
-            <span style={{
+            <label style={{
               color: '#e9d5ff',
-              fontSize: '1rem',
-              fontWeight: 600,
+              fontSize: isMobile ? '0.875rem' : '1rem',
+              cursor: 'pointer',
+              userSelect: 'none',
             }}>
               لا تظهر هذه الرسالة مرة أخرى
-            </span>
-          </label>
+            </label>
+          </div>
 
           {/* زر ابدأ */}
           <button
             onClick={handleClose}
             style={{
               width: '100%',
-              padding: '1.25rem',
+              padding: isMobile ? '1rem' : '1.25rem',
               borderRadius: '1.25rem',
               background: 'linear-gradient(135deg, #f97316 0%, #ec4899 50%, #a855f7 100%)',
               border: 'none',
               color: 'white',
-              fontSize: '1.5rem',
+              fontSize: isMobile ? '1.1rem' : '1.5rem',
               fontWeight: 900,
               cursor: 'pointer',
               transition: 'all 0.3s',

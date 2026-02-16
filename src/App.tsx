@@ -25,10 +25,8 @@ function App() {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
-    const hideModal = localStorage.getItem('hideWelcomeModal');
-    return hideModal !== 'true';
-  });
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // التحقق من حالة المصادقة عند بدء التطبيق
   useEffect(() => {
@@ -47,6 +45,15 @@ function App() {
         if (session?.user) {
           console.log('✅ User authenticated:', session.user.email);
           setIsAuthenticated(true);
+
+          // حفظ معرف المستخدم
+          const userId = session.user.id;
+          setCurrentUserId(userId);
+
+          // فحص إذا كان المستخدم شاهد الرسالة من قبل
+          const hideModalKey = `hideWelcomeModal_${userId}`;
+          const hideModal = localStorage.getItem(hideModalKey);
+          setShowWelcomeModal(hideModal !== 'true');
         } else {
           console.log('❌ No active session - showing AuthGate');
           setIsAuthenticated(false);
@@ -64,9 +71,20 @@ function App() {
       if (session?.user) {
         console.log('✅ Auth state changed - authenticated');
         setIsAuthenticated(true);
+
+        // حفظ معرف المستخدم
+        const userId = session.user.id;
+        setCurrentUserId(userId);
+
+        // فحص إذا كان المستخدم شاهد الرسالة من قبل
+        const hideModalKey = `hideWelcomeModal_${userId}`;
+        const hideModal = localStorage.getItem(hideModalKey);
+        setShowWelcomeModal(hideModal !== 'true');
       } else {
         console.log('❌ Auth state changed - not authenticated');
         setIsAuthenticated(false);
+        setCurrentUserId(null);
+        setShowWelcomeModal(false);
       }
     });
 

@@ -459,10 +459,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           setSelectedCell({ ...targetCell, letter: battleLetter });
           setLocked(true);
 
-          // جلب سؤال جديد للمعركة
+          // جلب سؤال جديد للمعركة - استبعاد السؤال الحالي
           const question = await getSmartQuestion(
             battleLetter,
-            settings.selectedCategories
+            settings.selectedCategories,
+            currentQuestionId || undefined  // استبعاد السؤال الحالي
           );
 
           if (question) {
@@ -1036,8 +1037,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           />
 
           {/* الأزرار - 🔒 معطلة أثناء القفل */}
-          <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={20} />} title="إعادة الجولة" disabled={isLocked} />
-          <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={20} />} title="ملء الشاشة" disabled={false} />
+          <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={isMobile ? 16 : 20} />} title="إعادة الجولة" disabled={isLocked} isMobile={isMobile} />
+          <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={isMobile ? 16 : 20} />} title="ملء الشاشة" disabled={false} isMobile={isMobile} />
           <ControlButton onClick={() => {
             const newPausedState = !isPaused;
             setIsPaused(newPausedState);
@@ -1046,11 +1047,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               type: 'GAME_PAUSED',
               isPaused: newPausedState,
             });
-          }} color={isPaused ? "#10b981" : "#8b5cf6"} icon={isPaused ? <Play size={20} /> : <Pause size={20} />} title={isPaused ? "استمرار" : "إيقاف مؤقت"} disabled={isLocked} />
-          <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={20} />} title="حرف عشوائي" disabled={isLocked} />
-          <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={20} />} title="عكس الألوان" disabled={isLocked} />
-          <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={20} />} title="شاشة اللاعبين" disabled={false} />
-          <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={20} />} title="البطاقات" disabled={isLocked} />
+          }} color={isPaused ? "#10b981" : "#8b5cf6"} icon={isPaused ? <Play size={isMobile ? 16 : 20} /> : <Pause size={isMobile ? 16 : 20} />} title={isPaused ? "استمرار" : "إيقاف مؤقت"} disabled={isLocked} isMobile={isMobile} />
+          <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={isMobile ? 16 : 20} />} title="حرف عشوائي" disabled={isLocked} isMobile={isMobile} />
+          <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={isMobile ? 16 : 20} />} title="عكس الألوان" disabled={isLocked} isMobile={isMobile} />
+          <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={isMobile ? 16 : 20} />} title="شاشة اللاعبين" disabled={false} isMobile={isMobile} />
+          <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={isMobile ? 16 : 20} />} title="البطاقات" disabled={isLocked} isMobile={isMobile} />
         </div>
       </div>
 
@@ -1196,26 +1197,26 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000,
-          padding: '2rem',
+          padding: isMobile ? '0.75rem' : '2rem',
         }}>
           <div style={{
-            maxWidth: '800px',
+            maxWidth: isMobile ? '100%' : isTablet ? '90%' : '800px',
             width: '100%',
             background: 'linear-gradient(135deg, #1a0b2e, #2d1154)',
             border: '3px solid rgba(168, 85, 247, 0.5)',
-            borderRadius: '2rem',
-            padding: '3rem',
+            borderRadius: isMobile ? '1rem' : '2rem',
+            padding: isMobile ? '1.5rem' : isTablet ? '2rem' : '3rem',
           }}>
             <div style={{
               textAlign: 'center',
-              marginBottom: '2rem',
+              marginBottom: isMobile ? '1rem' : '2rem',
             }}>
               <div style={{
                 display: 'inline-block',
-                padding: '1.5rem 2.5rem',
+                padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
                 background: 'linear-gradient(135deg, #a855f7, #ec4899)',
                 borderRadius: '1.5rem',
-                fontSize: '4rem',
+                fontSize: isMobile ? '2.5rem' : isTablet ? '3rem' : '4rem',
                 fontWeight: 900,
                 color: 'white',
               }}>
@@ -1225,22 +1226,24 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               {/* Card Prize Indicator */}
               {pendingCard && (
                 <div style={{
-                  marginTop: '1.5rem',
-                  padding: '1rem 2rem',
+                  marginTop: isMobile ? '1rem' : '1.5rem',
+                  padding: isMobile ? '0.75rem 1rem' : '1rem 2rem',
                   background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(249, 115, 22, 0.2))',
                   border: '2px solid rgba(251, 191, 36, 0.5)',
                   borderRadius: '1rem',
                   display: 'inline-block',
                 }}>
                   <div style={{
-                    fontSize: '1.25rem',
+                    fontSize: isMobile ? '0.875rem' : '1.25rem',
                     fontWeight: 900,
                     color: '#fbbf24',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.75rem',
+                    gap: '0.5rem',
+                    flexWrap: isMobile ? 'wrap' : 'nowrap',
+                    justifyContent: 'center',
                   }}>
-                    <span style={{ fontSize: '2rem' }}>{CARD_ICONS[pendingCard]}</span>
+                    <span style={{ fontSize: isMobile ? '1.25rem' : '2rem' }}>{CARD_ICONS[pendingCard]}</span>
                     <span>الفريق الفائز يحصل على هذه البطاقة!</span>
                   </div>
                 </div>
@@ -1251,12 +1254,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               background: 'rgba(255, 255, 255, 0.05)',
               border: '2px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '1.5rem',
-              padding: '2rem',
-              marginBottom: '2rem',
+              padding: isMobile ? '1rem' : '2rem',
+              marginBottom: isMobile ? '1rem' : '2rem',
             }}>
               <div style={{
                 color: 'white',
-                fontSize: '1.5rem',
+                fontSize: isMobile ? '1.1rem' : '1.5rem',
                 fontWeight: 700,
               }}>
                 {currentQuestion}
@@ -1265,61 +1268,61 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             </div>
           {/* 3. ✅ صندوق الإجابة (تم نقله ليصبح تحت السؤال) */}
             {currentAnswer && (
-              <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '2px dashed rgba(16, 185, 129, 0.4)', borderRadius: '1.25rem', padding: '1.5rem', marginBottom: '2rem', textAlign: 'center' }}>
-                <div style={{ color: '#10b981', fontSize: '0.85rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+              <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '2px dashed rgba(16, 185, 129, 0.4)', borderRadius: '1.25rem', padding: isMobile ? '1rem' : '1.5rem', marginBottom: isMobile ? '1rem' : '2rem', textAlign: 'center' }}>
+                <div style={{ color: '#10b981', fontSize: isMobile ? '0.75rem' : '0.85rem', fontWeight: 800, marginBottom: '0.5rem' }}>
                    الإجابة الصحيحة ✓
                 </div>
-                <div style={{ color: '#10b981', fontSize: '1.5rem', fontWeight: 900 }}>
+                <div style={{ color: '#10b981', fontSize: isMobile ? '1.1rem' : '1.5rem', fontWeight: 900 }}>
                   {currentAnswer}
                 </div>
               </div>
             )}
-               
+
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
-              gap: '1rem',
-              marginBottom: '1rem',
+              gap: isMobile ? '0.5rem' : '1rem',
+              marginBottom: isMobile ? '0.5rem' : '1rem',
             }}>
               <button
                 onClick={() => handleTeamWin('green')}
                 style={{
-                  padding: '1.5rem',
+                  padding: isMobile ? '1rem' : '1.5rem',
                   background: 'linear-gradient(135deg, #10b981, #14b8a6)',
                   border: 'none',
                   borderRadius: '1rem',
                   color: 'white',
-                  fontSize: '1.125rem',
+                  fontSize: isMobile ? '0.875rem' : '1.125rem',
                   fontWeight: 900,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '0.75rem',
+                  gap: '0.5rem',
                 }}
               >
-                <CheckCircle2 size={24} />
+                <CheckCircle2 size={isMobile ? 18 : 24} />
                 {settings.teamNames.green}
               </button>
 
               <button
                 onClick={() => handleTeamWin('red')}
                 style={{
-                  padding: '1.5rem',
+                  padding: isMobile ? '1rem' : '1.5rem',
                   background: 'linear-gradient(135deg, #ef4444, #dc2626)',
                   border: 'none',
                   borderRadius: '1rem',
                   color: 'white',
-                  fontSize: '1.125rem',
+                  fontSize: isMobile ? '0.875rem' : '1.125rem',
                   fontWeight: 900,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '0.75rem',
+                  gap: '0.5rem',
                 }}
               >
-                <CheckCircle2 size={24} />
+                <CheckCircle2 size={isMobile ? 18 : 24} />
                 {settings.teamNames.red}
               </button>
             </div>
@@ -1328,21 +1331,21 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               onClick={handleChangeQuestion}
               style={{
                 width: '100%',
-                padding: '1.25rem',
+                padding: isMobile ? '0.875rem' : '1.25rem',
                 background: 'rgba(168, 85, 247, 0.2)',
                 border: '2px solid rgba(168, 85, 247, 0.5)',
                 borderRadius: '1rem',
                 color: '#a855f7',
-                fontSize: '1rem',
+                fontSize: isMobile ? '0.875rem' : '1rem',
                 fontWeight: 900,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '0.75rem',
+                gap: '0.5rem',
               }}
             >
-              <RefreshCw size={20} />
+              <RefreshCw size={isMobile ? 16 : 20} />
               تغيير السؤال
             </button>
           </div>
@@ -1383,27 +1386,29 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           zIndex: 2000,
         }}>
           <div style={{
-            fontSize: '8rem',
-            marginBottom: '2rem',
+            fontSize: isMobile ? '4rem' : isTablet ? '6rem' : '8rem',
+            marginBottom: isMobile ? '1rem' : '2rem',
             animation: 'bounce 0.6s ease-in-out infinite',
           }}>
             🎲
           </div>
           <h1 style={{
-            fontSize: '3.5rem',
+            fontSize: isMobile ? '1.75rem' : isTablet ? '2.5rem' : '3.5rem',
             fontWeight: 900,
             color: 'white',
             textShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
             textAlign: 'center',
             margin: 0,
+            padding: isMobile ? '0 1rem' : 0,
           }}>
             حرف عشوائي!
           </h1>
           <p style={{
-            fontSize: '1.75rem',
+            fontSize: isMobile ? '1rem' : isTablet ? '1.25rem' : '1.75rem',
             color: 'rgba(255, 255, 255, 0.9)',
-            marginTop: '1.5rem',
+            marginTop: isMobile ? '0.75rem' : '1.5rem',
             textAlign: 'center',
+            padding: isMobile ? '0 1rem' : 0,
           }}>
             من يجيب عليه سيحصل على بطاقة! 🎁
           </p>
@@ -1541,39 +1546,43 @@ const ControlButton: React.FC<{
   color: string;
   icon: React.ReactNode;
   title: string;
-  disabled?: boolean; // 🔒 Support disabled state
-}> = ({ onClick, color, icon, title, disabled = false }) => (
-  <button
-    onClick={disabled ? undefined : onClick}
-    title={disabled ? '🔒 معطل أثناء المعالجة' : title}
-    disabled={disabled}
-    style={{
-      width: '48px',
-      height: '48px',
-      borderRadius: '12px',
-      background: disabled ? 'rgba(100, 100, 100, 0.3)' : `${color}33`,
-      border: disabled ? '2px solid rgba(100, 100, 100, 0.5)' : `2px solid ${color}66`,
-      color: disabled ? 'rgba(200, 200, 200, 0.5)' : color,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      opacity: disabled ? 0.5 : 1,
-      transition: 'all 0.2s',
-    }}
-    onMouseEnter={(e) => {
-      if (!disabled) {
-        e.currentTarget.style.background = `${color}66`;
-        e.currentTarget.style.transform = 'translateY(-2px)';
-      }
-    }}
-    onMouseLeave={(e) => {
-      if (!disabled) {
-        e.currentTarget.style.background = `${color}33`;
-        e.currentTarget.style.transform = 'translateY(0)';
-      }
-    }}
-  >
-    {icon}
-  </button>
-);
+  disabled?: boolean;
+  isMobile?: boolean;
+}> = ({ onClick, color, icon, title, disabled = false, isMobile = false }) => {
+  const size = isMobile ? 40 : 48;
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      title={disabled ? '🔒 معطل أثناء المعالجة' : title}
+      disabled={disabled}
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '12px',
+        background: disabled ? 'rgba(100, 100, 100, 0.3)' : `${color}33`,
+        border: disabled ? '2px solid rgba(100, 100, 100, 0.5)' : `2px solid ${color}66`,
+        color: disabled ? 'rgba(200, 200, 200, 0.5)' : color,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        transition: 'all 0.2s',
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.background = `${color}66`;
+          e.currentTarget.style.transform = 'translateY(-2px)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.background = `${color}33`;
+          e.currentTarget.style.transform = 'translateY(0)';
+        }
+      }}
+    >
+      {icon}
+    </button>
+  );
+};

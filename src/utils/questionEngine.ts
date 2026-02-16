@@ -25,26 +25,42 @@ export const getSmartQuestion = async (
       return null;
     }
 
-    // 1.5 استبعاد الأسئلة المحددة (إذا وجدت)
-    if (excludeQuestionIds) {
+    // 2. جلب الأسئلة المشاهدة
+    let seenQuestions = await getSeenQuestions();
+
+    // 2.5 فحص: هل شاهدنا كل أسئلة هذا الحرف؟
+    const allQuestionsSeen = pool.every(q => seenQuestions.has(q.id));
+    let shouldIgnoreExclusions = false;
+
+    if (allQuestionsSeen) {
+      console.log('🔄 لقد شاهدت كل أسئلة الحرف "' + letter + '" - إعادة التدوير...');
+      await resetSeenQuestionsForLetter(letter);
+      seenQuestions = new Set(); // تصفير القائمة المشاهدة محلياً
+      shouldIgnoreExclusions = true; // تجاهل قائمة الاستبعاد عند إعادة التدوير
+    }
+
+    // 3. استبعاد الأسئلة المحددة (إذا وجدت)
+    if (excludeQuestionIds && !shouldIgnoreExclusions) {
       const idsToExclude = Array.isArray(excludeQuestionIds) ? excludeQuestionIds : [excludeQuestionIds];
       pool = pool.filter(q => !idsToExclude.includes(q.id));
+
+      // إذا لم يتبقى أي أسئلة بعد الاستبعاد، نعيد تعيين كل شيء
       if (pool.length === 0) {
-        console.warn('No other questions available after exclusion');
-        return null;
+        console.log('🔄 استبعدت كل الأسئلة، إعادة التدوير...');
+        await resetSeenQuestionsForLetter(letter);
+        seenQuestions = new Set();
+        pool = await fetchQuestionPool(letter, selectedCategories);
+        // لا نطبق الاستبعاد هنا - نبدأ من جديد
       }
     }
 
-    // 2. جلب الأسئلة المشاهدة
-    const seenQuestions = await getSeenQuestions();
-
-    // 3. Weighted Random: تطبيق الأوزان
+    // 4. Weighted Random: تطبيق الأوزان
     const weighted = applyWeights(pool, seenQuestions);
 
-    // 4. اختيار سؤال
+    // 5. اختيار سؤال
     const selected = selectWeightedRandom(weighted);
 
-    // 5. تسجيل السؤال كمشاهد
+    // 6. تسجيل السؤال كمشاهد
     if (selected) {
       await markQuestionAsSeen(selected.id);
     }
@@ -100,21 +116,8 @@ const applyWeights = (
   pool: Question[],
   seenQuestions: Set<string>
 ): WeightedQuestion[] => {
-  
-  // فحص: هل كل الأسئلة مشاهدة؟
-  const allSeen = pool.every(q => seenQuestions.has(q.id));
-  
-  if (allSeen) {
-    // Reset Logic: تصفير الأوزان
-    console.log('All questions seen, resetting weights...');
-    return pool.map(q => ({
-      ...q,
-      weight: 1,
-      isSeen: true,
-    }));
-  }
-  
-  // تطبيق الأوزان العادية
+
+  // تطبيق الأوزان: الأسئلة الجديدة تحصل على وزن أعلى
   return pool.map(q => {
     const isSeen = seenQuestions.has(q.id);
     return {
@@ -172,16 +175,52 @@ const markQuestionAsSeen = async (questionId: string): Promise<void> => {
 // ========== Reset: تصفير كل الأسئلة المشاهدة ==========
 export const resetSeenQuestions = async (): Promise<void> => {
   const userId = getUserId();
-  
+
   const { error } = await supabase
     .from('user_seen_questions')
     .delete()
     .eq('user_id', userId);
-  
+
   if (error) {
     console.error('Error resetting seen questions:', error);
   } else {
     console.log('All seen questions reset successfully');
+  }
+};
+
+// ========== Reset: تصفير الأسئلة المشاهدة لحرف معين ==========
+const resetSeenQuestionsForLetter = async (letter: string): Promise<void> => {
+  const userId = getUserId();
+
+  // 1. جلب كل أسئلة الحرف المحدد
+  const { data: questions, error: fetchError } = await supabase
+    .from('questions')
+    .select('id')
+    .eq('letter_assigned', letter);
+
+  if (fetchError) {
+    console.error('Error fetching questions for letter:', fetchError);
+    return;
+  }
+
+  if (!questions || questions.length === 0) {
+    console.log('No questions found for letter:', letter);
+    return;
+  }
+
+  // 2. حذف الأسئلة المشاهدة لهذا الحرف فقط
+  const questionIds = questions.map(q => q.id);
+
+  const { error: deleteError } = await supabase
+    .from('user_seen_questions')
+    .delete()
+    .eq('user_id', userId)
+    .in('question_id', questionIds);
+
+  if (deleteError) {
+    console.error('Error resetting seen questions for letter:', deleteError);
+  } else {
+    console.log(`✅ تم إعادة تعيين ${questionIds.length} سؤال للحرف: ${letter}`);
   }
 };
 

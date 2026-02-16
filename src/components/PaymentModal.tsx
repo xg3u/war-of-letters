@@ -30,40 +30,25 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
         throw new Error('يجب تسجيل الدخول أولاً');
       }
 
-      // حساب تاريخ انتهاء الصلاحية
-      // باقة single: 72 ساعة (3 أيام)
-      // باقة lifetime: null (بدون انتهاء)
-      let expiresAt: string | null = null;
+      // روابط Salla للباقات
+      const sallaLinks = {
+        single: 'https://salla.sa/battle_of_letters_store/bwPoXen',
+        lifetime: 'https://salla.sa/battle_of_letters_store/ABZmvNb'
+      };
 
-      if (selectedPlan === 'single') {
-        const expiryDate = new Date();
-        expiryDate.setHours(expiryDate.getHours() + 72); // إضافة 72 ساعة
-        expiresAt = expiryDate.toISOString();
-      }
+      // توجيه المستخدم إلى صفحة الدفع في Salla
+      const paymentUrl = sallaLinks[selectedPlan];
 
-      // تحديث جدول buyers
-      const { error: updateError } = await supabase
-        .from('buyers')
-        .update({
-          plan_type: selectedPlan,
-          expires_at: expiresAt,
-          subscription_status: 'active'
-        })
-        .eq('email', user.email);
+      console.log(`🔗 Redirecting to Salla payment page for ${selectedPlan} plan`);
+      console.log(`Amount: ${selectedPlan === 'single' ? '7.99' : '29.99'} SAR`);
 
-      if (updateError) {
-        throw new Error('فشل في تحديث الاشتراك: ' + updateError.message);
-      }
+      // فتح رابط الدفع في نافذة جديدة
+      window.open(paymentUrl, '_blank');
 
-      console.log(`✅ Payment successful for ${selectedPlan} plan`);
-      console.log(`Amount: ${selectedPlan === 'single' ? '3.99' : '29.99'} SAR`);
-      console.log(`Expires at: ${expiresAt || 'Never (Lifetime)'}`);
-
-      setShowSuccess(true);
-
+      // إغلاق المودال بعد فترة قصيرة
       setTimeout(() => {
-        onSuccess();
-      }, 1500);
+        onClose();
+      }, 500);
 
     } catch (err) {
       console.error('Payment error:', err);
@@ -215,7 +200,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
           gap: '2rem',
           marginBottom: '2rem',
         }}>
-          {/* باقة لمرة واحدة */}
+          {/* باقة الثلاث أيام */}
           <div
             onClick={() => setSelectedPlan('single')}
             style={{
@@ -238,16 +223,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
               color: 'white',
               marginBottom: '0.5rem',
             }}>
-              3.99 ر.س
+              7.99 ر.س
             </div>
 
             <div style={{
               fontSize: '1.125rem',
               fontWeight: 700,
               color: '#60a5fa',
-              marginBottom: '1.5rem',
+              marginBottom: '0.5rem',
             }}>
-              لمرة واحدة
+              باقة الثلاث أيام
+            </div>
+
+            <div style={{
+              fontSize: '0.875rem',
+              color: 'rgba(96, 165, 250, 0.7)',
+              marginBottom: '1rem',
+            }}>
+              لمدة 72 ساعة
             </div>
 
             <div style={{
@@ -276,7 +269,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
             </div>
           </div>
 
-          {/* باقة مدى الحياة */}
+          {/* باقة اللعب اللامحدود */}
           <div
             onClick={() => setSelectedPlan('lifetime')}
             style={{
@@ -325,7 +318,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ onClose, onSuccess }
               color: '#a855f7',
               marginBottom: '1.5rem',
             }}>
-              مدى الحياة
+              باقة اللعب اللامحدود
             </div>
 
             <div style={{

@@ -5,6 +5,7 @@ import React from 'react';
 import { Users } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
+import { useScreenSize } from '../hooks/useScreenSize';
 import { HexGrid } from './HexGrid';
 import { CardAnimation } from './CardAnimation';
 import { CardRoulette } from './CardRoulette';
@@ -48,6 +49,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const [localMatchWinner, setLocalMatchWinner] = React.useState<'green' | 'red' | null>(null);
   const [localTeamCards, setLocalTeamCards] = React.useState(teamCards);
   const [colorsSwapped, setColorsSwapped] = React.useState(false); // حالة عكس الألوان
+
+  const { isMobile, isTablet, isDesktop } = useScreenSize();
   const [localWinner, setLocalWinner] = React.useState<'green' | 'red' | null>(null); // فائز الجولة
   const [localWinMessage, setLocalWinMessage] = React.useState<string | null>(null); // رسالة الفوز
   const [isPaused, setIsPaused] = React.useState(false); // حالة الإيقاف المؤقت
@@ -179,14 +182,107 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
     <div style={{
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 25%, #6366f1 50%, #4f46e5 75%, #3730a3 100%)',
-      padding: '1rem',
+      padding: isMobile ? '0.75rem' : '1rem',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: isMobile ? '0.75rem' : '1rem',
     }}>
 
-      {/* Main Layout: Left Panel | Center Area | Right Panel */}
+      {/* لوحتي الفريقين - صف أفقي على الموبايل/التابلت */}
+      {!isDesktop && (
+        <div style={{
+          display: 'flex',
+          gap: isMobile ? '0.5rem' : '1rem',
+          width: '100%',
+          maxWidth: '1400px',
+        }}>
+          {/* بطاقة الفريق الأخضر - مضغوطة */}
+          <div style={{
+            flex: 1,
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            border: '2px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: '1rem',
+            padding: isMobile ? '0.75rem' : '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '0.5rem' : '0.75rem',
+          }}>
+            <div style={{
+              width: isMobile ? '36px' : '42px',
+              height: isMobile ? '36px' : '42px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #10b981, #14b8a6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Users size={isMobile ? 18 : 22} color="white" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {settings.teamNames.green}
+              </div>
+              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
+                {scores.green}
+              </div>
+            </div>
+            {localTeamCards.green.length > 0 && (
+              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                {localTeamCards.green.map((card, idx) => (
+                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* بطاقة الفريق الأحمر - مضغوطة */}
+          <div style={{
+            flex: 1,
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            border: '2px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '1rem',
+            padding: isMobile ? '0.75rem' : '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '0.5rem' : '0.75rem',
+          }}>
+            <div style={{
+              width: isMobile ? '36px' : '42px',
+              height: isMobile ? '36px' : '42px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Users size={isMobile ? 18 : 22} color="white" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {settings.teamNames.red}
+              </div>
+              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
+                {scores.red}
+              </div>
+            </div>
+            {localTeamCards.red.length > 0 && (
+              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                {localTeamCards.red.map((card, idx) => (
+                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Main Layout - Desktop فقط */}
       <div style={{
         display: 'flex',
         gap: '1rem',
@@ -196,7 +292,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         maxWidth: '1400px',
       }}>
 
-        {/* Left Panel - Green Team */}
+        {/* Left Panel - Green Team - Desktop فقط */}
+        {isDesktop && (
         <div style={{
           width: '200px',
           minWidth: '200px',
@@ -302,6 +399,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             )}
           </div>
         </div>
+        )}
 
         {/* Center Area */}
         <div style={{
@@ -347,7 +445,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           </div>
         </div>
 
-        {/* Right Panel - Red Team */}
+        {/* Right Panel - Red Team - Desktop فقط */}
+        {isDesktop && (
         <div style={{
           width: '200px',
           minWidth: '200px',
@@ -453,6 +552,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* عداد نتيجة المباراة */}
@@ -478,27 +578,27 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       {settings.showQuestionsToTeams && currentQuestion && selectedCell && (
         <div style={{
           position: 'fixed',
-          bottom: '2rem',
+          bottom: isMobile ? '1rem' : '2rem',
           left: '50%',
           transform: 'translateX(-50%)',
-          maxWidth: '600px',
+          maxWidth: isMobile ? '95%' : '600px',
           width: '90%',
           background: 'linear-gradient(135deg, #1a0b2e, #2d1154)',
           border: '3px solid rgba(168, 85, 247, 0.5)',
           borderRadius: '1.5rem',
-          padding: '2rem',
+          padding: isMobile ? '1.25rem' : '2rem',
           zIndex: 100,
         }}>
           <div style={{
             textAlign: 'center',
-            marginBottom: '1rem',
+            marginBottom: isMobile ? '0.75rem' : '1rem',
           }}>
             <div style={{
               display: 'inline-block',
-              padding: '1rem 1.5rem',
+              padding: isMobile ? '0.75rem 1.25rem' : '1rem 1.5rem',
               background: 'linear-gradient(135deg, #a855f7, #ec4899)',
               borderRadius: '1rem',
-              fontSize: '2.5rem',
+              fontSize: isMobile ? '1.75rem' : '2.5rem',
               fontWeight: 900,
               color: 'white',
             }}>
@@ -508,7 +608,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
 
           <div style={{
             color: 'white',
-            fontSize: '1.25rem',
+            fontSize: isMobile ? '1rem' : '1.25rem',
             fontWeight: 700,
             textAlign: 'center',
           }}>
@@ -516,10 +616,10 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           </div>
 
           <div style={{
-            marginTop: '1rem',
+            marginTop: isMobile ? '0.75rem' : '1rem',
             textAlign: 'center',
             color: '#a855f7',
-            fontSize: '0.875rem',
+            fontSize: isMobile ? '0.75rem' : '0.875rem',
           }}>
             ⏳ جاري الإجابة...
           </div>

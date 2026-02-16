@@ -15,9 +15,35 @@ const isValidEmail = (email: string): boolean => {
   return emailRegex.test(email);
 };
 
-// التحقق من قوة الرمز (8 أحرف على الأقل)
+// التحقق من قوة الرمز (8 أحرف على الأقل، حرف كبير، أرقام، إنجليزي فقط)
 const isValidPassword = (password: string): boolean => {
-  return password.length >= 8;
+  if (password.length < 8) return false;
+
+  // يجب أن يحتوي على حرف كبير
+  const hasUpperCase = /[A-Z]/.test(password);
+
+  // يجب أن يحتوي على رقم
+  const hasNumber = /[0-9]/.test(password);
+
+  // يجب أن يكون إنجليزي فقط (حروف إنجليزية وأرقام ورموز فقط، بدون عربي)
+  const isEnglishOnly = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]*$/.test(password);
+
+  return hasUpperCase && hasNumber && isEnglishOnly;
+};
+
+// رسالة توضيحية لمتطلبات الرمز
+const getPasswordRequirementsMessage = (password: string): string => {
+  if (password.length === 0) return '';
+
+  const issues: string[] = [];
+
+  if (password.length < 8) issues.push('8 أحرف على الأقل');
+  if (!/[A-Z]/.test(password)) issues.push('حرف كبير (A-Z)');
+  if (!/[0-9]/.test(password)) issues.push('رقم');
+  if (!/^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]*$/.test(password)) issues.push('إنجليزي فقط');
+
+  if (issues.length === 0) return '✓ قوي';
+  return `ينقص: ${issues.join(' • ')}`;
 };
 
 export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) => {
@@ -108,7 +134,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
     }
 
     if (!isValidPassword(password)) {
-      setError('الرمز السري يجب أن يكون 8 أحرف وأرقام على الأقل');
+      setError('الرمز السري يجب أن يحتوي على: 8 أحرف • حرف كبير (A-Z) • رقم • إنجليزي فقط');
       return;
     }
 
@@ -527,7 +553,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                     placeholder="البريد الإلكتروني"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
                     style={inputStyle}
                     onFocus={(e) => handleFocus(e, '#f97316')}
                     onBlur={handleBlur}
@@ -542,7 +568,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                     placeholder="الرمز السري"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
                     style={{ ...inputStyle, paddingLeft: '3rem' }}
                     onFocus={(e) => handleFocus(e, '#a855f7')}
                     onBlur={handleBlur}
@@ -741,30 +767,36 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                 {password.length > 0 && (
                   <div style={{
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: 'column',
                     gap: '0.5rem',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    color: password.length >= 8 ? '#10b981' : '#ef4444',
                   }}>
                     <div style={{
-                      flex: 1,
-                      height: '4px',
-                      borderRadius: '2px',
-                      background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      color: isValidPassword(password) ? '#10b981' : '#ef4444',
                     }}>
                       <div style={{
-                        width: `${Math.min((password.length / 8) * 100, 100)}%`,
-                        height: '100%',
+                        flex: 1,
+                        height: '4px',
                         borderRadius: '2px',
-                        background: password.length >= 8
-                          ? 'linear-gradient(90deg, #10b981, #14b8a6)'
-                          : 'linear-gradient(90deg, #ef4444, #f97316)',
-                        transition: 'width 0.3s ease',
-                      }} />
+                        background: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          width: `${Math.min((password.length / 8) * 100, 100)}%`,
+                          height: '100%',
+                          borderRadius: '2px',
+                          background: isValidPassword(password)
+                            ? 'linear-gradient(90deg, #10b981, #14b8a6)'
+                            : 'linear-gradient(90deg, #ef4444, #f97316)',
+                          transition: 'width 0.3s ease',
+                        }} />
+                      </div>
+                      <span>{getPasswordRequirementsMessage(password)}</span>
                     </div>
-                    <span>{password.length >= 8 ? 'قوي' : `${password.length}/8`}</span>
                   </div>
                 )}
 
@@ -776,7 +808,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                     placeholder="تأكيد الرمز السري"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleRegister()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRegister()}
                     style={{
                       ...inputStyle,
                       paddingLeft: '3rem',

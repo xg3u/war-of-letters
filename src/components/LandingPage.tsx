@@ -8,7 +8,6 @@ import {
   Play, Moon, Sun, BookOpen,
   Trophy, ShieldCheck, Zap, HelpCircle, LogOut
 } from 'lucide-react';
-import { WelcomeModal } from './WelcomeModal';
 import { PaymentModal } from './PaymentModal';
 import { supabase } from '../lib/supabase';
 import HeaderImage from '../assets/ForDesign/Header.png';
@@ -23,10 +22,6 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(() => {
-    const hideModal = localStorage.getItem('hideWelcomeModal');
-    return hideModal !== 'true';
-  });
   const [showPayment, setShowPayment] = useState(false);
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(false);
 
@@ -127,7 +122,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
       direction: 'rtl',
     }}>
 
-      {showWelcome && <WelcomeModal onClose={() => setShowWelcome(false)} />}
       {showPayment && (
         <PaymentModal
           onClose={() => setShowPayment(false)}
