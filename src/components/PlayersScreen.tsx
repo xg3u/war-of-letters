@@ -2,7 +2,7 @@
 // شاشة اللاعبين - عرض فقط (Synchronized with HostScreen design)
 
 import React from 'react';
-import { Users } from 'lucide-react';
+import { Users, Zap } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
 import { useScreenSize } from '../hooks/useScreenSize';
@@ -13,6 +13,7 @@ import { StreakVisualizer } from './StreakVisualizer';
 import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
 import { ResultsOverlay } from './ResultsOverlay';
+import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
 import { getWinStats } from '../utils/winChecker';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
@@ -49,11 +50,31 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const [localMatchWinner, setLocalMatchWinner] = React.useState<'green' | 'red' | null>(null);
   const [localTeamCards, setLocalTeamCards] = React.useState(teamCards);
   const [colorsSwapped, setColorsSwapped] = React.useState(false); // حالة عكس الألوان
+  const [buzzerPress, setBuzzerPress] = React.useState<{
+    type: 'answer' | 'card';
+    playerName: string;
+    team: 'green' | 'red';
+    timestamp: number;
+  } | null>(null); // حالة ضغط الزر
+  const [registeredPlayers, setRegisteredPlayers] = React.useState<{
+    name: string;
+    team: 'green' | 'red';
+    timestamp: number;
+  }[]>([]); // اللاعبون المسجلون في Answer Buzzers
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
   const [localWinner, setLocalWinner] = React.useState<'green' | 'red' | null>(null); // فائز الجولة
   const [localWinMessage, setLocalWinMessage] = React.useState<string | null>(null); // رسالة الفوز
   const [isPaused, setIsPaused] = React.useState(false); // حالة الإيقاف المؤقت
+  const [showBuzzerQRCode, setShowBuzzerQRCode] = React.useState(false); // إظهار QR Code للأزرار
+  const [sessionId] = React.useState(() => {
+    // استخدام نفس session ID من localStorage
+    const existing = localStorage.getItem('game-session-id');
+    if (existing) return existing;
+    const newId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    localStorage.setItem('game-session-id', newId);
+    return newId;
+  });
 
   // المزامنة فقط
   React.useEffect(() => {
@@ -88,6 +109,12 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         });
       } else if (data.type === 'CARD_ADDED') {
         // تحديث البطاقات عند إضافة بطاقة جديدة
+        if (data.teamCards) {
+          setLocalTeamCards(data.teamCards);
+        }
+      } else if (data.type === 'CARDS_CLEARED') {
+        // حذف جميع البطاقات من الفريقين
+        console.log('🗑️ CARDS_CLEARED received in PlayersScreen:', data.teamCards);
         if (data.teamCards) {
           setLocalTeamCards(data.teamCards);
         }
@@ -168,6 +195,20 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       } else if (data.type === 'GAME_PAUSED') {
         // تحديث حالة الإيقاف المؤقت
         setIsPaused(data.isPaused);
+      } else if (data.type === 'buzzer-press') {
+        // عرض إشعار الزر المضغوط
+        setBuzzerPress(data.buzzerPress);
+      } else if (data.type === 'reset-buzzers') {
+        // إعادة تعيين الأزرار
+        setBuzzerPress(null);
+      } else if (data.type === 'player-registered') {
+        // إضافة لاعب جديد إلى القائمة
+        setRegisteredPlayers(prev => {
+          // تحقق من عدم التكرار بناءً على الاسم والفريق
+          const exists = prev.some(p => p.name === data.player.name && p.team === data.player.team);
+          if (exists) return prev;
+          return [...prev, data.player];
+        });
       }
     });
     return unsubscribe;
@@ -188,7 +229,41 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       alignItems: 'center',
       justifyContent: 'center',
       gap: isMobile ? '0.75rem' : '1rem',
+      position: 'relative',
     }}>
+
+      {/* زر Answer Buzzers - عائم */}
+      <button
+        onClick={() => setShowBuzzerQRCode(true)}
+        style={{
+          position: 'fixed',
+          bottom: isMobile ? '1rem' : '1.5rem',
+          right: isMobile ? '1rem' : '1.5rem',
+          zIndex: 1000,
+          width: isMobile ? '48px' : '56px',
+          height: isMobile ? '48px' : '56px',
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #f59e0b, #f97316)',
+          border: '3px solid rgba(255, 255, 255, 0.3)',
+          boxShadow: '0 8px 24px rgba(245, 158, 11, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.1)';
+          e.currentTarget.style.boxShadow = '0 12px 32px rgba(245, 158, 11, 0.6)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 8px 24px rgba(245, 158, 11, 0.4)';
+        }}
+        title="Answer Buzzers - افتح شاشة الأزرار"
+      >
+        <Zap size={isMobile ? 24 : 28} color="white" />
+      </button>
 
       {/* لوحتي الفريقين - صف أفقي على الموبايل/التابلت */}
       {!isDesktop && (
@@ -207,36 +282,90 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             borderRadius: '1rem',
             padding: isMobile ? '0.75rem' : '1rem',
             display: 'flex',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: isMobile ? '0.5rem' : '0.75rem',
           }}>
             <div style={{
-              width: isMobile ? '36px' : '42px',
-              height: isMobile ? '36px' : '42px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #10b981, #14b8a6)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
+              gap: isMobile ? '0.5rem' : '0.75rem',
             }}>
-              <Users size={isMobile ? 18 : 22} color="white" />
+              <div style={{
+                width: isMobile ? '36px' : '42px',
+                height: isMobile ? '36px' : '42px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #10b981, #14b8a6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Users size={isMobile ? 18 : 22} color="white" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {settings.teamNames.green}
+                </div>
+                <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
+                  {scores.green}
+                </div>
+              </div>
+              {localTeamCards.green.length > 0 && (
+                <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                  {localTeamCards.green.map((card, idx) => (
+                    <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {settings.teamNames.green}
+
+            {/* اللاعبون المسجلون */}
+            <div style={{
+              borderTop: '1px solid rgba(16, 185, 129, 0.3)',
+              paddingTop: isMobile ? '0.5rem' : '0.75rem',
+              marginTop: isMobile ? '0.5rem' : '0.75rem',
+            }}>
+              <div style={{
+                fontSize: isMobile ? '0.625rem' : '0.75rem',
+                color: 'rgba(255, 255, 255, 0.6)',
+                marginBottom: '0.25rem',
+                fontWeight: 600,
+              }}>
+                📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'green').length})
               </div>
-              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
-                {scores.green}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.25rem',
+              }}>
+                {registeredPlayers.filter(p => p.team === 'green').length > 0 ? (
+                  registeredPlayers.filter(p => p.team === 'green').map((player, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        fontSize: isMobile ? '0.625rem' : '0.75rem',
+                        background: 'rgba(16, 185, 129, 0.2)',
+                        color: '#10b981',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '0.5rem',
+                        fontWeight: 600,
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                      }}
+                    >
+                      {player.name}
+                    </span>
+                  ))
+                ) : (
+                  <span style={{
+                    fontSize: isMobile ? '0.625rem' : '0.75rem',
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    fontStyle: 'italic',
+                  }}>
+                    لا يوجد لاعبون
+                  </span>
+                )}
               </div>
             </div>
-            {localTeamCards.green.length > 0 && (
-              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                {localTeamCards.green.map((card, idx) => (
-                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* بطاقة الفريق الأحمر - مضغوطة */}
@@ -248,36 +377,90 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             borderRadius: '1rem',
             padding: isMobile ? '0.75rem' : '1rem',
             display: 'flex',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: isMobile ? '0.5rem' : '0.75rem',
           }}>
             <div style={{
-              width: isMobile ? '36px' : '42px',
-              height: isMobile ? '36px' : '42px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
+              gap: isMobile ? '0.5rem' : '0.75rem',
             }}>
-              <Users size={isMobile ? 18 : 22} color="white" />
+              <div style={{
+                width: isMobile ? '36px' : '42px',
+                height: isMobile ? '36px' : '42px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Users size={isMobile ? 18 : 22} color="white" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {settings.teamNames.red}
+                </div>
+                <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
+                  {scores.red}
+                </div>
+              </div>
+              {localTeamCards.red.length > 0 && (
+                <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
+                  {localTeamCards.red.map((card, idx) => (
+                    <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {settings.teamNames.red}
+
+            {/* اللاعبون المسجلون */}
+            <div style={{
+              borderTop: '1px solid rgba(239, 68, 68, 0.3)',
+              paddingTop: isMobile ? '0.5rem' : '0.75rem',
+              marginTop: isMobile ? '0.5rem' : '0.75rem',
+            }}>
+              <div style={{
+                fontSize: isMobile ? '0.625rem' : '0.75rem',
+                color: 'rgba(255, 255, 255, 0.6)',
+                marginBottom: '0.25rem',
+                fontWeight: 600,
+              }}>
+                📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'red').length})
               </div>
-              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
-                {scores.red}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.25rem',
+              }}>
+                {registeredPlayers.filter(p => p.team === 'red').length > 0 ? (
+                  registeredPlayers.filter(p => p.team === 'red').map((player, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        fontSize: isMobile ? '0.625rem' : '0.75rem',
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        color: '#ef4444',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '0.5rem',
+                        fontWeight: 600,
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                      }}
+                    >
+                      {player.name}
+                    </span>
+                  ))
+                ) : (
+                  <span style={{
+                    fontSize: isMobile ? '0.625rem' : '0.75rem',
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    fontStyle: 'italic',
+                  }}>
+                    لا يوجد لاعبون
+                  </span>
+                )}
               </div>
             </div>
-            {localTeamCards.red.length > 0 && (
-              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                {localTeamCards.red.map((card, idx) => (
-                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -398,6 +581,56 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               </div>
             )}
           </div>
+
+          {/* اللاعبون المسجلون في Answer Buzzers */}
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
+          }}>
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.75rem',
+              textAlign: 'center',
+            }}>
+              📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'green').length})
+            </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}>
+              {registeredPlayers.filter(p => p.team === 'green').length > 0 ? (
+                registeredPlayers.filter(p => p.team === 'green').map((player, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '0.5rem',
+                      padding: '0.5rem',
+                      color: '#10b981',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {player.name}
+                  </div>
+                ))
+              ) : (
+                <div style={{
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '0.75rem',
+                  textAlign: 'center',
+                  fontStyle: 'italic',
+                }}>
+                  لا يوجد لاعبون
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         )}
 
@@ -419,29 +652,13 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             flex: 1,
             width: '100%',
           }}>
-            {cells.length === 0 ? (
-              <div style={{
-                textAlign: 'center',
-                color: 'rgba(255, 255, 255, 0.7)',
-                fontSize: '1.5rem',
-                fontWeight: 700,
-                background: 'rgba(0, 0, 0, 0.3)',
-                backdropFilter: 'blur(10px)',
-                padding: '3rem',
-                borderRadius: '1.5rem',
-                border: '2px solid rgba(168, 85, 247, 0.3)',
-              }}>
-                ⏳ في انتظار بدء اللعبة من المقدم...
-              </div>
-            ) : (
-              <HexGrid
-                cells={cells}
-                zoom={zoom}
-                scale={1}
-                showCardIndicator={false}
-                colorsSwapped={colorsSwapped}
-              />
-            )}
+            <HexGrid
+              cells={cells}
+              zoom={zoom}
+              scale={1}
+              showCardIndicator={false}
+              colorsSwapped={colorsSwapped}
+            />
           </div>
         </div>
 
@@ -550,6 +767,56 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
                 لا توجد بطاقات
               </div>
             )}
+          </div>
+
+          {/* اللاعبون المسجلون في Answer Buzzers */}
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
+          }}>
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.75rem',
+              textAlign: 'center',
+            }}>
+              📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'red').length})
+            </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}>
+              {registeredPlayers.filter(p => p.team === 'red').length > 0 ? (
+                registeredPlayers.filter(p => p.team === 'red').map((player, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.2)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '0.5rem',
+                      padding: '0.5rem',
+                      color: '#ef4444',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {player.name}
+                  </div>
+                ))
+              ) : (
+                <div style={{
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '0.75rem',
+                  textAlign: 'center',
+                  fontStyle: 'italic',
+                }}>
+                  لا يوجد لاعبون
+                </div>
+              )}
+            </div>
           </div>
         </div>
         )}
@@ -790,6 +1057,80 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           </p>
         </div>
       )}
+
+      {/* إشعار ضغط الزر */}
+      {buzzerPress && (
+        <div
+          style={{
+            position: 'fixed',
+            top: isMobile ? '1rem' : '2rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10000,
+            background: buzzerPress.team === 'green'
+              ? 'linear-gradient(135deg, #10b981, #14b8a6)'
+              : 'linear-gradient(135deg, #ef4444, #dc2626)',
+            border: '3px solid white',
+            borderRadius: '1.5rem',
+            padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+            animation: 'buzzerPulse 0.5s ease-in-out',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <div
+              style={{
+                fontSize: isMobile ? '2rem' : '3rem',
+              }}
+            >
+              {buzzerPress.type === 'answer' ? '📣' : '🎴'}
+            </div>
+            <h2
+              style={{
+                fontSize: isMobile ? '1.5rem' : '2rem',
+                fontWeight: 900,
+                color: 'white',
+                margin: 0,
+                textAlign: 'center',
+              }}
+            >
+              {buzzerPress.playerName}
+            </h2>
+            <p
+              style={{
+                fontSize: isMobile ? '0.875rem' : '1rem',
+                color: 'rgba(255, 255, 255, 0.9)',
+                margin: 0,
+                fontWeight: 600,
+              }}
+            >
+              {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* مودال QR Code للأزرار */}
+      {showBuzzerQRCode && (
+        <BuzzerQRCodeModal
+          sessionId={sessionId}
+          onClose={() => setShowBuzzerQRCode(false)}
+        />
+      )}
+
+      <style>{`
+        @keyframes buzzerPulse {
+          0%, 100% { transform: translateX(-50%) scale(1); }
+          50% { transform: translateX(-50%) scale(1.1); }
+        }
+      `}</style>
     </div>
   );
 };

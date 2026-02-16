@@ -1,14 +1,18 @@
 // src/utils/SyncManager.ts
-// مدير المزامنة بين الشاشات باستخدام BroadcastChannel
+// مدير المزامنة بين الشاشات باستخدام BroadcastChannel و Supabase Realtime
+
+import { supabase } from '../lib/supabase';
 
 export class SyncManager {
   private channel: BroadcastChannel;
   private listeners: Set<(data: any) => void> = new Set();
   private storageKey = 'game-state-sync';
+  private realtimeChannel: any = null;
+  private sessionId: string | null = null;
 
   constructor(channelName: string = 'war-of-letters-sync') {
     this.channel = new BroadcastChannel(channelName);
-    
+
     this.channel.onmessage = (event) => {
       this.listeners.forEach(listener => listener(event.data));
     };
@@ -24,6 +28,39 @@ export class SyncManager {
         }
       }
     });
+
+    // فحص إذا كان هناك session ID (للأجهزة المختلفة)
+    const params = new URLSearchParams(window.location.search);
+    const urlSessionId = params.get('session');
+    const localSessionId = localStorage.getItem('game-session-id');
+    this.sessionId = urlSessionId || localSessionId;
+
+    // إعداد Supabase Realtime للأجهزة المختلفة
+    if (this.sessionId) {
+      this.setupRealtimeChannel();
+    }
+  }
+
+  private setupRealtimeChannel() {
+    if (!this.sessionId) return;
+
+    // إنشاء قناة Realtime عامة (لا تحتاج authentication)
+    this.realtimeChannel = supabase.channel(`game-${this.sessionId}`, {
+      config: {
+        broadcast: { self: false }, // لا نستقبل رسائلنا الخاصة
+      },
+    });
+
+    // الاستماع للرسائل
+    this.realtimeChannel.on('broadcast', { event: 'game-update' }, ({ payload }: any) => {
+      console.log('📡 Received from Realtime:', payload.type);
+      this.listeners.forEach(listener => listener(payload));
+    });
+
+    // الاشتراك في القناة
+    this.realtimeChannel.subscribe((status: string) => {
+      console.log(`📡 Realtime status: ${status}`);
+    });
   }
 
   // إرسال تحديث لجميع الشاشات
@@ -34,9 +71,18 @@ export class SyncManager {
     } catch (err) {
       console.error('localStorage save error:', err);
     }
-    
-    // بث عبر BroadcastChannel
+
+    // بث عبر BroadcastChannel (نفس الجهاز)
     this.channel.postMessage(data);
+
+    // بث عبر Supabase Realtime (أجهزة مختلفة)
+    if (this.realtimeChannel && this.sessionId) {
+      this.realtimeChannel.send({
+        type: 'broadcast',
+        event: 'game-update',
+        payload: data,
+      });
+    }
   }
 
   // الاستماع للتحديثات
@@ -64,6 +110,10 @@ export class SyncManager {
   // إغلاق القناة
   close() {
     this.channel.close();
+    if (this.realtimeChannel) {
+      supabase.removeChannel(this.realtimeChannel);
+      this.realtimeChannel = null;
+    }
   }
 }
 

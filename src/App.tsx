@@ -4,19 +4,25 @@ import { LandingPage } from './components/LandingPage';
 import { GameSettings } from './components/GameSettings';
 import { HostScreen } from './components/HostScreen';
 import { PlayersScreen } from './components/PlayersScreen';
+import { AnswerBuzzersScreen } from './components/AnswerBuzzersScreen';
 import { WelcomeModal } from './components/WelcomeModal';
 import { AnimatedBackground } from './components/AnimatedBackground';
 import { AuthGate } from './components/AuthGate';
 import { supabase } from './lib/supabase';
 import type { GameSettingsData } from './components/GameSettings';
 
-type Screen = 'landing' | 'settings' | 'host' | 'players';
+type Screen = 'landing' | 'settings' | 'host' | 'players' | 'buzzers';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // null = loading
+  // فحص إذا كان المستخدم يدخل عبر QR Code
+  const params = new URLSearchParams(window.location.search);
+  const sessionParam = params.get('session');
+  const screenParam = params.get('screen');
+  const isQRCodeEntry = sessionParam && (screenParam === 'players' || screenParam === 'buzzers');
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(isQRCodeEntry ? true : null); // null = loading
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return (params.get('screen') as Screen) || 'landing';
+    return (screenParam as Screen) || 'landing';
   });
 
   const [gameSettings, setGameSettings] = useState<GameSettingsData | null>(() => {
@@ -30,6 +36,12 @@ function App() {
 
   // التحقق من حالة المصادقة عند بدء التطبيق
   useEffect(() => {
+    // إذا كان دخول عبر QR Code، تجاوز المصادقة
+    if (isQRCodeEntry) {
+      console.log('📱 QR Code entry detected - skipping authentication');
+      return;
+    }
+
     const checkAuth = async () => {
       try {
         // فحص الجلسة الحالية
@@ -200,6 +212,11 @@ function App() {
             ⚠️ الرجاء بدء اللعبة من شاشة المقدم أولاً
           </div>
         )
+      )}
+
+      {/* شاشة Answer Buzzers */}
+      {currentScreen === 'buzzers' && (
+        <AnswerBuzzersScreen />
       )}
     </div>
   );

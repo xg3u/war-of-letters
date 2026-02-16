@@ -34,6 +34,7 @@ interface GameStore {
   setLocked: (locked: boolean) => void; // 🔒 Lock/unlock game actions
   updateStreak: (winningTeam: 'green' | 'red') => { streakReached: boolean; team: 'green' | 'red' | null };
   resetStreak: () => void;
+  clearCards: () => void; // حذف جميع البطاقات من الفريقين
   resetMatch: () => void; // إعادة تعيين المباراة كاملة
   decrementCounters: () => void; // تحديث عدادات التجميد والدرع بعد كل سؤال
 }
@@ -357,6 +358,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     syncManager.broadcast({
       type: 'STREAK_UPDATED',
       winStreak: { green: 0, red: 0 },
+    });
+  },
+
+  // حذف جميع البطاقات من الفريقين
+  clearCards: () => {
+    console.log('🗑️ clearCards() called - clearing all cards');
+    set({ teamCards: { green: [], red: [] } });
+    syncManager.broadcast({
+      type: 'CARDS_CLEARED',
+      teamCards: { green: [], red: [] },
     });
   },
 

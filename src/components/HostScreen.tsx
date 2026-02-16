@@ -12,7 +12,9 @@ import {
   Maximize,
   Pause,
   Dices,
-  Play
+  Play,
+  QrCode,
+  Zap
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
@@ -26,6 +28,8 @@ import { ResultsOverlay } from './ResultsOverlay';
 import { StreakVisualizer } from './StreakVisualizer';
 import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
+import { QRCodeModal } from './QRCodeModal';
+import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
 import { getWinStats } from '../utils/winChecker';
@@ -63,6 +67,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     currentRound,
     matchWinner,
     resetMatch,
+    clearCards,
     decrementCounters,
   } = useGameStore();
 
@@ -78,6 +83,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
   const [isPaused, setIsPaused] = useState(false);
   const [colorsSwapped, setColorsSwapped] = useState(false); // حالة عكس الألوان
+  const [buzzerPress, setBuzzerPress] = useState<{
+    type: 'answer' | 'card';
+    playerName: string;
+    team: 'green' | 'red';
+    timestamp: number;
+  } | null>(null); // حالة ضغط الزر
+  const [registeredPlayers, setRegisteredPlayers] = useState<{
+    name: string;
+    team: 'green' | 'red';
+    timestamp: number;
+  }[]>([]); // اللاعبون المسجلون في Answer Buzzers
   const [pendingCard, setPendingCard] = useState<CardType | null>(null); // Card waiting to be awarded to winning team
   const [showRandomLetterAnnouncement, setShowRandomLetterAnnouncement] = useState(false);
   const [isRandomLetterMode, setIsRandomLetterMode] = useState(false); // Track if we're in random letter round start mode
@@ -86,6 +102,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [isStreakRewardMode, setIsStreakRewardMode] = useState(false); // Track if roulette is from streak reward
   const [streakRewardTeam, setStreakRewardTeam] = useState<'green' | 'red' | null>(null); // Team that earned streak reward
   const [excludedQuestionIds, setExcludedQuestionIds] = useState<string[]>([]); // الأسئلة المستبعدة عند تغيير السؤال
+  const [showQRCode, setShowQRCode] = useState(false); // إظهار QR Code
+  const [showBuzzerQRCode, setShowBuzzerQRCode] = useState(false); // إظهار QR Code للأزرار
+  const [sessionId] = useState(() => {
+    // إنشاء session ID فريد أو استخدام الموجود
+    const existing = localStorage.getItem('game-session-id');
+    if (existing) return existing;
+    const newId = Math.random().toString(36).substring(2, 10).toUpperCase();
+    localStorage.setItem('game-session-id', newId);
+    return newId;
+  });
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
 
@@ -136,6 +162,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     const unsubscribe = syncManager.subscribe((data) => {
       if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
+      } else if (data.type === 'buzzer-press') {
+        // عرض إشعار الزر المضغوط
+        setBuzzerPress(data.buzzerPress);
+      } else if (data.type === 'player-registered') {
+        // إضافة لاعب جديد إلى القائمة
+        setRegisteredPlayers(prev => {
+          // تحقق من عدم التكرار بناءً على الاسم والفريق
+          const exists = prev.some(p => p.name === data.player.name && p.team === data.player.team);
+          if (exists) return prev;
+          return [...prev, data.player];
+        });
       }
     });
     return unsubscribe;
@@ -526,6 +563,14 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     }
   };
 
+  // إعادة تعيين الأزرار
+  const handleResetBuzzers = () => {
+    setBuzzerPress(null);
+    syncManager.broadcast({
+      type: 'reset-buzzers',
+    });
+  };
+
   // بدء الجولة - يفعّل كل ميزات الجولة
   const handleStartRound = () => {
     setRoundStarted(true);
@@ -539,8 +584,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   // إعادة تعيين الجولة
   const handleResetRound = () => {
     if (window.confirm('هل تريد إعادة تعيين الجولة الحالية؟')) {
+      console.log('🔄 Resetting round...');
       resetGame();
       initializeGrid(settings);
+      console.log('🗑️ Calling clearCards...');
+      clearCards(); // حذف جميع البطاقات من الفريقين
       // إعادة تعيين حالة بدء الجولة
       setRoundStarted(false);
       setHasTriggeredRandomLetter(false);
@@ -778,6 +826,57 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                   width: '100%',
                 }}>
                   لا توجد بطاقات
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* اللاعبون المسجلون في Answer Buzzers */}
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
+            marginTop: '1rem',
+          }}>
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.75rem',
+              textAlign: 'center',
+            }}>
+              📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'green').length})
+            </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}>
+              {registeredPlayers.filter(p => p.team === 'green').length > 0 ? (
+                registeredPlayers.filter(p => p.team === 'green').map((player, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                      borderRadius: '0.5rem',
+                      padding: '0.5rem',
+                      color: '#10b981',
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {player.name}
+                  </div>
+                ))
+              ) : (
+                <div style={{
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '0.875rem',
+                  textAlign: 'center',
+                  fontStyle: 'italic',
+                }}>
+                  لا يوجد لاعبون
                 </div>
               )}
             </div>
@@ -1051,6 +1150,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={isMobile ? 16 : 20} />} title="حرف عشوائي" disabled={isLocked} isMobile={isMobile} />
           <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={isMobile ? 16 : 20} />} title="عكس الألوان" disabled={isLocked} isMobile={isMobile} />
           <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={isMobile ? 16 : 20} />} title="شاشة اللاعبين" disabled={false} isMobile={isMobile} />
+          <ControlButton onClick={() => setShowQRCode(true)} color="#10b981" icon={<QrCode size={isMobile ? 16 : 20} />} title="ربط جهاز آخر" disabled={false} isMobile={isMobile} />
+          <ControlButton onClick={() => setShowBuzzerQRCode(true)} color="#f59e0b" icon={<Zap size={isMobile ? 16 : 20} />} title="Answer Buzzers" disabled={false} isMobile={isMobile} />
           <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={isMobile ? 16 : 20} />} title="البطاقات" disabled={isLocked} isMobile={isMobile} />
         </div>
       </div>
@@ -1175,6 +1276,57 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                   width: '100%',
                 }}>
                   لا توجد بطاقات
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* اللاعبون المسجلون في Answer Buzzers */}
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
+            marginTop: '1rem',
+          }}>
+            <div style={{
+              fontSize: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.75rem',
+              textAlign: 'center',
+            }}>
+              📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'red').length})
+            </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}>
+              {registeredPlayers.filter(p => p.team === 'red').length > 0 ? (
+                registeredPlayers.filter(p => p.team === 'red').map((player, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.2)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      borderRadius: '0.5rem',
+                      padding: '0.5rem',
+                      color: '#ef4444',
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {player.name}
+                  </div>
+                ))
+              ) : (
+                <div style={{
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '0.875rem',
+                  textAlign: 'center',
+                  fontStyle: 'italic',
+                }}>
+                  لا يوجد لاعبون
                 </div>
               )}
             </div>
@@ -1536,6 +1688,111 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           }}
         />
       )}
+
+      {/* مودال QR Code لربط الأجهزة */}
+      {showQRCode && (
+        <QRCodeModal
+          sessionId={sessionId}
+          onClose={() => setShowQRCode(false)}
+        />
+      )}
+
+      {/* مودال QR Code للأزرار */}
+      {showBuzzerQRCode && (
+        <BuzzerQRCodeModal
+          sessionId={sessionId}
+          onClose={() => setShowBuzzerQRCode(false)}
+        />
+      )}
+
+      {/* إشعار ضغط الزر */}
+      {buzzerPress && (
+        <div
+          style={{
+            position: 'fixed',
+            top: isMobile ? '1rem' : '2rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10000,
+            background: buzzerPress.team === 'green'
+              ? 'linear-gradient(135deg, #10b981, #14b8a6)'
+              : 'linear-gradient(135deg, #ef4444, #dc2626)',
+            border: '3px solid white',
+            borderRadius: '1.5rem',
+            padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+            animation: 'buzzerPulse 0.5s ease-in-out',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <div
+              style={{
+                fontSize: isMobile ? '2rem' : '3rem',
+              }}
+            >
+              {buzzerPress.type === 'answer' ? '📣' : '🎴'}
+            </div>
+            <h2
+              style={{
+                fontSize: isMobile ? '1.5rem' : '2rem',
+                fontWeight: 900,
+                color: 'white',
+                margin: 0,
+                textAlign: 'center',
+              }}
+            >
+              {buzzerPress.playerName}
+            </h2>
+            <p
+              style={{
+                fontSize: isMobile ? '0.875rem' : '1rem',
+                color: 'rgba(255, 255, 255, 0.9)',
+                margin: 0,
+                fontWeight: 600,
+                marginBottom: '0.75rem',
+              }}
+            >
+              {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
+            </p>
+            <button
+              onClick={handleResetBuzzers}
+              style={{
+                padding: isMobile ? '0.5rem 1rem' : '0.75rem 1.5rem',
+                borderRadius: '0.5rem',
+                background: 'rgba(255, 255, 255, 0.2)',
+                border: '2px solid white',
+                color: 'white',
+                fontSize: isMobile ? '0.875rem' : '1rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+              }}
+            >
+              ✓ تم
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes buzzerPulse {
+          0%, 100% { transform: translateX(-50%) scale(1); }
+          50% { transform: translateX(-50%) scale(1.1); }
+        }
+      `}</style>
     </div>
   );
 };
