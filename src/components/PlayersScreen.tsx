@@ -2,10 +2,11 @@
 // شاشة اللاعبين - عرض فقط (Synchronized with HostScreen design)
 
 import React from 'react';
-import { Users, Zap } from 'lucide-react';
+import { Users, Zap, HelpCircle } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
 import { useScreenSize } from '../hooks/useScreenSize';
+import { playBellSound, playCardSound } from '../utils/sounds';
 import { HexGrid } from './HexGrid';
 import { CardAnimation } from './CardAnimation';
 import { CardRoulette } from './CardRoulette';
@@ -14,6 +15,7 @@ import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
 import { ResultsOverlay } from './ResultsOverlay';
 import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
+import { PlayerGuide } from './PlayerGuide';
 import { getWinStats } from '../utils/winChecker';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
@@ -67,6 +69,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const [localWinMessage, setLocalWinMessage] = React.useState<string | null>(null); // رسالة الفوز
   const [isPaused, setIsPaused] = React.useState(false); // حالة الإيقاف المؤقت
   const [showBuzzerQRCode, setShowBuzzerQRCode] = React.useState(false); // إظهار QR Code للأزرار
+  const [showGuide, setShowGuide] = React.useState(() => !localStorage.getItem('players-guide-done')); // إظهار دليل اللاعبين
   const [sessionId] = React.useState(() => {
     // استخدام نفس session ID من localStorage
     const existing = localStorage.getItem('game-session-id');
@@ -81,7 +84,21 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
     const unsubscribe = syncManager.subscribe((data) => {
       console.log('PlayersScreen received:', data.type);
 
-      if (data.type === 'GRID_INITIALIZED') {
+      if (data.type === 'FULL_STATE_SYNC') {
+        // استقبال حالة اللعبة الكاملة (عند الانضمام في منتصف اللعبة)
+        console.log('📦 Full state sync received:', data.cells?.length, 'cells');
+        if (data.cells) syncFromExternal(data.cells);
+        if (data.settings) localStorage.setItem('current-game-settings', JSON.stringify(data.settings));
+        if (data.scores) setLocalScores(data.scores);
+        if (data.currentRound) setLocalCurrentRound(data.currentRound);
+        if (data.teamCards) setLocalTeamCards(data.teamCards);
+        if (data.winStreak) setLocalStreak(data.winStreak);
+        if (data.winner) setLocalWinner(data.winner); else setLocalWinner(null);
+        if (data.winMessage) setLocalWinMessage(data.winMessage); else setLocalWinMessage(null);
+        if (data.matchWinner) setLocalMatchWinner(data.matchWinner); else setLocalMatchWinner(null);
+        if (data.colorsSwapped !== undefined) setColorsSwapped(data.colorsSwapped);
+        if (data.isPaused !== undefined) setIsPaused(data.isPaused);
+      } else if (data.type === 'GRID_INITIALIZED') {
         console.log('Syncing grid:', data.cells?.length, 'cells');
         if (data.cells) {
           syncFromExternal(data.cells);
@@ -196,8 +213,30 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         // تحديث حالة الإيقاف المؤقت
         setIsPaused(data.isPaused);
       } else if (data.type === 'buzzer-press') {
-        // عرض إشعار الزر المضغوط
-        setBuzzerPress(data.buzzerPress);
+        // تشغيل الصوت المناسب
+        if (data.buzzerPress.type === 'answer') {
+          playBellSound();
+        } else {
+          playCardSound();
+        }
+        // عرض إشعار الزر المضغوط - فقط أول من ضغط (timestamp أقل)
+        setBuzzerPress(prev => {
+          // إذا لم يكن هناك ضغطة سابقة، قبول الضغطة الجديدة
+          if (!prev) {
+            console.log('✅ First buzzer press accepted:', data.buzzerPress.playerName, data.buzzerPress.timestamp);
+            return data.buzzerPress;
+          }
+
+          // إذا كانت الضغطة الجديدة أقدم (timestamp أقل)، قبولها
+          if (data.buzzerPress.timestamp < prev.timestamp) {
+            console.log('⚡ Earlier buzzer press found! Replacing:', data.buzzerPress.playerName, 'was faster than', prev.playerName);
+            return data.buzzerPress;
+          }
+
+          // رفض الضغطة المتأخرة
+          console.log('❌ Later buzzer press rejected:', data.buzzerPress.playerName, 'was slower than', prev.playerName);
+          return prev;
+        });
       } else if (data.type === 'reset-buzzers') {
         // إعادة تعيين الأزرار
         setBuzzerPress(null);
@@ -231,6 +270,39 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       gap: isMobile ? '0.75rem' : '1rem',
       position: 'relative',
     }}>
+
+      {/* زر الدليل - عائم يسار */}
+      <button
+        onClick={() => setShowGuide(true)}
+        style={{
+          position: 'fixed',
+          bottom: isMobile ? '1rem' : '1.5rem',
+          left: isMobile ? '1rem' : '1.5rem',
+          zIndex: 1000,
+          width: isMobile ? '48px' : '56px',
+          height: isMobile ? '48px' : '56px',
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #a855f7, #8b5cf6)',
+          border: '3px solid rgba(255, 255, 255, 0.3)',
+          boxShadow: '0 8px 24px rgba(168, 85, 247, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'scale(1.1)';
+          e.currentTarget.style.boxShadow = '0 12px 32px rgba(168, 85, 247, 0.6)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = '0 8px 24px rgba(168, 85, 247, 0.4)';
+        }}
+        title="دليل اللاعبين"
+      >
+        <HelpCircle size={isMobile ? 24 : 28} color="white" />
+      </button>
 
       {/* زر Answer Buzzers - عائم */}
       <button
@@ -1063,54 +1135,59 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         <div
           style={{
             position: 'fixed',
-            top: isMobile ? '1rem' : '2rem',
-            left: '50%',
-            transform: 'translateX(-50%)',
+            inset: 0,
             zIndex: 10000,
-            background: buzzerPress.team === 'green'
-              ? 'linear-gradient(135deg, #10b981, #14b8a6)'
-              : 'linear-gradient(135deg, #ef4444, #dc2626)',
-            border: '3px solid white',
-            borderRadius: '1.5rem',
-            padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-            animation: 'buzzerPulse 0.5s ease-in-out',
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'buzzerFadeIn 0.3s ease-out',
           }}
         >
           <div
             style={{
+              background: buzzerPress.team === 'green'
+                ? 'linear-gradient(145deg, #059669, #10b981, #34d399)'
+                : 'linear-gradient(145deg, #b91c1c, #ef4444, #f87171)',
+              border: '4px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: isMobile ? '2rem' : '2.5rem',
+              padding: isMobile ? '2rem 2.5rem' : '2.5rem 4rem',
+              boxShadow: buzzerPress.team === 'green'
+                ? '0 0 80px rgba(16, 185, 129, 0.6), 0 0 200px rgba(16, 185, 129, 0.2)'
+                : '0 0 80px rgba(239, 68, 68, 0.6), 0 0 200px rgba(239, 68, 68, 0.2)',
+              animation: 'buzzerBounceIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '0.5rem',
+              gap: isMobile ? '0.75rem' : '1rem',
+              minWidth: isMobile ? '280px' : '380px',
             }}
           >
-            <div
-              style={{
-                fontSize: isMobile ? '2rem' : '3rem',
-              }}
-            >
+            <div style={{
+              fontSize: isMobile ? '3.5rem' : '5rem',
+              lineHeight: 1,
+              filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+            }}>
               {buzzerPress.type === 'answer' ? '📣' : '🎴'}
             </div>
-            <h2
-              style={{
-                fontSize: isMobile ? '1.5rem' : '2rem',
-                fontWeight: 900,
-                color: 'white',
-                margin: 0,
-                textAlign: 'center',
-              }}
-            >
+            <h2 style={{
+              fontSize: isMobile ? '2rem' : '3rem',
+              fontWeight: 900,
+              color: 'white',
+              margin: 0,
+              textAlign: 'center',
+              textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              letterSpacing: '-0.02em',
+            }}>
               {buzzerPress.playerName}
             </h2>
-            <p
-              style={{
-                fontSize: isMobile ? '0.875rem' : '1rem',
-                color: 'rgba(255, 255, 255, 0.9)',
-                margin: 0,
-                fontWeight: 600,
-              }}
-            >
+            <p style={{
+              fontSize: isMobile ? '1.1rem' : '1.4rem',
+              color: 'rgba(255, 255, 255, 0.95)',
+              margin: 0,
+              fontWeight: 700,
+            }}>
               {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
             </p>
           </div>
@@ -1125,10 +1202,23 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         />
       )}
 
+      {/* دليل اللاعبين */}
+      {showGuide && (
+        <PlayerGuide
+          onClose={() => setShowGuide(false)}
+          onDontShowAgain={() => localStorage.setItem('players-guide-done', '1')}
+        />
+      )}
+
       <style>{`
-        @keyframes buzzerPulse {
-          0%, 100% { transform: translateX(-50%) scale(1); }
-          50% { transform: translateX(-50%) scale(1.1); }
+        @keyframes buzzerFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes buzzerBounceIn {
+          0% { transform: scale(0.3); opacity: 0; }
+          60% { transform: scale(1.05); opacity: 1; }
+          100% { transform: scale(1); }
         }
       `}</style>
     </div>

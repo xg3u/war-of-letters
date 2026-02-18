@@ -2,9 +2,11 @@
 // شاشة Answer Buzzers - للإجابة وطلب البطاقات
 
 import React, { useState, useEffect } from 'react';
-import { Bell, CreditCard, Zap } from 'lucide-react';
+import { Bell, CreditCard, Zap, HelpCircle } from 'lucide-react';
 import { useScreenSize } from '../hooks/useScreenSize';
 import { syncManager } from '../utils/SyncManager';
+import { playBellSound, playCardSound } from '../utils/sounds';
+import { BuzzerGuide } from './BuzzerGuide';
 
 interface BuzzerPress {
   type: 'answer' | 'card';
@@ -22,6 +24,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
   const [cooldown, setCooldown] = useState(false);
   const [globalLock, setGlobalLock] = useState(false); // قفل عام لجميع اللاعبين
   const [lockTimeRemaining, setLockTimeRemaining] = useState(0); // الوقت المتبقي للقفل
+  const [showGuide, setShowGuide] = useState(() => !localStorage.getItem('buzzer-guide-done')); // إظهار الدليل
 
   // الحصول على session ID من URL
   const sessionId = new URLSearchParams(window.location.search).get('session') || '';
@@ -91,6 +94,15 @@ export const AnswerBuzzersScreen: React.FC = () => {
       team: selectedTeam,
       timestamp: Date.now(),
     };
+
+    console.log('⚡ BUZZER PRESSED:', playerName, 'at', buzzerPress.timestamp, 'for', type);
+
+    // تشغيل الصوت المناسب
+    if (type === 'answer') {
+      playBellSound();
+    } else {
+      playCardSound();
+    }
 
     // إرسال الضغطة لجميع الشاشات
     syncManager.broadcast({
@@ -551,6 +563,37 @@ export const AnswerBuzzersScreen: React.FC = () => {
       >
         💡 اضغط على أي زر بسرعة - أول لاعب يضغط يظهر اسمه على الشاشة الرئيسية!
       </p>
+
+      {/* زر الدليل - عائم */}
+      <button
+        onClick={() => setShowGuide(true)}
+        style={{
+          position: 'fixed',
+          bottom: '1rem',
+          left: '1rem',
+          zIndex: 1000,
+          width: '44px',
+          height: '44px',
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #a855f7, #8b5cf6)',
+          border: '2.5px solid rgba(255, 255, 255, 0.3)',
+          boxShadow: '0 6px 20px rgba(168, 85, 247, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+        }}
+      >
+        <HelpCircle size={22} color="white" />
+      </button>
+
+      {/* دليل الأزرار */}
+      {showGuide && (
+        <BuzzerGuide
+          onClose={() => setShowGuide(false)}
+          onDontShowAgain={() => localStorage.setItem('buzzer-guide-done', '1')}
+        />
+      )}
     </div>
   );
 };

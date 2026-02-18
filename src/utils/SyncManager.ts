@@ -7,6 +7,7 @@ export class SyncManager {
   private channel: BroadcastChannel;
   private listeners: Set<(data: any) => void> = new Set();
   private storageKey = 'game-state-sync';
+  private fullStateKey = 'game-full-state'; // حالة اللعبة الكاملة
   private realtimeChannel: any = null;
   private sessionId: string | null = null;
 
@@ -85,26 +86,87 @@ export class SyncManager {
     }
   }
 
+  // حفظ حالة اللعبة الكاملة (يُستدعى من HostScreen)
+  saveFullState(state: any) {
+    try {
+      const fullState = { ...state, type: 'FULL_STATE_SYNC', timestamp: Date.now() };
+      localStorage.setItem(this.fullStateKey, JSON.stringify(fullState));
+
+      // بث لجميع الشاشات
+      this.channel.postMessage(fullState);
+
+      // بث عبر Supabase Realtime
+      if (this.realtimeChannel && this.sessionId) {
+        this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'game-update',
+          payload: fullState,
+        });
+      }
+    } catch (err) {
+      console.error('saveFullState error:', err);
+    }
+  }
+
+  // طلب الحالة الكاملة من المقدم (للأجهزة البعيدة)
+  requestFullState() {
+    console.log('📡 Requesting full state from host...');
+    this.broadcast({ type: 'REQUEST_FULL_STATE', timestamp: Date.now() });
+  }
+
   // الاستماع للتحديثات
   subscribe(callback: (data: any) => void) {
     this.listeners.add(callback);
 
-    // تحميل الحالة الأولية من localStorage
+    // تحميل الحالة الكاملة من localStorage (أولوية على GRID_INITIALIZED)
+    let foundLocalState = false;
     try {
-      const stored = localStorage.getItem(this.storageKey);
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (data.type === 'GRID_INITIALIZED' && data.cells) {
+      const fullState = localStorage.getItem(this.fullStateKey);
+      if (fullState) {
+        const data = JSON.parse(fullState);
+        if (data.type === 'FULL_STATE_SYNC' && data.cells) {
+          console.log('📦 Replaying full state snapshot from localStorage');
           callback(data);
+          foundLocalState = true;
+        }
+      }
+
+      if (!foundLocalState) {
+        // Fallback: تحميل GRID_INITIALIZED القديم
+        const stored = localStorage.getItem(this.storageKey);
+        if (stored) {
+          const data = JSON.parse(stored);
+          if (data.type === 'GRID_INITIALIZED' && data.cells) {
+            callback(data);
+            foundLocalState = true;
+          }
         }
       }
     } catch (err) {
       console.error('localStorage load error:', err);
     }
 
+    // إذا لم نجد حالة محلية وعندنا session ID (جهاز بعيد) → نطلب من المقدم
+    if (!foundLocalState && this.sessionId) {
+      // ننتظر قليلاً حتى يتصل Realtime ثم نطلب
+      setTimeout(() => {
+        console.log('📡 No local state found, requesting from host...');
+        this.requestFullState();
+      }, 1500);
+    }
+
     return () => {
       this.listeners.delete(callback);
     };
+  }
+
+  // مسح حالة اللعبة الكاملة (عند إعادة تعيين المباراة)
+  clearFullState() {
+    try {
+      localStorage.removeItem(this.fullStateKey);
+    } catch (err) {
+      console.error('clearFullState error:', err);
+    }
   }
 
   // إغلاق القناة

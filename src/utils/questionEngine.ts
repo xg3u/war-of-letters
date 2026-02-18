@@ -3,6 +3,7 @@
 
 import { supabase, getUserId } from '../lib/supabase';
 import type { Question } from '../lib/supabase';
+import { getCachedQuestions } from './questionCache';
 
 interface WeightedQuestion extends Question {
   weight: number;
@@ -80,35 +81,83 @@ const fetchQuestionPool = async (
   _categoryIds: string[]
 ): Promise<Question[]> => {
 
-  // استعلام بسيط ومباشر يتجاهل الفئات تماماً
-  const { data, error } = await supabase
-    .from('questions')
-    .select('*')
-    .eq('letter_assigned', letter); // نبحث فقط بالحرف
+  // استخدام الـ cache للحصول على أداء أفضل
+  const questions = await getCachedQuestions(letter);
 
-  if (error) {
-    console.error('❌ خطأ في الجلب:', error);
-    return [];
-  }
-
-  console.log(`✅ تم جلب ${data?.length || 0} أسئلة للحرف: ${letter}`);
-  return data || [];
+  console.log(`✅ تم جلب ${questions.length} أسئلة للحرف: ${letter}`);
+  return questions;
 };
 // ========== 2. جلب الأسئلة المشاهدة ==========
+// Cache للأسئلة المشاهدة في memory
+let seenQuestionsCache: Set<string> | null = null;
+let lastSyncTime = 0;
+const SYNC_INTERVAL = 30000; // 30 ثانية
+
 const getSeenQuestions = async (): Promise<Set<string>> => {
   const userId = getUserId();
-  
+  const now = Date.now();
+
+  // استخدام الـ cache إذا كان حديثاً
+  if (seenQuestionsCache && now - lastSyncTime < SYNC_INTERVAL) {
+    return seenQuestionsCache;
+  }
+
+  // جلب من localStorage أولاً (أسرع)
+  const localKey = `seen_questions_${userId}`;
+  const localData = localStorage.getItem(localKey);
+
+  if (localData) {
+    try {
+      const parsed = JSON.parse(localData);
+      seenQuestionsCache = new Set(parsed);
+      lastSyncTime = now;
+
+      // مزامنة مع قاعدة البيانات في الخلفية (لا ننتظرها)
+      syncSeenQuestionsInBackground(userId, localKey);
+
+      return seenQuestionsCache;
+    } catch (e) {
+      console.error('Error parsing local seen questions:', e);
+    }
+  }
+
+  // إذا لم يوجد في localStorage، جلب من قاعدة البيانات
   const { data, error } = await supabase
     .from('user_seen_questions')
     .select('question_id')
     .eq('user_id', userId);
-  
+
   if (error) {
     console.error('Error fetching seen questions:', error);
     return new Set();
   }
-  
-  return new Set((data || []).map(item => item.question_id));
+
+  const seenIds = (data || []).map(item => item.question_id);
+  seenQuestionsCache = new Set(seenIds);
+  lastSyncTime = now;
+
+  // حفظ في localStorage
+  localStorage.setItem(localKey, JSON.stringify(seenIds));
+
+  return seenQuestionsCache;
+};
+
+// مزامنة مع قاعدة البيانات في الخلفية
+const syncSeenQuestionsInBackground = async (userId: string, localKey: string) => {
+  try {
+    const { data } = await supabase
+      .from('user_seen_questions')
+      .select('question_id')
+      .eq('user_id', userId);
+
+    if (data) {
+      const seenIds = data.map(item => item.question_id);
+      localStorage.setItem(localKey, JSON.stringify(seenIds));
+      seenQuestionsCache = new Set(seenIds);
+    }
+  } catch (e) {
+    // تجاهل أخطاء المزامنة في الخلفية
+  }
 };
 
 // ========== 3. Weighted Random: تطبيق الأوزان ==========
@@ -156,20 +205,42 @@ const selectWeightedRandom = (
 // ========== 5. تسجيل السؤال كمشاهد ==========
 const markQuestionAsSeen = async (questionId: string): Promise<void> => {
   const userId = getUserId();
-  
-  const { error } = await supabase
+
+  // تحديث الـ cache فوراً
+  if (seenQuestionsCache) {
+    seenQuestionsCache.add(questionId);
+  }
+
+  // تحديث localStorage فوراً
+  const localKey = `seen_questions_${userId}`;
+  const currentData = localStorage.getItem(localKey);
+  let seenIds: string[] = [];
+
+  if (currentData) {
+    try {
+      seenIds = JSON.parse(currentData);
+    } catch (e) {
+      console.error('Error parsing local seen questions:', e);
+    }
+  }
+
+  if (!seenIds.includes(questionId)) {
+    seenIds.push(questionId);
+    localStorage.setItem(localKey, JSON.stringify(seenIds));
+  }
+
+  // إضافة لقاعدة البيانات في الخلفية (لا ننتظرها)
+  supabase
     .from('user_seen_questions')
     .insert({
       user_id: userId,
       question_id: questionId,
+    })
+    .then(({ error }) => {
+      if (error && !error.message.includes('duplicate')) {
+        console.error('Error marking question as seen:', error);
+      }
     });
-  
-  if (error) {
-    // تجاهل الأخطاء المكررة
-    if (!error.message.includes('duplicate')) {
-      console.error('Error marking question as seen:', error);
-    }
-  }
 };
 
 // ========== Reset: تصفير كل الأسئلة المشاهدة ==========

@@ -120,203 +120,147 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
 
           {/* العنوان */}
           <h2 style={{
-            fontSize: isMobile ? '1.5rem' : '2.5rem',
+            fontSize: isMobile ? '1.5rem' : '2.25rem',
             fontWeight: 900,
             textAlign: 'center',
-            marginBottom: '0.5rem',
+            marginBottom: '1rem',
             background: 'linear-gradient(135deg, #f97316, #ec4899, #a855f7)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}>
-            مرحباً بك في حرب الحروف! 🎮
+            ⚔️ أهلاً بكم في معركة "حرب الحروف"! ⚔️
           </h2>
 
           <p style={{
             textAlign: 'center',
             color: '#e9d5ff',
-            fontSize: isMobile ? '0.875rem' : '1.125rem',
-            marginBottom: isMobile ? '1rem' : '2rem',
+            fontSize: isMobile ? '0.9rem' : '1.05rem',
+            lineHeight: '1.8',
+            marginBottom: isMobile ? '1.25rem' : '1.5rem',
           }}>
-            استعد لخوض أقوى معركة معلومات باللغة العربية!
+            فكرة اللعبة مألوفة لكم من اللعبة الشهيرة <strong style={{ color: '#f59e0b' }}>"حروف مع عزيز"</strong>..
+            <br />
+            بس زدنا عليها حماس ومقالب! 🤩
           </p>
 
-          {/* الخط الفاصل */}
+          {/* الطورين */}
           <div style={{
-            height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
-            marginBottom: isMobile ? '1rem' : '2rem',
-          }} />
-
-          {/* شرح اللعبة */}
-          <div style={{ marginBottom: isMobile ? '1rem' : '2rem' }}>
-            <h3 style={{
-              fontSize: isMobile ? '1.1rem' : '1.5rem',
-              fontWeight: 900,
-              color: 'white',
-              marginBottom: isMobile ? '1rem' : '1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <Target size={isMobile ? 20 : 24} color="#f97316" />
-              فكرة اللعبة
-            </h3>
-            <p style={{
-              color: '#e9d5ff',
-              fontSize: isMobile ? '0.875rem' : '1rem',
-              lineHeight: '1.8',
-              marginBottom: isMobile ? '0.75rem' : '1rem',
-            }}>
-              لعبة استراتيجية بين فريقين (أخضر وأحمر). الهدف هو بناء <strong>جسر متصل</strong> من الحروف يربط جانبي الملعب!
-            </p>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-              gap: isMobile ? '0.5rem' : '1rem',
-            }}>
-              <div style={{
-                background: 'rgba(16, 185, 129, 0.15)',
-                borderRadius: '0.75rem',
-                padding: '1rem',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🟢</div>
-                <strong style={{ color: '#10b981' }}>الأخضر</strong>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#e9d5ff' }}>جسر عمودي ↕️</p>
-              </div>
-              <div style={{
-                background: 'rgba(239, 68, 68, 0.15)',
-                borderRadius: '0.75rem',
-                padding: '1rem',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>🔴</div>
-                <strong style={{ color: '#ef4444' }}>الأحمر</strong>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#e9d5ff' }}>جسر أفقي ↔️</p>
-              </div>
-            </div>
-          </div>
-
-          {/* البطاقات الإستراتيجية */}
-          <div style={{ marginBottom: isMobile ? '1rem' : '2rem' }}>
-            <h3 style={{
-              fontSize: isMobile ? '1.1rem' : '1.5rem',
-              fontWeight: 900,
-              color: 'white',
-              marginBottom: isMobile ? '1rem' : '1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <Zap size={isMobile ? 20 : 24} color="#ec4899" />
-              البطاقات الأربعة
-            </h3>
-            <div style={{
-              background: 'rgba(236, 72, 153, 0.1)',
-              borderRadius: '1rem',
-              padding: isMobile ? '1rem' : '1.5rem',
-              border: '1px solid rgba(236, 72, 153, 0.2)',
-            }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                gap: isMobile ? '0.5rem' : '0.75rem',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>🧊</span>
-                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>تجميد:</strong> جمّد خلية فارغة</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>💣</span>
-                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>قنبلة:</strong> دمّر خلية الخصم</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>⚔️</span>
-                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>معركة:</strong> تحدي لسرقة خلية</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>🛡️</span>
-                  <span style={{ color: '#e9d5ff', fontSize: isMobile ? '0.8rem' : '0.9rem' }}><strong>درع:</strong> احمِ خليتك</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* طرق الحصول على البطاقات */}
-          <div style={{ marginBottom: isMobile ? '1rem' : '2rem' }}>
-            <h3 style={{
-              fontSize: isMobile ? '1.1rem' : '1.5rem',
-              fontWeight: 900,
-              color: 'white',
-              marginBottom: isMobile ? '0.75rem' : '1rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              🎁 كيف تحصل على البطاقات؟
-            </h3>
-            <div style={{
-              background: 'rgba(168, 85, 247, 0.1)',
-              borderRadius: '1rem',
-              padding: isMobile ? '1rem' : '1.25rem',
-              border: '1px solid rgba(168, 85, 247, 0.2)',
-            }}>
-              <ul style={{
-                color: '#e9d5ff',
-                fontSize: isMobile ? '0.8rem' : '0.95rem',
-                lineHeight: '2',
-                paddingRight: isMobile ? '1.25rem' : '1.5rem',
-                margin: 0,
-              }}>
-                <li>🃏 بعض الخلايا تحتوي على بطاقات مخفية</li>
-                <li>✨ الحروف الذهبية تمنحك بطاقة</li>
-                <li>🔥 3 إجابات صحيحة متتالية = بطاقة مكافأة</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* نصيحة أخيرة */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.1), rgba(168, 85, 247, 0.1))',
+            background: 'rgba(168, 85, 247, 0.1)',
             borderRadius: '1rem',
-            padding: isMobile ? '1rem' : '1.5rem',
-            border: '2px solid rgba(249, 115, 22, 0.3)',
-            marginBottom: isMobile ? '1rem' : '2rem',
+            padding: isMobile ? '1.25rem' : '1.5rem',
+            border: '1px solid rgba(168, 85, 247, 0.3)',
+            marginBottom: isMobile ? '1rem' : '1.25rem',
           }}>
+            <h3 style={{
+              fontSize: isMobile ? '1rem' : '1.15rem',
+              fontWeight: 900,
+              color: 'white',
+              marginBottom: '1rem',
+              textAlign: 'center',
+            }}>
+              ✌️ اللعبة فيها طورين:
+            </h3>
+
             <div style={{
               display: 'flex',
-              alignItems: 'center',
+              flexDirection: 'column',
               gap: '0.75rem',
-              marginBottom: '0.75rem',
             }}>
-              <Trophy size={isMobile ? 20 : 24} color="#fbbf24" />
-              <h4 style={{
-                fontSize: isMobile ? '1rem' : '1.25rem',
-                fontWeight: 900,
-                color: 'white',
-                margin: 0,
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.15)',
+                borderRadius: '0.75rem',
+                padding: isMobile ? '0.75rem' : '1rem',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
               }}>
-                قاعدة مهمة
-              </h4>
+                <div style={{
+                  color: '#60a5fa',
+                  fontSize: isMobile ? '0.85rem' : '0.95rem',
+                  fontWeight: 700,
+                  marginBottom: '0.25rem',
+                }}>
+                  1. الطور الكلاسيكي 🧠
+                </div>
+                <p style={{
+                  color: '#e9d5ff',
+                  fontSize: isMobile ? '0.8rem' : '0.9rem',
+                  margin: 0,
+                  lineHeight: '1.6',
+                }}>
+                  ثقافة وسرعة بديهة.. اللي يسبق يجاوب صح، ياخذ الحرف!
+                </p>
+              </div>
+
+              <div style={{
+                background: 'rgba(236, 72, 153, 0.15)',
+                borderRadius: '0.75rem',
+                padding: isMobile ? '0.75rem' : '1rem',
+                border: '1px solid rgba(236, 72, 153, 0.3)',
+              }}>
+                <div style={{
+                  color: '#ec4899',
+                  fontSize: isMobile ? '0.85rem' : '0.95rem',
+                  fontWeight: 700,
+                  marginBottom: '0.25rem',
+                }}>
+                  2. طور الأكشن كارد 🃏
+                </div>
+                <p style={{
+                  color: '#e9d5ff',
+                  fontSize: isMobile ? '0.8rem' : '0.9rem',
+                  margin: 0,
+                  lineHeight: '1.6',
+                }}>
+                  مو شرط تكون مثقف عشان تفوز! استخدم بطاقات الأكشن في الوقت المناسب عشان تخرب خطة الفريق الثاني أو تنقذ فريقك.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* القاعدة الذهبية */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(245, 158, 11, 0.2))',
+            borderRadius: '1rem',
+            padding: isMobile ? '1rem' : '1.25rem',
+            border: '2px solid rgba(249, 115, 22, 0.5)',
+            marginBottom: isMobile ? '1rem' : '1.25rem',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: isMobile ? '2rem' : '2.5rem', marginBottom: '0.5rem' }}>🚨</div>
+            <div style={{
+              color: '#fbbf24',
+              fontSize: isMobile ? '0.9rem' : '1.05rem',
+              fontWeight: 900,
+              marginBottom: '0.5rem',
+            }}>
+              القاعدة الذهبية:
             </div>
             <p style={{
-              color: '#e9d5ff',
-              fontSize: isMobile ? '0.875rem' : '1rem',
-              lineHeight: '1.8',
+              color: 'white',
+              fontSize: isMobile ? '0.85rem' : '1rem',
+              fontWeight: 700,
               margin: 0,
+              lineHeight: '1.6',
             }}>
-              الإجابة يجب أن تبدأ بنفس حرف الخلية المختارة! 📝
+              الأولوية دائماً للي يسبق!<br />
+              <span style={{ fontSize: isMobile ? '0.75rem' : '0.85rem', color: '#e9d5ff' }}>
+                (سواء للإجابة أو لطلب استخدام بطاقة)
+              </span>
             </p>
           </div>
 
-          {/* الخط الفاصل */}
+          {/* ملاحظة الدليل */}
           <div style={{
-            height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent)',
-            marginBottom: isMobile ? '1rem' : '2rem',
-          }} />
+            textAlign: 'center',
+            color: '#c084fc',
+            fontSize: isMobile ? '0.75rem' : '0.85rem',
+            marginBottom: isMobile ? '1rem' : '1.25rem',
+            padding: '0.75rem',
+            background: 'rgba(168, 85, 247, 0.05)',
+            borderRadius: '0.5rem',
+            border: '1px dashed rgba(168, 85, 247, 0.3)',
+          }}>
+            💡 للتعمق في اللعبة أكثر ومعرفة تفاصيل البطاقات، اطلب من المقدم شرح القوانين
+          </div>
 
           {/* Checkbox: لا تظهر مرة أخرى */}
           <div style={{

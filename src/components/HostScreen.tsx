@@ -13,13 +13,15 @@ import {
   Pause,
   Dices,
   Play,
-  QrCode,
-  Zap
+  Zap,
+  HelpCircle
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
 import { getSmartQuestion } from '../utils/questionEngine';
+import { prefetchAllGameLetters } from '../utils/questionCache';
 import { useScreenSize } from '../hooks/useScreenSize';
+import { playBellSound, playCardSound } from '../utils/sounds';
 import { HexGrid } from './HexGrid';
 import { ActionCardPanel } from './ActionCardPanel';
 import { CardAnimation } from './CardAnimation';
@@ -30,6 +32,7 @@ import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
 import { QRCodeModal } from './QRCodeModal';
 import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
+import { HostOnboarding } from './HostOnboarding';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
 import { getWinStats } from '../utils/winChecker';
@@ -76,6 +79,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [currentAnswer, setCurrentAnswer] = useState<string | null>(null);
   const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null);
   const [showQuestion, setShowQuestion] = useState(false);
+  const [isLoadingQuestion, setIsLoadingQuestion] = useState(false); // Loading state for question fetch
   const [zoom, setZoom] = useState(1);
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
@@ -112,6 +116,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     localStorage.setItem('game-session-id', newId);
     return newId;
   });
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    return !localStorage.getItem('host-onboarding-done');
+  });
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
 
@@ -121,6 +128,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     // Reset random letter trigger for new round
     setHasTriggeredRandomLetter(false);
   }, [initializeGrid, settings]);
+
+  // Pre-fetch: تحميل الأسئلة مسبقاً عند تهيئة الشبكة
+  React.useEffect(() => {
+    if (cells.length > 0) {
+      console.log('🚀 Pre-fetching questions for all letters...');
+      prefetchAllGameLetters(cells).then(() => {
+        console.log('✅ Questions pre-fetched successfully!');
+      });
+    }
+  }, [cells.length]);
 
   // ميزة الحرف العشوائي عند بداية الجولة - تنتظر ضغط زر "ابدأ الجولة"
   React.useEffect(() => {
@@ -163,8 +180,30 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
       } else if (data.type === 'buzzer-press') {
-        // عرض إشعار الزر المضغوط
-        setBuzzerPress(data.buzzerPress);
+        // تشغيل الصوت المناسب
+        if (data.buzzerPress.type === 'answer') {
+          playBellSound();
+        } else {
+          playCardSound();
+        }
+        // عرض إشعار الزر المضغوط - فقط أول من ضغط (timestamp أقل)
+        setBuzzerPress(prev => {
+          // إذا لم يكن هناك ضغطة سابقة، قبول الضغطة الجديدة
+          if (!prev) {
+            console.log('✅ First buzzer press accepted:', data.buzzerPress.playerName, data.buzzerPress.timestamp);
+            return data.buzzerPress;
+          }
+
+          // إذا كانت الضغطة الجديدة أقدم (timestamp أقل)، قبولها
+          if (data.buzzerPress.timestamp < prev.timestamp) {
+            console.log('⚡ Earlier buzzer press found! Replacing:', data.buzzerPress.playerName, 'was faster than', prev.playerName);
+            return data.buzzerPress;
+          }
+
+          // رفض الضغطة المتأخرة
+          console.log('❌ Later buzzer press rejected:', data.buzzerPress.playerName, 'was slower than', prev.playerName);
+          return prev;
+        });
       } else if (data.type === 'player-registered') {
         // إضافة لاعب جديد إلى القائمة
         setRegisteredPlayers(prev => {
@@ -173,15 +212,51 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           if (exists) return prev;
           return [...prev, data.player];
         });
+      } else if (data.type === 'REQUEST_FULL_STATE') {
+        // جهاز بعيد يطلب الحالة الكاملة - نرسلها مباشرة
+        console.log('📡 Remote device requested full state - sending...');
+        const state = useGameStore.getState();
+        if (state.cells.length > 0) {
+          syncManager.saveFullState({
+            cells: state.cells,
+            settings: state.settings,
+            scores: state.scores,
+            currentRound: state.currentRound,
+            teamCards: state.teamCards,
+            winStreak: state.winStreak,
+            winner: state.winner,
+            winMessage: state.winMessage,
+            matchWinner: state.matchWinner,
+            isLocked: state.isLocked,
+            colorsSwapped,
+            isPaused,
+            roundStarted,
+          });
+        }
       }
     });
     return unsubscribe;
-  }, [syncFromExternal]);
+  }, [syncFromExternal, colorsSwapped, isPaused, roundStarted]);
 
-  const handleOpenPlayersScreen = () => {
-    const playersUrl = `${window.location.origin}${window.location.pathname}?screen=players`;
-    window.open(playersUrl, '_blank');
-  };
+  // حفظ حالة اللعبة الكاملة في localStorage لمزامنة شاشة اللاعبين
+  React.useEffect(() => {
+    if (cells.length === 0) return; // لا نحفظ قبل تهيئة الشبكة
+    syncManager.saveFullState({
+      cells,
+      settings,
+      scores,
+      currentRound,
+      teamCards,
+      winStreak,
+      winner,
+      winMessage,
+      matchWinner,
+      isLocked,
+      colorsSwapped,
+      isPaused,
+      roundStarted,
+    });
+  }, [cells, scores, currentRound, teamCards, winStreak, winner, winMessage, matchWinner, isLocked, colorsSwapped, isPaused, roundStarted, settings]);
 
   const handleCellSelect = async (cell: HexCellType) => {
     // 🎮 لا يمكن اختيار خلية قبل بدء الجولة
@@ -222,10 +297,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         });
       } else {
         // جلب سؤال ذكي من Supabase
+        setIsLoadingQuestion(true);
         const question = await getSmartQuestion(
           cell.letter,
           settings.selectedCategories
         );
+        setIsLoadingQuestion(false);
 
         if (question) {
           setCurrentQuestion(question.question_text);
@@ -425,11 +502,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     setExcludedQuestionIds(updatedExcluded);
 
     // جلب سؤال جديد مع استبعاد كل الأسئلة السابقة
+    setIsLoadingQuestion(true);
     const newQuestion = await getSmartQuestion(
       selectedCell.letter,
       settings.selectedCategories,
       updatedExcluded
     );
+    setIsLoadingQuestion(false);
 
     if (newQuestion) {
       setCurrentQuestion(newQuestion.question_text);
@@ -970,7 +1049,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
               {/* زر فتح شاشة اللاعبين */}
               <button
-                onClick={handleOpenPlayersScreen}
+                onClick={() => setShowQRCode(true)}
                 style={{
                   padding: '1rem 2rem',
                   fontSize: '1rem',
@@ -1149,10 +1228,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           }} color={isPaused ? "#10b981" : "#8b5cf6"} icon={isPaused ? <Play size={isMobile ? 16 : 20} /> : <Pause size={isMobile ? 16 : 20} />} title={isPaused ? "استمرار" : "إيقاف مؤقت"} disabled={isLocked} isMobile={isMobile} />
           <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={isMobile ? 16 : 20} />} title="حرف عشوائي" disabled={isLocked} isMobile={isMobile} />
           <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={isMobile ? 16 : 20} />} title="عكس الألوان" disabled={isLocked} isMobile={isMobile} />
-          <ControlButton onClick={handleOpenPlayersScreen} color="#14b8a6" icon={<Tv size={isMobile ? 16 : 20} />} title="شاشة اللاعبين" disabled={false} isMobile={isMobile} />
-          <ControlButton onClick={() => setShowQRCode(true)} color="#10b981" icon={<QrCode size={isMobile ? 16 : 20} />} title="ربط جهاز آخر" disabled={false} isMobile={isMobile} />
+          <ControlButton onClick={() => setShowQRCode(true)} color="#14b8a6" icon={<Tv size={isMobile ? 16 : 20} />} title="شاشة اللاعبين" disabled={false} isMobile={isMobile} />
           <ControlButton onClick={() => setShowBuzzerQRCode(true)} color="#f59e0b" icon={<Zap size={isMobile ? 16 : 20} />} title="Answer Buzzers" disabled={false} isMobile={isMobile} />
           <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={isMobile ? 16 : 20} />} title="البطاقات" disabled={isLocked} isMobile={isMobile} />
+          <ControlButton onClick={() => setShowOnboarding(true)} color="#6366f1" icon={<HelpCircle size={isMobile ? 16 : 20} />} title="الدليل" disabled={false} isMobile={isMobile} />
         </div>
       </div>
 
@@ -1710,75 +1789,81 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         <div
           style={{
             position: 'fixed',
-            top: isMobile ? '1rem' : '2rem',
-            left: '50%',
-            transform: 'translateX(-50%)',
+            inset: 0,
             zIndex: 10000,
-            background: buzzerPress.team === 'green'
-              ? 'linear-gradient(135deg, #10b981, #14b8a6)'
-              : 'linear-gradient(135deg, #ef4444, #dc2626)',
-            border: '3px solid white',
-            borderRadius: '1.5rem',
-            padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-            animation: 'buzzerPulse 0.5s ease-in-out',
+            background: 'rgba(0, 0, 0, 0.6)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'buzzerFadeIn 0.3s ease-out',
           }}
         >
           <div
             style={{
+              background: buzzerPress.team === 'green'
+                ? 'linear-gradient(145deg, #059669, #10b981, #34d399)'
+                : 'linear-gradient(145deg, #b91c1c, #ef4444, #f87171)',
+              border: '4px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: isMobile ? '2rem' : '2.5rem',
+              padding: isMobile ? '2rem 2.5rem' : '2.5rem 4rem',
+              boxShadow: buzzerPress.team === 'green'
+                ? '0 0 80px rgba(16, 185, 129, 0.6), 0 0 200px rgba(16, 185, 129, 0.2)'
+                : '0 0 80px rgba(239, 68, 68, 0.6), 0 0 200px rgba(239, 68, 68, 0.2)',
+              animation: 'buzzerBounceIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '0.5rem',
+              gap: isMobile ? '0.75rem' : '1rem',
+              minWidth: isMobile ? '280px' : '380px',
             }}
           >
-            <div
-              style={{
-                fontSize: isMobile ? '2rem' : '3rem',
-              }}
-            >
+            <div style={{
+              fontSize: isMobile ? '3.5rem' : '5rem',
+              lineHeight: 1,
+              filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+            }}>
               {buzzerPress.type === 'answer' ? '📣' : '🎴'}
             </div>
-            <h2
-              style={{
-                fontSize: isMobile ? '1.5rem' : '2rem',
-                fontWeight: 900,
-                color: 'white',
-                margin: 0,
-                textAlign: 'center',
-              }}
-            >
+            <h2 style={{
+              fontSize: isMobile ? '2rem' : '3rem',
+              fontWeight: 900,
+              color: 'white',
+              margin: 0,
+              textAlign: 'center',
+              textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              letterSpacing: '-0.02em',
+            }}>
               {buzzerPress.playerName}
             </h2>
-            <p
-              style={{
-                fontSize: isMobile ? '0.875rem' : '1rem',
-                color: 'rgba(255, 255, 255, 0.9)',
-                margin: 0,
-                fontWeight: 600,
-                marginBottom: '0.75rem',
-              }}
-            >
+            <p style={{
+              fontSize: isMobile ? '1.1rem' : '1.4rem',
+              color: 'rgba(255, 255, 255, 0.95)',
+              margin: 0,
+              fontWeight: 700,
+            }}>
               {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
             </p>
             <button
               onClick={handleResetBuzzers}
               style={{
-                padding: isMobile ? '0.5rem 1rem' : '0.75rem 1.5rem',
-                borderRadius: '0.5rem',
-                background: 'rgba(255, 255, 255, 0.2)',
-                border: '2px solid white',
+                marginTop: '0.5rem',
+                padding: isMobile ? '0.65rem 1.75rem' : '0.85rem 2.5rem',
+                borderRadius: '1rem',
+                background: 'rgba(255, 255, 255, 0.25)',
+                border: '2.5px solid rgba(255, 255, 255, 0.7)',
                 color: 'white',
-                fontSize: isMobile ? '0.875rem' : '1rem',
-                fontWeight: 700,
+                fontSize: isMobile ? '1rem' : '1.15rem',
+                fontWeight: 800,
                 cursor: 'pointer',
                 transition: 'all 0.2s',
+                backdropFilter: 'blur(4px)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.4)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
               }}
             >
               ✓ تم
@@ -1787,10 +1872,25 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         </div>
       )}
 
+      {/* شاشة التعليم للمقدم */}
+      {showOnboarding && (
+        <HostOnboarding
+          onComplete={() => setShowOnboarding(false)}
+          onDontShowAgain={() => {
+            localStorage.setItem('host-onboarding-done', 'true');
+          }}
+        />
+      )}
+
       <style>{`
-        @keyframes buzzerPulse {
-          0%, 100% { transform: translateX(-50%) scale(1); }
-          50% { transform: translateX(-50%) scale(1.1); }
+        @keyframes buzzerFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes buzzerBounceIn {
+          0% { transform: scale(0.3); opacity: 0; }
+          60% { transform: scale(1.05); opacity: 1; }
+          100% { transform: scale(1); }
         }
       `}</style>
     </div>
