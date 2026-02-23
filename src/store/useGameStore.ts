@@ -6,6 +6,17 @@ import { syncManager } from '../utils/SyncManager';
 import { checkWinCondition, getWinMessage } from '../utils/winChecker';
 import { applyCardEffect, updateCardCounters } from '../utils/cardPermissions';
 
+// لقطة حالة اللعبة لنظام التراجع/الإعادة
+interface GameStateSnapshot {
+  cells: HexCell[];
+  scores: { green: number; red: number };
+  winner: Team;
+  winMessage: string | null;
+  matchWinner: 'green' | 'red' | null;
+  teamCards: { green: CardType[]; red: CardType[] };
+  winStreak: { green: number; red: number };
+}
+
 interface GameStore {
   cells: HexCell[];
   settings: GameSettings;
@@ -24,6 +35,10 @@ interface GameStore {
   };
   isLocked: boolean; // 🔒 Action Lock: prevents interaction during roulette/question
 
+  // سجل التراجع/الإعادة
+  history: GameStateSnapshot[];
+  future: GameStateSnapshot[];
+
   initializeGrid: (settings?: GameSettings) => void;
   claimCell: (cellId: string, team: Team) => void;
   syncFromExternal: (cells: HexCell[]) => void;
@@ -37,6 +52,9 @@ interface GameStore {
   clearCards: () => void; // حذف جميع البطاقات من الفريقين
   resetMatch: () => void; // إعادة تعيين المباراة كاملة
   decrementCounters: () => void; // تحديث عدادات التجميد والدرع بعد كل سؤال
+  saveSnapshot: () => void; // حفظ لقطة قبل كل إجراء مهم
+  undoLastAction: () => boolean; // تراجع خطوة
+  redoLastAction: () => boolean; // إعادة خطوة
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -49,6 +67,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   teamCards: { green: [], red: [] },
   winStreak: { green: 0, red: 0 },
   isLocked: false, // 🔒 Initially unlocked
+  history: [],
+  future: [],
   
   settings: {
     gameName: '',
@@ -133,11 +153,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       newCells[randomIndex].isGolden = true;
     }
     
-    set({ 
-      cells: newCells, 
-      winner: null, 
+    set({
+      cells: newCells,
+      winner: null,
       winMessage: null,
       settings: currentSettings,
+      history: [],
+      future: [],
     });
     
     // بث الشبكة
@@ -208,7 +230,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // إعادة تعيين اللعبة (جولة جديدة)
   resetGame: () => {
-    set({ cells: [], winner: null, winMessage: null, winStreak: { green: 0, red: 0 } });
+    set({ cells: [], winner: null, winMessage: null, winStreak: { green: 0, red: 0 }, history: [], future: [] });
   },
 
   // الجولة التالية
@@ -228,6 +250,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         winner: null,
         winMessage: null,
         teamCards: newTeamCards,
+        history: [],
+        future: [],
       });
 
       // بث مسح البطاقات لشاشة اللاعبين إن لزم
@@ -396,6 +420,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       scores: { green: 0, red: 0 },
       teamCards: { green: [], red: [] },
       winStreak: { green: 0, red: 0 },
+      history: [],
+      future: [],
     });
     syncManager.broadcast({
       type: 'MATCH_RESET',
@@ -414,5 +440,115 @@ export const useGameStore = create<GameStore>((set, get) => ({
       type: 'COUNTERS_UPDATED',
       cells: updatedCells,
     });
+  },
+
+  // ─── نظام التراجع / الإعادة ───────────────────────────────────────────────
+
+  // حفظ لقطة من الحالة الحالية قبل تنفيذ إجراء مهم
+  saveSnapshot: () => {
+    const { cells, scores, winner, winMessage, matchWinner, teamCards, winStreak, history } = get();
+    const snapshot: GameStateSnapshot = {
+      cells: cells.map(c => ({ ...c })),
+      scores: { ...scores },
+      winner,
+      winMessage,
+      matchWinner,
+      teamCards: { green: [...teamCards.green], red: [...teamCards.red] },
+      winStreak: { ...winStreak },
+    };
+    // احتفظ بأحدث 10 لقطات فقط، وأفرغ قائمة الإعادة
+    set({ history: [...history.slice(-9), snapshot], future: [] });
+  },
+
+  // تراجع خطوة واحدة — يُرجع true إذا نجح
+  undoLastAction: () => {
+    const { history, future, cells, scores, winner, winMessage, matchWinner, teamCards, winStreak } = get();
+    if (history.length === 0) return false;
+
+    // احفظ الحالة الحالية في قائمة الإعادة
+    const currentSnapshot: GameStateSnapshot = {
+      cells: cells.map(c => ({ ...c })),
+      scores: { ...scores },
+      winner,
+      winMessage,
+      matchWinner,
+      teamCards: { green: [...teamCards.green], red: [...teamCards.red] },
+      winStreak: { ...winStreak },
+    };
+
+    const prev = history[history.length - 1];
+
+    set({
+      cells: prev.cells,
+      scores: prev.scores,
+      winner: prev.winner,
+      winMessage: prev.winMessage,
+      matchWinner: prev.matchWinner,
+      teamCards: prev.teamCards,
+      winStreak: prev.winStreak,
+      history: history.slice(0, -1),
+      future: [...future, currentSnapshot],
+    });
+
+    // بث الحالة الكاملة لشاشة اللاعبين
+    syncManager.broadcast({
+      type: 'FULL_STATE_SYNC',
+      cells: prev.cells,
+      scores: prev.scores,
+      winner: prev.winner,
+      winMessage: prev.winMessage,
+      matchWinner: prev.matchWinner,
+      teamCards: prev.teamCards,
+      winStreak: prev.winStreak,
+      timestamp: Date.now(),
+    });
+
+    return true;
+  },
+
+  // إعادة خطوة — يُرجع true إذا نجح
+  redoLastAction: () => {
+    const { history, future, cells, scores, winner, winMessage, matchWinner, teamCards, winStreak } = get();
+    if (future.length === 0) return false;
+
+    // احفظ الحالة الحالية في سجل التراجع
+    const currentSnapshot: GameStateSnapshot = {
+      cells: cells.map(c => ({ ...c })),
+      scores: { ...scores },
+      winner,
+      winMessage,
+      matchWinner,
+      teamCards: { green: [...teamCards.green], red: [...teamCards.red] },
+      winStreak: { ...winStreak },
+    };
+
+    const next = future[future.length - 1];
+
+    set({
+      cells: next.cells,
+      scores: next.scores,
+      winner: next.winner,
+      winMessage: next.winMessage,
+      matchWinner: next.matchWinner,
+      teamCards: next.teamCards,
+      winStreak: next.winStreak,
+      history: [...history, currentSnapshot],
+      future: future.slice(0, -1),
+    });
+
+    // بث الحالة الكاملة لشاشة اللاعبين
+    syncManager.broadcast({
+      type: 'FULL_STATE_SYNC',
+      cells: next.cells,
+      scores: next.scores,
+      winner: next.winner,
+      winMessage: next.winMessage,
+      matchWinner: next.matchWinner,
+      teamCards: next.teamCards,
+      winStreak: next.winStreak,
+      timestamp: Date.now(),
+    });
+
+    return true;
   },
 }));

@@ -14,7 +14,9 @@ import {
   Dices,
   Play,
   Zap,
-  HelpCircle
+  HelpCircle,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
@@ -74,6 +76,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     resetMatch,
     clearCards,
     decrementCounters,
+    saveSnapshot,
+    undoLastAction,
+    redoLastAction,
+    history,
+    future,
   } = useGameStore();
 
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
@@ -108,6 +115,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [roundStarted, setRoundStarted] = useState(false); // Control when round actually begins
   const [isStreakRewardMode, setIsStreakRewardMode] = useState(false); // Track if roulette is from streak reward
   const [streakRewardTeam, setStreakRewardTeam] = useState<'green' | 'red' | null>(null); // Team that earned streak reward
+  const [showStreakAnnouncement, setShowStreakAnnouncement] = useState(false); // إعلان السلسلة — يتحكم فيه المقدم
+  const [showQuestionOnPlayers, setShowQuestionOnPlayers] = useState(false); // إظهار السؤال في شاشة اللاعبين
   const [excludedQuestionIds, setExcludedQuestionIds] = useState<string[]>([]); // الأسئلة المستبعدة عند تغيير السؤال
   const [showQRCode, setShowQRCode] = useState(false); // إظهار QR Code
   const [showBuzzerQRCode, setShowBuzzerQRCode] = useState(false); // إظهار QR Code للأزرار
@@ -119,7 +128,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     syncManager.initSession(code); // يُعِدّ Realtime فوراً ويضع SyncManager كمقدم
     return code;
   });
-  const [codeCopied, setCodeCopied] = useState(false);
 
   // ── عداد الخمول: خروج تلقائي بعد ساعة من عدم الحركة ──────────────────────
   const INACTIVITY_MS = 60 * 60 * 1000; // 60 دقيقة
@@ -495,6 +503,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
   const handleTeamWin = (team: 'green' | 'red') => {
     if (selectedCell) {
+      // حفظ لقطة قبل التغيير للسماح بالتراجع
+      saveSnapshot();
       // Claim the cell for the winning team
       claimCell(selectedCell.id, team);
 
@@ -534,30 +544,19 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
         // إذا وصل الفريق لـ 3 إجابات متتالية
         if (streakResult.streakReached && streakResult.team) {
-          // إظهار إعلان سلسلة الإجابات
-          const streakMessage = `🔥 ${settings.teamNames[streakResult.team]} أكمل 3 إجابات متتالية! 🎁`;
-
-          // بث إعلان السلسلة
+          // بث إعلان السلسلة لشاشة اللاعبين
           syncManager.broadcast({
             type: 'STREAK_REWARD_ANNOUNCEMENT',
             team: streakResult.team,
-            message: streakMessage,
+            teamName: settings.teamNames[streakResult.team],
+            message: `🔥 ${settings.teamNames[streakResult.team]} أكمل 3 إجابات متتالية! 🎁`,
           });
 
-          // تعيين وضع مكافأة السلسلة
+          // تعيين وضع مكافأة السلسلة وإظهار إعلان المقدم (بدلاً من auto-timer)
           setIsStreakRewardMode(true);
           setStreakRewardTeam(streakResult.team);
-
-          // بعد تأخير قصير، إظهار الروليت
-          setTimeout(() => {
-            setRouletteTriggerType('card');
-            setShowRoulette(true);
-
-            syncManager.broadcast({
-              type: 'ROULETTE_START',
-              triggerType: 'card',
-            });
-          }, 2000);
+          setShowStreakAnnouncement(true);
+          // الروليت لن يبدأ إلا بعد ضغط المقدم على زر "ابدأ الروليت"
         }
       }
 
@@ -567,6 +566,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       syncManager.broadcast({ type: 'CELL_SELECTED', cellId: null, letter: null, hasCard: false, isGolden: false });
       setCurrentQuestion(null);
       setCurrentQuestionId(null);
+      // إخفاء السؤال من شاشة اللاعبين إن كان مُظهَراً
+      if (showQuestionOnPlayers) {
+        setShowQuestionOnPlayers(false);
+        syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
+      }
 
       // 🔓 UNLOCK the game after answer is processed (only if no streak reward)
       if (!settings.enableStreakReward || winStreak[team] < 2) {
@@ -831,56 +835,15 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       minHeight: '100vh',
       background: theme.bgGradient,
       padding: isMobile ? '0.75rem' : isTablet ? '1rem' : '1.5rem',
+      // paddingTop يعوّض ارتفاع MatchScoreTracker (عنوان + لوحة + معلومات الجولة)
+      paddingTop: isMobile ? '115px' : isTablet ? '118px' : '1.5rem',
       display: 'flex',
       flexDirection: isDesktop ? 'row' : 'column',
-      gap: isMobile ? '0.75rem' : '1.5rem',
+      gap: isMobile ? '0.75rem' : '1.25rem',
       position: 'relative',
+      overflowX: 'hidden',
     }}>
 
-      {/* رمز الجلسة - يظهر دائماً في الأعلى */}
-      {!isDesktop && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '0.6rem',
-          background: 'rgba(0,0,0,0.35)',
-          backdropFilter: 'blur(10px)',
-          border: '2px solid rgba(251,191,36,0.4)',
-          borderRadius: '1rem',
-          padding: isMobile ? '0.5rem 1rem' : '0.6rem 1.25rem',
-          width: '100%',
-        }}>
-          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700 }}>🔑 رمز الجلسة:</span>
-          <span style={{
-            color: '#fbbf24',
-            fontSize: isMobile ? '1.3rem' : '1.5rem',
-            fontWeight: 900,
-            letterSpacing: '0.25em',
-            fontFamily: 'monospace',
-          }}>{sessionId}</span>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(sessionId);
-              setCodeCopied(true);
-              setTimeout(() => setCodeCopied(false), 2000);
-            }}
-            style={{
-              background: codeCopied ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)',
-              border: `1.5px solid ${codeCopied ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.2)'}`,
-              borderRadius: '6px',
-              padding: '0.25rem 0.5rem',
-              cursor: 'pointer',
-              color: codeCopied ? '#10b981' : 'rgba(255,255,255,0.6)',
-              fontSize: '0.7rem',
-              fontWeight: 700,
-              transition: 'all 0.2s',
-            }}
-          >
-            {codeCopied ? '✓ تم' : 'نسخ'}
-          </button>
-        </div>
-      )}
 
       {/* لوحتي الفريقين - صف أفقي على الموبايل/التابلت */}
       {!isDesktop && (
@@ -1157,52 +1120,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        gap: isMobile ? '0.75rem' : '1.5rem',
+        gap: isMobile ? '0.6rem' : '1.25rem',
+        minWidth: 0,
+        overflow: 'hidden',
       }}>
 
-        {/* رمز الجلسة - Desktop فقط */}
-        {isDesktop && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.75rem',
-            background: 'rgba(0,0,0,0.3)',
-            backdropFilter: 'blur(10px)',
-            border: '2px solid rgba(251,191,36,0.35)',
-            borderRadius: '1rem',
-            padding: '0.6rem 1.5rem',
-          }}>
-            <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem', fontWeight: 700 }}>🔑 رمز الجلسة:</span>
-            <span style={{
-              color: '#fbbf24',
-              fontSize: '1.6rem',
-              fontWeight: 900,
-              letterSpacing: '0.3em',
-              fontFamily: 'monospace',
-            }}>{sessionId}</span>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(sessionId);
-                setCodeCopied(true);
-                setTimeout(() => setCodeCopied(false), 2000);
-              }}
-              style={{
-                background: codeCopied ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)',
-                border: `1.5px solid ${codeCopied ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.2)'}`,
-                borderRadius: '6px',
-                padding: '0.3rem 0.75rem',
-                cursor: 'pointer',
-                color: codeCopied ? '#10b981' : 'rgba(255,255,255,0.6)',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                transition: 'all 0.2s',
-              }}
-            >
-              {codeCopied ? '✓ تم النسخ' : 'نسخ الرمز'}
-            </button>
-          </div>
-        )}
 
         {/* الشبكة */}
         <div style={{
@@ -1210,8 +1132,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          minHeight: isMobile ? '250px' : isTablet ? '350px' : '500px',
+          minHeight: isMobile ? '260px' : isTablet ? '380px' : '500px',
           position: 'relative',
+          overflow: 'hidden',
         }}>
           {/* 🎮 زر بدء الجولة - يظهر قبل بدء الجولة */}
           {!roundStarted && (
@@ -1408,20 +1331,28 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           />
         </div>
 
-        {/* شريط التحكم الطافي */}
+        {/* شريط التحكم */}
+        <div style={{
+          overflowX: isMobile ? 'auto' : 'visible',
+          overflowY: 'visible',
+          WebkitOverflowScrolling: 'touch' as any,
+          borderRadius: '2rem',
+          alignSelf: 'center',
+          maxWidth: '100%',
+        }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: isMobile ? '0.5rem' : isTablet ? '1rem' : '1.75rem',
-          flexWrap: isMobile ? 'wrap' : 'nowrap',
+          gap: isMobile ? '0.5rem' : isTablet ? '0.75rem' : '1.25rem',
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
           background: 'rgba(0, 0, 0, 0.35)',
           backdropFilter: 'blur(10px)',
-          padding: isMobile ? '0.75rem' : '1rem 1.5rem',
+          padding: isMobile ? '0.6rem 1rem' : '0.75rem 1.25rem',
           borderRadius: '2rem',
           border: '2px solid rgba(255, 255, 255, 0.1)',
           boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-          alignSelf: 'center',
+          minWidth: isMobile ? 'max-content' : 'auto',
         }}>
           {/* Zoom Slider */}
           <input
@@ -1448,6 +1379,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
           {/* الأزرار - 🔒 معطلة أثناء القفل */}
           <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={isMobile ? 16 : 20} />} title="إعادة الجولة" disabled={isLocked} isMobile={isMobile} />
+          {/* زرا التراجع والإعادة */}
+          <ControlButton onClick={() => undoLastAction()} color="#f59e0b" icon={<Undo2 size={isMobile ? 16 : 20} />} title="تراجع" disabled={isLocked || history.length === 0} isMobile={isMobile} />
+          <ControlButton onClick={() => redoLastAction()} color="#06b6d4" icon={<Redo2 size={isMobile ? 16 : 20} />} title="إعادة" disabled={isLocked || future.length === 0} isMobile={isMobile} />
           <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={isMobile ? 16 : 20} />} title="ملء الشاشة" disabled={false} isMobile={isMobile} />
           <ControlButton onClick={() => {
             const newPausedState = !isPaused;
@@ -1464,6 +1398,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           <ControlButton onClick={() => setShowBuzzerQRCode(true)} color="#f59e0b" icon={<Zap size={isMobile ? 16 : 20} />} title="Answer Buzzers" disabled={false} isMobile={isMobile} />
           <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={isMobile ? 16 : 20} />} title="البطاقات" disabled={isLocked} isMobile={isMobile} />
           <ControlButton onClick={() => setShowOnboarding(true)} color="#6366f1" icon={<HelpCircle size={isMobile ? 16 : 20} />} title="الدليل" disabled={false} isMobile={isMobile} />
+        </div>
         </div>
       </div>
 
@@ -1790,27 +1725,67 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               </button>
             </div>
 
-            <button
-              onClick={handleChangeQuestion}
-              style={{
-                width: '100%',
-                padding: isMobile ? '0.875rem' : '1.25rem',
-                background: 'rgba(168, 85, 247, 0.2)',
-                border: '2px solid rgba(168, 85, 247, 0.5)',
-                borderRadius: '1rem',
-                color: '#a855f7',
-                fontSize: isMobile ? '0.875rem' : '1rem',
-                fontWeight: 900,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.5rem',
-              }}
-            >
-              <RefreshCw size={isMobile ? 16 : 20} />
-              تغيير السؤال
-            </button>
+            {/* صف تغيير السؤال + إظهار السؤال للاعبين */}
+            <div style={{ display: 'flex', gap: isMobile ? '0.4rem' : '0.6rem' }}>
+              <button
+                onClick={handleChangeQuestion}
+                style={{
+                  flex: 1,
+                  padding: isMobile ? '0.875rem' : '1.25rem',
+                  background: 'rgba(168, 85, 247, 0.2)',
+                  border: '2px solid rgba(168, 85, 247, 0.5)',
+                  borderRadius: '1rem',
+                  color: '#a855f7',
+                  fontSize: isMobile ? '0.8rem' : '0.95rem',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                }}
+              >
+                <RefreshCw size={isMobile ? 15 : 18} />
+                تغيير السؤال
+              </button>
+
+              {/* زر إظهار/إخفاء السؤال في شاشة اللاعبين */}
+              <button
+                onClick={() => {
+                  const next = !showQuestionOnPlayers;
+                  setShowQuestionOnPlayers(next);
+                  if (next) {
+                    syncManager.broadcast({
+                      type: 'SHOW_QUESTION_TO_PLAYERS',
+                      question: currentQuestion,
+                      letter: selectedCell?.letter ?? '',
+                    });
+                  } else {
+                    syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: isMobile ? '0.875rem' : '1.25rem',
+                  background: showQuestionOnPlayers
+                    ? 'rgba(16, 185, 129, 0.25)'
+                    : 'rgba(20, 184, 166, 0.12)',
+                  border: `2px solid ${showQuestionOnPlayers ? 'rgba(16,185,129,0.7)' : 'rgba(20,184,166,0.35)'}`,
+                  borderRadius: '1rem',
+                  color: showQuestionOnPlayers ? '#10b981' : '#14b8a6',
+                  fontSize: isMobile ? '0.8rem' : '0.95rem',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {showQuestionOnPlayers ? '👁️ مخفي السؤال' : '📺 أظهر للاعبين'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1825,6 +1800,147 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           teamNames={settings.teamNames}
           onClose={() => setShowCardPanel(false)}
         />
+      )}
+
+      {/* ─── إعلان السلسلة: 3 إجابات متتالية ─── */}
+      {showStreakAnnouncement && streakRewardTeam && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'linear-gradient(180deg, rgba(5,0,15,0.97) 0%, rgba(20,5,45,0.97) 100%)',
+          backdropFilter: 'blur(24px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 4500,
+          direction: 'rtl',
+        }}>
+          {/* جسيمات */}
+          <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+            {[...Array(24)].map((_, i) => (
+              <div key={i} style={{
+                position: 'absolute',
+                width: `${3 + (i % 5)}px`,
+                height: `${3 + (i % 5)}px`,
+                borderRadius: '50%',
+                background: ['#fbbf24','#f97316','#ef4444','#ffffff'][i % 4],
+                opacity: 0.55,
+                left: `${(i * 43) % 100}%`,
+                top: `${(i * 61) % 100}%`,
+                animation: `saFloat ${2 + (i % 3) * 0.7}s ease-in-out infinite`,
+                animationDelay: `${(i * 0.15) % 2}s`,
+              }} />
+            ))}
+          </div>
+
+          <div style={{
+            position: 'relative',
+            maxWidth: isMobile ? '92vw' : '560px',
+            width: '100%',
+            background: 'linear-gradient(145deg, rgba(26,11,46,0.99), rgba(8,0,20,0.99))',
+            border: '2px solid rgba(251,191,36,0.55)',
+            borderRadius: isMobile ? '1.5rem' : '2rem',
+            padding: isMobile ? '2rem 1.5rem' : '3rem 2.5rem',
+            textAlign: 'center',
+            boxShadow: '0 0 80px rgba(251,191,36,0.35), 0 40px 100px rgba(0,0,0,0.7)',
+            animation: 'saSlideIn 0.5s cubic-bezier(0.34,1.56,0.64,1)',
+          }}>
+            {/* شريط علوي ذهبي */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: '4px',
+              background: 'linear-gradient(90deg,#fbbf24,#f97316,#fbbf24)',
+              borderRadius: '2rem 2rem 0 0',
+            }} />
+
+            {/* أيقونة النار */}
+            <div style={{
+              fontSize: isMobile ? '3.5rem' : '5rem',
+              marginBottom: isMobile ? '0.5rem' : '0.75rem',
+              animation: 'saFirePulse 0.8s ease-in-out infinite alternate',
+              filter: 'drop-shadow(0 0 20px rgba(251,191,36,0.8))',
+            }}>
+              🔥
+            </div>
+
+            {/* النص الرئيسي */}
+            <div style={{
+              fontSize: isMobile ? '1.1rem' : '1.4rem',
+              fontWeight: 700,
+              color: 'rgba(255,255,255,0.65)',
+              marginBottom: '0.5rem',
+            }}>
+              3 إجابات متتالية!
+            </div>
+
+            <div style={{
+              fontSize: isMobile ? '1.6rem' : '2.2rem',
+              fontWeight: 900,
+              color: streakRewardTeam === 'green' ? '#10b981' : '#ef4444',
+              textShadow: streakRewardTeam === 'green'
+                ? '0 0 24px rgba(16,185,129,0.6)'
+                : '0 0 24px rgba(239,68,68,0.6)',
+              marginBottom: isMobile ? '0.75rem' : '1rem',
+              lineHeight: 1.2,
+            }}>
+              {settings.teamNames[streakRewardTeam]}
+            </div>
+
+            <div style={{
+              fontSize: isMobile ? '0.95rem' : '1.15rem',
+              fontWeight: 700,
+              color: '#fbbf24',
+              marginBottom: isMobile ? '1.5rem' : '2rem',
+            }}>
+              🎁 يستحق بطاقة مكافأة!
+            </div>
+
+            {/* تعليمات */}
+            <div style={{
+              padding: isMobile ? '0.65rem 1rem' : '0.85rem 1.5rem',
+              background: 'rgba(251,191,36,0.1)',
+              border: '1.5px solid rgba(251,191,36,0.3)',
+              borderRadius: '0.9rem',
+              fontSize: isMobile ? '0.8rem' : '0.9rem',
+              color: 'rgba(255,255,255,0.65)',
+              marginBottom: isMobile ? '1.25rem' : '1.75rem',
+            }}>
+              اضغط "ابدأ الروليت" عندما تكون جاهزاً لبدء دوران البطاقة
+            </div>
+
+            {/* زر ابدأ الروليت */}
+            <button
+              onClick={() => {
+                setShowStreakAnnouncement(false);
+                setRouletteTriggerType('card');
+                setShowRoulette(true);
+                syncManager.broadcast({ type: 'ROULETTE_START', triggerType: 'card' });
+              }}
+              style={{
+                width: '100%',
+                padding: isMobile ? '0.9rem' : '1.1rem',
+                background: 'linear-gradient(135deg,#fbbf24,#f97316)',
+                border: 'none',
+                borderRadius: '1rem',
+                color: '#1a0800',
+                fontSize: isMobile ? '1rem' : '1.15rem',
+                fontWeight: 900,
+                cursor: 'pointer',
+                boxShadow: '0 8px 28px rgba(251,191,36,0.45)',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+            >
+              🎰 ابدأ الروليت
+            </button>
+          </div>
+
+          <style>{`
+            @keyframes saSlideIn    { from { opacity:0; transform:translateY(40px) scale(0.9); } to { opacity:1; transform:translateY(0) scale(1); } }
+            @keyframes saFirePulse  { from { transform:scale(1); } to { transform:scale(1.15); } }
+            @keyframes saFloat      { 0%,100% { opacity:0; transform:scale(0) translateY(0); } 50% { opacity:0.6; transform:scale(1) translateY(-20px); } }
+          `}</style>
+        </div>
       )}
 
       {/* أنيميشن البطاقة */}

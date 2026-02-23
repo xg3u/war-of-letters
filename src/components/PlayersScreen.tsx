@@ -89,6 +89,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const [showCardTeaser, setShowCardTeaser] = React.useState<{ letter: string; isGolden: boolean } | null>(null); // شاشة التشويق
   const [showBuzzerQRCode, setShowBuzzerQRCode] = React.useState(false); // إظهار QR Code للأزرار
   const [sessionEnded, setSessionEnded] = React.useState(false); // انتهت الجلسة
+  const [forcedQuestion, setForcedQuestion] = React.useState<{ question: string; letter: string } | null>(null); // سؤال أظهره المقدم
+  const [streakAnnouncement, setStreakAnnouncement] = React.useState<{ team: 'green' | 'red'; teamName: string } | null>(null); // إعلان السلسلة
   const [showGuide, setShowGuide] = React.useState(() => !localStorage.getItem('players-guide-done')); // إظهار دليل اللاعبين
   // session ID من URL أو localStorage — لا يحتاج إدخال يدوي
   const [sessionId] = React.useState(() => {
@@ -282,6 +284,20 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           console.log('❌ Later buzzer press rejected:', data.buzzerPress.playerName, 'was slower than', prev.playerName);
           return prev;
         });
+      } else if (data.type === 'SHOW_QUESTION_TO_PLAYERS') {
+        // المقدم اختار إظهار السؤال للاعبين
+        if (data.question) {
+          setForcedQuestion({ question: data.question, letter: data.letter ?? '' });
+        }
+      } else if (data.type === 'HIDE_QUESTION_FROM_PLAYERS') {
+        setForcedQuestion(null);
+      } else if (data.type === 'STREAK_REWARD_ANNOUNCEMENT') {
+        // إعلان 3 إجابات متتالية
+        if (data.team) {
+          setStreakAnnouncement({ team: data.team, teamName: data.teamName ?? data.team });
+          // إخفاء تلقائي بعد 4 ثوانٍ
+          setTimeout(() => setStreakAnnouncement(null), 4000);
+        }
       } else if (data.type === 'reset-buzzers') {
         // إعادة تعيين الأزرار
         setBuzzerPress(null);
@@ -357,13 +373,15 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       minHeight: '100vh',
       background: theme.bgGradient,
       padding: isMobile ? '0.75rem' : '1rem',
-      paddingTop: isMobile ? '175px' : isTablet ? '125px' : '5rem',
+      // paddingTop يعوّض ارتفاع MatchScoreTracker (عنوان + لوحة + معلومات الجولة)
+      paddingTop: isMobile ? '115px' : isTablet ? '118px' : '1.5rem',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: isMobile || isTablet ? 'flex-start' : 'center',
-      gap: isMobile ? '0.75rem' : '1rem',
+      gap: isMobile ? '0.6rem' : '1rem',
       position: 'relative',
+      overflowX: 'hidden',
     }}>
 
 
@@ -437,11 +455,11 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       {!isDesktop && (
         <div style={{
           display: 'flex',
-          gap: isMobile ? '0.5rem' : '1rem',
+          gap: isMobile ? '0.5rem' : '0.75rem',
           width: '100%',
           maxWidth: '1400px',
         }}>
-          {/* بطاقة الفريق الأخضر - مضغوطة */}
+          {/* بطاقة الفريق الأخضر - مطابقة لشاشة المقدم */}
           <div style={{
             flex: 1,
             background: 'rgba(255, 255, 255, 0.1)',
@@ -450,93 +468,39 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             borderRadius: '1rem',
             padding: isMobile ? '0.75rem' : '1rem',
             display: 'flex',
-            flexDirection: 'column',
+            alignItems: 'center',
             gap: isMobile ? '0.5rem' : '0.75rem',
           }}>
             <div style={{
+              width: isMobile ? '36px' : '42px',
+              height: isMobile ? '36px' : '42px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #10b981, #14b8a6)',
               display: 'flex',
               alignItems: 'center',
-              gap: isMobile ? '0.5rem' : '0.75rem',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}>
-              <div style={{
-                width: isMobile ? '36px' : '42px',
-                height: isMobile ? '36px' : '42px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #10b981, #14b8a6)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <Users size={isMobile ? 18 : 22} color="white" />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {settings.teamNames.green}
-                </div>
-                <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
-                  {scores.green}
-                </div>
-              </div>
-              {localTeamCards.green.length > 0 && (
-                <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                  {localTeamCards.green.map((card, idx) => (
-                    <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
-                  ))}
-                </div>
-              )}
+              <Users size={isMobile ? 18 : 22} color="white" />
             </div>
-
-            {/* اللاعبون المسجلون */}
-            <div style={{
-              borderTop: '1px solid rgba(16, 185, 129, 0.3)',
-              paddingTop: isMobile ? '0.5rem' : '0.75rem',
-              marginTop: isMobile ? '0.5rem' : '0.75rem',
-            }}>
-              <div style={{
-                fontSize: isMobile ? '0.625rem' : '0.75rem',
-                color: 'rgba(255, 255, 255, 0.6)',
-                marginBottom: '0.25rem',
-                fontWeight: 600,
-              }}>
-                📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'green').length})
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {settings.teamNames.green}
               </div>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.25rem',
-              }}>
-                {registeredPlayers.filter(p => p.team === 'green').length > 0 ? (
-                  registeredPlayers.filter(p => p.team === 'green').map((player, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        fontSize: isMobile ? '0.625rem' : '0.75rem',
-                        background: 'rgba(16, 185, 129, 0.2)',
-                        color: '#10b981',
-                        padding: '0.125rem 0.5rem',
-                        borderRadius: '0.5rem',
-                        fontWeight: 600,
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                      }}
-                    >
-                      {player.name}
-                    </span>
-                  ))
-                ) : (
-                  <span style={{
-                    fontSize: isMobile ? '0.625rem' : '0.75rem',
-                    color: 'rgba(255, 255, 255, 0.4)',
-                    fontStyle: 'italic',
-                  }}>
-                    لا يوجد لاعبون
-                  </span>
-                )}
+              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
+                {localScores.green}
               </div>
             </div>
+            {localTeamCards.green.length > 0 && (
+              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {localTeamCards.green.map((card, idx) => (
+                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* بطاقة الفريق الأحمر - مضغوطة */}
+          {/* بطاقة الفريق الأحمر - مطابقة لشاشة المقدم */}
           <div style={{
             flex: 1,
             background: 'rgba(255, 255, 255, 0.1)',
@@ -545,90 +509,36 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             borderRadius: '1rem',
             padding: isMobile ? '0.75rem' : '1rem',
             display: 'flex',
-            flexDirection: 'column',
+            alignItems: 'center',
             gap: isMobile ? '0.5rem' : '0.75rem',
           }}>
             <div style={{
+              width: isMobile ? '36px' : '42px',
+              height: isMobile ? '36px' : '42px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
               display: 'flex',
               alignItems: 'center',
-              gap: isMobile ? '0.5rem' : '0.75rem',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}>
-              <div style={{
-                width: isMobile ? '36px' : '42px',
-                height: isMobile ? '36px' : '42px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}>
-                <Users size={isMobile ? 18 : 22} color="white" />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {settings.teamNames.red}
-                </div>
-                <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
-                  {scores.red}
-                </div>
-              </div>
-              {localTeamCards.red.length > 0 && (
-                <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                  {localTeamCards.red.map((card, idx) => (
-                    <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
-                  ))}
-                </div>
-              )}
+              <Users size={isMobile ? 18 : 22} color="white" />
             </div>
-
-            {/* اللاعبون المسجلون */}
-            <div style={{
-              borderTop: '1px solid rgba(239, 68, 68, 0.3)',
-              paddingTop: isMobile ? '0.5rem' : '0.75rem',
-              marginTop: isMobile ? '0.5rem' : '0.75rem',
-            }}>
-              <div style={{
-                fontSize: isMobile ? '0.625rem' : '0.75rem',
-                color: 'rgba(255, 255, 255, 0.6)',
-                marginBottom: '0.25rem',
-                fontWeight: 600,
-              }}>
-                📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'red').length})
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {settings.teamNames.red}
               </div>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.25rem',
-              }}>
-                {registeredPlayers.filter(p => p.team === 'red').length > 0 ? (
-                  registeredPlayers.filter(p => p.team === 'red').map((player, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        fontSize: isMobile ? '0.625rem' : '0.75rem',
-                        background: 'rgba(239, 68, 68, 0.2)',
-                        color: '#ef4444',
-                        padding: '0.125rem 0.5rem',
-                        borderRadius: '0.5rem',
-                        fontWeight: 600,
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                      }}
-                    >
-                      {player.name}
-                    </span>
-                  ))
-                ) : (
-                  <span style={{
-                    fontSize: isMobile ? '0.625rem' : '0.75rem',
-                    color: 'rgba(255, 255, 255, 0.4)',
-                    fontStyle: 'italic',
-                  }}>
-                    لا يوجد لاعبون
-                  </span>
-                )}
+              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
+                {localScores.red}
               </div>
             </div>
+            {localTeamCards.red.length > 0 && (
+              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {localTeamCards.red.map((card, idx) => (
+                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -819,6 +729,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             justifyContent: 'center',
             flex: 1,
             width: '100%',
+            overflow: 'hidden',
+            minHeight: isMobile ? '260px' : isTablet ? '380px' : '500px',
           }}>
             <HexGrid
               cells={cells}
@@ -1076,7 +988,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       {selectedCellInfo && !showRoulette && !showRandomLetterAnnouncement && (
         <div style={{
           position: 'fixed',
-          top: isMobile ? '180px' : isTablet ? '130px' : '80px',
+          top: isMobile ? '118px' : isTablet ? '122px' : '80px',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 1500,
@@ -1197,6 +1109,222 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               0%, 100% { transform: translateY(0) rotate(-5deg); }
               50% { transform: translateY(-20px) rotate(5deg); }
             }
+          `}</style>
+        </div>
+      )}
+
+      {/* ── سؤال أظهره المقدم اختيارياً ── */}
+      {forcedQuestion && (
+        <div style={{
+          position: 'fixed',
+          bottom: isMobile ? '1rem' : '1.5rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: isMobile ? '93vw' : isTablet ? '75vw' : '560px',
+          background: 'linear-gradient(145deg, rgba(26,11,46,0.97), rgba(8,0,20,0.97))',
+          border: '2px solid rgba(168,85,247,0.55)',
+          borderRadius: isMobile ? '1rem' : '1.4rem',
+          padding: isMobile ? '1rem 1.1rem' : '1.5rem 1.75rem',
+          zIndex: 300,
+          direction: 'rtl',
+          boxShadow: '0 8px 40px rgba(168,85,247,0.35), 0 20px 60px rgba(0,0,0,0.6)',
+          animation: 'fqSlideUp 0.4s cubic-bezier(0.34,1.56,0.64,1)',
+        }}>
+          {/* شريط علوي بنفسجي */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
+            background: 'linear-gradient(90deg,#a855f7,#ec4899,#a855f7)',
+            borderRadius: '1.4rem 1.4rem 0 0',
+          }} />
+
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+            {/* الحرف */}
+            {forcedQuestion.letter && (
+              <div style={{
+                flexShrink: 0,
+                width: isMobile ? '40px' : '52px',
+                height: isMobile ? '40px' : '52px',
+                background: 'linear-gradient(135deg,#a855f7,#ec4899)',
+                borderRadius: '0.7rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: isMobile ? '1.25rem' : '1.6rem',
+                fontWeight: 900,
+                color: 'white',
+                boxShadow: '0 4px 16px rgba(168,85,247,0.4)',
+              }}>
+                {forcedQuestion.letter}
+              </div>
+            )}
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* بادج "السؤال" */}
+              <div style={{
+                display: 'inline-block',
+                padding: '0.18rem 0.6rem',
+                background: 'rgba(168,85,247,0.2)',
+                border: '1px solid rgba(168,85,247,0.4)',
+                borderRadius: '0.5rem',
+                fontSize: isMobile ? '0.65rem' : '0.72rem',
+                fontWeight: 700,
+                color: '#c084fc',
+                marginBottom: '0.35rem',
+              }}>
+                📺 السؤال
+              </div>
+
+              {/* نص السؤال */}
+              <div style={{
+                color: 'white',
+                fontSize: isMobile ? '0.95rem' : '1.1rem',
+                fontWeight: 700,
+                lineHeight: 1.45,
+              }}>
+                {forcedQuestion.question}
+              </div>
+
+              <div style={{
+                marginTop: '0.5rem',
+                fontSize: isMobile ? '0.72rem' : '0.8rem',
+                color: 'rgba(168,85,247,0.7)',
+                fontWeight: 600,
+              }}>
+                ⏳ جاري الإجابة…
+              </div>
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes fqSlideUp { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+          `}</style>
+        </div>
+      )}
+
+      {/* ── إعلان 3 إجابات متتالية ── */}
+      {streakAnnouncement && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 4000,
+          pointerEvents: 'none',
+          direction: 'rtl',
+        }}>
+          {/* طبقة ضوئية ملونة */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: streakAnnouncement.team === 'green'
+              ? 'radial-gradient(ellipse at center, rgba(16,185,129,0.22) 0%, transparent 70%)'
+              : 'radial-gradient(ellipse at center, rgba(239,68,68,0.22) 0%, transparent 70%)',
+            animation: 'strPulse 0.6s ease-in-out infinite alternate',
+          }} />
+
+          {/* البطاقة المركزية */}
+          <div style={{
+            position: 'relative',
+            maxWidth: isMobile ? '85vw' : '460px',
+            width: '100%',
+            background: 'linear-gradient(145deg, rgba(26,11,46,0.97), rgba(8,0,20,0.97))',
+            border: `2.5px solid ${streakAnnouncement.team === 'green' ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'}`,
+            borderRadius: isMobile ? '1.4rem' : '1.8rem',
+            padding: isMobile ? '1.75rem 1.5rem' : '2.5rem 2rem',
+            textAlign: 'center',
+            boxShadow: streakAnnouncement.team === 'green'
+              ? '0 0 60px rgba(16,185,129,0.4), 0 30px 80px rgba(0,0,0,0.7)'
+              : '0 0 60px rgba(239,68,68,0.4), 0 30px 80px rgba(0,0,0,0.7)',
+            animation: 'strSlideIn 0.45s cubic-bezier(0.34,1.56,0.64,1)',
+            overflow: 'hidden',
+          }}>
+            {/* شريط علوي */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: '4px',
+              background: streakAnnouncement.team === 'green'
+                ? 'linear-gradient(90deg,#10b981,#14b8a6,#10b981)'
+                : 'linear-gradient(90deg,#ef4444,#f97316,#ef4444)',
+              borderRadius: '1.8rem 1.8rem 0 0',
+            }} />
+
+            {/* أيقونة النار */}
+            <div style={{
+              fontSize: isMobile ? '3rem' : '4.5rem',
+              marginBottom: isMobile ? '0.5rem' : '0.75rem',
+              animation: 'strFire 0.5s ease-in-out infinite alternate',
+              filter: 'drop-shadow(0 0 16px rgba(251,191,36,0.9))',
+              lineHeight: 1,
+            }}>
+              🔥
+            </div>
+
+            {/* "3 إجابات متتالية" */}
+            <div style={{
+              fontSize: isMobile ? '0.85rem' : '1rem',
+              fontWeight: 700,
+              color: 'rgba(255,255,255,0.55)',
+              letterSpacing: '0.04em',
+              marginBottom: '0.3rem',
+            }}>
+              3 إجابات متتالية!
+            </div>
+
+            {/* اسم الفريق */}
+            <div style={{
+              fontSize: isMobile ? '1.6rem' : '2.2rem',
+              fontWeight: 900,
+              color: streakAnnouncement.team === 'green' ? '#10b981' : '#ef4444',
+              textShadow: streakAnnouncement.team === 'green'
+                ? '0 0 28px rgba(16,185,129,0.7)'
+                : '0 0 28px rgba(239,68,68,0.7)',
+              marginBottom: isMobile ? '0.5rem' : '0.75rem',
+              lineHeight: 1.2,
+            }}>
+              {streakAnnouncement.teamName}
+            </div>
+
+            {/* رسالة المكافأة */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: isMobile ? '0.4rem 0.9rem' : '0.5rem 1.25rem',
+              background: 'rgba(251,191,36,0.15)',
+              border: '1.5px solid rgba(251,191,36,0.4)',
+              borderRadius: '0.75rem',
+              fontSize: isMobile ? '0.82rem' : '0.95rem',
+              fontWeight: 700,
+              color: '#fbbf24',
+            }}>
+              🎁 يستحق بطاقة مكافأة!
+            </div>
+
+            {/* شريط تقدم الوقت */}
+            <div style={{
+              position: 'absolute',
+              bottom: 0, left: 0,
+              height: '3px',
+              width: '100%',
+              background: `${streakAnnouncement.team === 'green' ? '#10b981' : '#ef4444'}55`,
+              borderRadius: '0 0 1.8rem 1.8rem',
+            }}>
+              <div style={{
+                height: '100%',
+                width: '100%',
+                background: streakAnnouncement.team === 'green' ? '#10b981' : '#ef4444',
+                borderRadius: 'inherit',
+                animation: 'strTimer 4s linear forwards',
+                transformOrigin: 'right',
+              }} />
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes strSlideIn { from { opacity:0; transform:translateY(-30px) scale(0.88); } to { opacity:1; transform:translateY(0) scale(1); } }
+            @keyframes strFire    { from { transform:scale(1) rotate(-4deg); } to { transform:scale(1.18) rotate(4deg); } }
+            @keyframes strPulse   { from { opacity:0.6; } to { opacity:1; } }
+            @keyframes strTimer   { from { transform:scaleX(1); } to { transform:scaleX(0); } }
           `}</style>
         </div>
       )}
