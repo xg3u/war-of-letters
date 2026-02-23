@@ -2,7 +2,7 @@
 // دليل شاشة Answer Buzzers - مصمم للجوالات
 
 import React, { useState } from 'react';
-import { ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { ChevronRight, ChevronLeft } from 'lucide-react';
 
 interface BuzzerGuideProps {
   onClose: () => void;
@@ -219,40 +219,22 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
               {step.title}
             </h2>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <button
-              onClick={handleComplete}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1.5px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '10px',
-                padding: '0.45rem 0.85rem',
-                cursor: 'pointer',
-                color: 'rgba(255, 255, 255, 0.6)',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                transition: 'all 0.2s',
-              }}
-            >
-              تخطي
-            </button>
-            <button
-              onClick={handleComplete}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1.5px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '10px',
-                padding: '0.5rem',
-                cursor: 'pointer',
-                color: 'rgba(255, 255, 255, 0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <X size={20} />
-            </button>
-          </div>
+          <button
+            onClick={handleComplete}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1.5px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '10px',
+              padding: '0.45rem 0.85rem',
+              cursor: 'pointer',
+              color: 'rgba(255, 255, 255, 0.6)',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              transition: 'all 0.2s',
+            }}
+          >
+            تخطي
+          </button>
         </div>
 
         {/* Content */}

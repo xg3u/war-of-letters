@@ -81,10 +81,12 @@ export const checkWinCondition = (
   if (winCondition === 'most-letters' || winCondition === 'all') {
     const greenCount = cells.filter(c => c.status === 'green').length;
     const redCount = cells.filter(c => c.status === 'red').length;
-    const totalAnswered = greenCount + redCount;
 
-    // فحص إذا كل الخلايا مجابة (25 خلية)
-    if (totalAnswered === 25) {
+    // الجولة تنتهي عندما لا تتبقى أي خلية "غير مجابة"
+    // الخلايا المدمورة بالقنبلة (destroyed) لا تُحسب لأي فريق ولا تُعدّ غير مجابة
+    const unansweredCount = cells.filter(c => c.status === 'unanswered').length;
+
+    if (unansweredCount === 0) {
       if (greenCount > redCount) {
         return {
           winner: 'green',
@@ -261,16 +263,19 @@ export const getWinStats = (
   greenCount: number;
   redCount: number;
   unansweredCount: number;
+  destroyedCount: number;
   totalAnswered: number;
 } => {
   const greenCount = cells.filter(c => c.status === 'green').length;
   const redCount = cells.filter(c => c.status === 'red').length;
   const unansweredCount = cells.filter(c => c.status === 'unanswered').length;
+  const destroyedCount = cells.filter(c => c.status === 'destroyed').length;
 
   return {
     greenCount,
     redCount,
     unansweredCount,
-    totalAnswered: greenCount + redCount,
+    destroyedCount,
+    totalAnswered: greenCount + redCount, // المدمورة لا تُحسب لأي فريق
   };
 };

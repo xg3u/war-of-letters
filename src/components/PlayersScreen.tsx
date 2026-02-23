@@ -10,6 +10,7 @@ import { playBellSound, playCardSound } from '../utils/sounds';
 import { HexGrid } from './HexGrid';
 import { CardAnimation } from './CardAnimation';
 import { CardRoulette } from './CardRoulette';
+import { CardTeaserOverlay } from './CardTeaserOverlay';
 import { StreakVisualizer } from './StreakVisualizer';
 import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
@@ -17,6 +18,7 @@ import { ResultsOverlay } from './ResultsOverlay';
 import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
 import { PlayerGuide } from './PlayerGuide';
 import { getWinStats } from '../utils/winChecker';
+import { useTheme } from '../context/ThemeContext';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
 
@@ -28,17 +30,26 @@ const CARD_ICONS: Record<CardType, string> = {
   shield: '🛡️',
 };
 
+
 interface PlayersScreenProps {
-  settings: GameSettingsData;
+  settings: GameSettingsData | null;
   currentQuestion: string | null;
   selectedCell: HexCellType | null;
 }
 
 export const PlayersScreen: React.FC<PlayersScreenProps> = ({
-  settings,
+  settings: initialSettings,
   currentQuestion,
   selectedCell,
 }) => {
+  // الإعدادات قد تأتي من المقدم عبر FULL_STATE_SYNC إذا لم تكن متاحة مباشرة
+  const [localSettings, setLocalSettings] = React.useState<GameSettingsData | null>(() => {
+    if (initialSettings) return initialSettings;
+    // محاولة استرجاع من localStorage
+    const stored = localStorage.getItem('current-game-settings');
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [isSyncing, setIsSyncing] = React.useState(!localSettings);
   const { cells, syncFromExternal, scores, teamCards, winStreak, currentRound } = useGameStore();
   const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [zoom, setZoom] = React.useState(1);
@@ -52,6 +63,12 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const [localMatchWinner, setLocalMatchWinner] = React.useState<'green' | 'red' | null>(null);
   const [localTeamCards, setLocalTeamCards] = React.useState(teamCards);
   const [colorsSwapped, setColorsSwapped] = React.useState(false); // حالة عكس الألوان
+  const [selectedCellInfo, setSelectedCellInfo] = React.useState<{
+    id: string;
+    letter: string;
+    hasCard: boolean;
+    isGolden: boolean;
+  } | null>(null); // الخلية المختارة من المقدم
   const [buzzerPress, setBuzzerPress] = React.useState<{
     type: 'answer' | 'card';
     playerName: string;
@@ -65,18 +82,22 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   }[]>([]); // اللاعبون المسجلون في Answer Buzzers
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
+  const { theme } = useTheme();
   const [localWinner, setLocalWinner] = React.useState<'green' | 'red' | null>(null); // فائز الجولة
   const [localWinMessage, setLocalWinMessage] = React.useState<string | null>(null); // رسالة الفوز
   const [isPaused, setIsPaused] = React.useState(false); // حالة الإيقاف المؤقت
+  const [showCardTeaser, setShowCardTeaser] = React.useState<{ letter: string; isGolden: boolean } | null>(null); // شاشة التشويق
   const [showBuzzerQRCode, setShowBuzzerQRCode] = React.useState(false); // إظهار QR Code للأزرار
+  const [sessionEnded, setSessionEnded] = React.useState(false); // انتهت الجلسة
   const [showGuide, setShowGuide] = React.useState(() => !localStorage.getItem('players-guide-done')); // إظهار دليل اللاعبين
+  // session ID من URL أو localStorage — لا يحتاج إدخال يدوي
   const [sessionId] = React.useState(() => {
-    // استخدام نفس session ID من localStorage
-    const existing = localStorage.getItem('game-session-id');
-    if (existing) return existing;
-    const newId = Math.random().toString(36).substring(2, 10).toUpperCase();
-    localStorage.setItem('game-session-id', newId);
-    return newId;
+    const urlSession = new URLSearchParams(window.location.search).get('session');
+    if (urlSession) {
+      localStorage.setItem('game-session-id', urlSession);
+      return urlSession;
+    }
+    return localStorage.getItem('game-session-id') || '';
   });
 
   // المزامنة فقط
@@ -88,7 +109,11 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         // استقبال حالة اللعبة الكاملة (عند الانضمام في منتصف اللعبة)
         console.log('📦 Full state sync received:', data.cells?.length, 'cells');
         if (data.cells) syncFromExternal(data.cells);
-        if (data.settings) localStorage.setItem('current-game-settings', JSON.stringify(data.settings));
+        if (data.settings) {
+          localStorage.setItem('current-game-settings', JSON.stringify(data.settings));
+          setLocalSettings(data.settings);
+          setIsSyncing(false);
+        }
         if (data.scores) setLocalScores(data.scores);
         if (data.currentRound) setLocalCurrentRound(data.currentRound);
         if (data.teamCards) setLocalTeamCards(data.teamCards);
@@ -107,8 +132,21 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           // تحديث الإعدادات أيضاً
           localStorage.setItem('current-game-settings', JSON.stringify(data.settings));
         }
+      } else if (data.type === 'CELL_SELECTED') {
+        // تحديث الخلية المختارة (تظليل أصفر + إعلان)
+        if (data.cellId && data.letter) {
+          setSelectedCellInfo({
+            id: data.cellId,
+            letter: data.letter,
+            hasCard: !!data.hasCard,
+            isGolden: !!data.isGolden,
+          });
+        } else {
+          setSelectedCellInfo(null);
+        }
       } else if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
+        setSelectedCellInfo(null); // إزالة التظليل بعد المطالبة
       } else if (data.type === 'CARD_USED') {
         // تحديث الخلايا بعد استخدام البطاقة (التجميد، القنبلة، الدرع، المعركة)
         if (data.cells) {
@@ -135,10 +173,16 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         if (data.teamCards) {
           setLocalTeamCards(data.teamCards);
         }
+      } else if (data.type === 'SESSION_ENDED') {
+        setSessionEnded(true);
       } else if (data.type === 'ZOOM_CHANGED' && typeof data.zoom === 'number') {
         setZoom(data.zoom);
+      } else if (data.type === 'CARD_TEASER') {
+        // شاشة التشويق قبل كشف البطاقة
+        setShowCardTeaser({ letter: data.letter, isGolden: !!data.isGolden });
       } else if (data.type === 'ROULETTE_START') {
         // بدء الروليت في شاشة اللاعبين
+        setShowCardTeaser(null); // إخفاء شاشة التشويق
         setRouletteTriggerType(data.triggerType || 'card');
         setSyncedCard(null);
         setShowRoulette(true);
@@ -160,10 +204,10 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       } else if (data.type === 'RANDOM_LETTER_ANNOUNCEMENT') {
         // إعلان الحرف العشوائي
         setShowRandomLetterAnnouncement(true);
-        // إخفاء الإعلان بعد 2.5 ثانية (نفس التوقيت في HostScreen)
+        // إخفاء الإعلان بعد 4 ثوانٍ
         setTimeout(() => {
           setShowRandomLetterAnnouncement(false);
-        }, 2500);
+        }, 4000);
       } else if (data.type === 'STREAK_UPDATED') {
         // تحديث سلسلة الإجابات
         setLocalStreak(data.winStreak);
@@ -199,6 +243,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         // بدء جولة جديدة - إعادة تعيين الفائز
         setLocalWinner(null);
         setLocalWinMessage(null);
+        setSelectedCellInfo(null);
       } else if (data.type === 'COUNTERS_UPDATED') {
         // تحديث عدادات التجميد والدرع
         if (data.cells) {
@@ -258,18 +303,69 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
     console.log('PlayersScreen cells:', cells.length);
   }, [cells]);
 
+  // إذا لم تتوفر الإعدادات بعد - انتظار المزامنة مع المقدم
+  if (isSyncing || !localSettings) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: theme.bgGradient,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '2rem',
+      }}>
+        {/* Spinner */}
+        <div style={{
+          width: isMobile ? '60px' : '76px',
+          height: isMobile ? '60px' : '76px',
+          border: `5px solid ${theme.cardBorder}`,
+          borderTopColor: theme.accent,
+          borderRadius: '50%',
+          animation: 'spin 0.9s linear infinite',
+        }} />
+
+        <div style={{ textAlign: 'center', padding: '0 1.5rem' }}>
+          <div style={{
+            color: theme.textPrimary,
+            fontSize: isMobile ? '1.3rem' : '1.6rem',
+            fontWeight: 800,
+            marginBottom: '0.6rem',
+          }}>
+            🎮 جاري الاتصال بشاشة المقدم...
+          </div>
+          <div style={{
+            color: theme.textSecondary,
+            fontSize: isMobile ? '0.9rem' : '1rem',
+          }}>
+            انتظر حتى يبدأ المقدم الجلسة
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
+
+  // الإعدادات متاحة - عرض الشاشة الكاملة
+  const settings = localSettings;
+
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 25%, #6366f1 50%, #4f46e5 75%, #3730a3 100%)',
+      background: theme.bgGradient,
       padding: isMobile ? '0.75rem' : '1rem',
+      paddingTop: isMobile ? '175px' : isTablet ? '125px' : '5rem',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: isMobile || isTablet ? 'flex-start' : 'center',
       gap: isMobile ? '0.75rem' : '1rem',
       position: 'relative',
     }}>
+
 
       {/* زر الدليل - عائم يسار */}
       <button
@@ -730,6 +826,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               scale={1}
               showCardIndicator={false}
               colorsSwapped={colorsSwapped}
+              selectedCellId={selectedCellInfo?.id ?? null}
             />
           </div>
         </div>
@@ -901,6 +998,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         greenTeamName={settings.teamNames.green}
         redTeamName={settings.teamNames.red}
         totalRounds={settings.rounds}
+        gameName={settings.gameName}
         currentRound={localCurrentRound}
       />
 
@@ -974,6 +1072,89 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         />
       )}
 
+      {/* 🟡 بانر الخلية المختارة من المقدم */}
+      {selectedCellInfo && !showRoulette && !showRandomLetterAnnouncement && (
+        <div style={{
+          position: 'fixed',
+          top: isMobile ? '180px' : isTablet ? '130px' : '80px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1500,
+          animation: 'cellSelectedIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '0.6rem' : '0.85rem',
+            padding: isMobile ? '0.6rem 1.2rem' : '0.75rem 1.75rem',
+            background: selectedCellInfo.isGolden
+              ? 'linear-gradient(135deg, rgba(251,191,36,0.95), rgba(245,158,11,0.95))'
+              : selectedCellInfo.hasCard
+              ? 'linear-gradient(135deg, rgba(236,72,153,0.95), rgba(168,85,247,0.95))'
+              : 'linear-gradient(135deg, rgba(30,10,60,0.95), rgba(50,20,90,0.92))',
+            border: selectedCellInfo.isGolden
+              ? '3px solid #fde68a'
+              : selectedCellInfo.hasCard
+              ? '3px solid #f9a8d4'
+              : '3px solid rgba(251,191,36,0.7)',
+            borderRadius: '2rem',
+            boxShadow: selectedCellInfo.isGolden
+              ? '0 0 30px rgba(251,191,36,0.5), 0 8px 25px rgba(0,0,0,0.4)'
+              : selectedCellInfo.hasCard
+              ? '0 0 30px rgba(236,72,153,0.5), 0 8px 25px rgba(0,0,0,0.4)'
+              : '0 0 30px rgba(251,191,36,0.35), 0 8px 25px rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(10px)',
+          }}>
+            {/* الحرف */}
+            <div style={{
+              width: isMobile ? '44px' : '54px',
+              height: isMobile ? '44px' : '54px',
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.25)',
+              border: '3px solid rgba(255,255,255,0.6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: isMobile ? '1.4rem' : '1.75rem',
+              fontWeight: 900,
+              color: 'white',
+              flexShrink: 0,
+              animation: 'letterPulse 1.2s ease-in-out infinite',
+            }}>
+              {selectedCellInfo.letter}
+            </div>
+
+            {/* النص */}
+            <div>
+              <div style={{
+                fontSize: isMobile ? '0.85rem' : '1rem',
+                fontWeight: 900,
+                color: 'white',
+                textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+              }}>
+                {selectedCellInfo.isGolden
+                  ? '✨ حرف ذهبي! من يجيب يحصل على بطاقة نادرة'
+                  : selectedCellInfo.hasCard
+                  ? '🎴 هذا الحرف يخفي بطاقة! من يجيب يفوز بها'
+                  : '🔤 الحرف المطلوب للإجابة'}
+              </div>
+              {(selectedCellInfo.hasCard || selectedCellInfo.isGolden) && (
+                <div style={{
+                  fontSize: isMobile ? '0.72rem' : '0.8rem',
+                  color: 'rgba(255,255,255,0.85)',
+                  marginTop: '0.2rem',
+                  fontWeight: 700,
+                }}>
+                  🎯 أجب بشكل صحيح لتحصل على البطاقة!
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* إعلان الحرف العشوائي */}
       {showRandomLetterAnnouncement && (
         <div style={{
@@ -987,14 +1168,14 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           zIndex: 2000,
         }}>
           <div style={{
-            fontSize: '8rem',
-            marginBottom: '2rem',
+            fontSize: isMobile ? '5rem' : '8rem',
+            marginBottom: isMobile ? '1rem' : '2rem',
             animation: 'bounce 0.6s ease-in-out infinite',
           }}>
             🎲
           </div>
           <h1 style={{
-            fontSize: '3.5rem',
+            fontSize: isMobile ? '2rem' : '3.5rem',
             fontWeight: 900,
             color: 'white',
             textShadow: '0 2px 10px rgba(0, 0, 0, 0.25)',
@@ -1004,9 +1185,9 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             حرف عشوائي!
           </h1>
           <p style={{
-            fontSize: '1.75rem',
+            fontSize: isMobile ? '1.1rem' : '1.75rem',
             color: 'rgba(255, 255, 255, 0.9)',
-            marginTop: '1.5rem',
+            marginTop: isMobile ? '1rem' : '1.5rem',
             textAlign: 'center',
           }}>
             من يجيب عليه سيحصل على بطاقة! 🎁
@@ -1018,6 +1199,92 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             }
           `}</style>
         </div>
+      )}
+
+      {/* ── شاشة انتهاء الجلسة ── */}
+      {sessionEnded && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'linear-gradient(135deg, #0a0014 0%, #1a0533 50%, #0a0014 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          gap: '1.5rem',
+          direction: 'rtl',
+        }}>
+          {/* توهج خلفي */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(circle at 50% 45%, rgba(168,85,247,0.15) 0%, transparent 65%)',
+            pointerEvents: 'none',
+          }} />
+
+          {/* أيقونة */}
+          <div style={{ fontSize: isMobile ? '4rem' : '6rem', animation: 'sessFade 2s ease-in-out infinite' }}>
+            🎮
+          </div>
+
+          {/* النصوص */}
+          <div style={{ textAlign: 'center', zIndex: 1, padding: '0 1.5rem' }}>
+            <h1 style={{
+              fontSize: isMobile ? '1.8rem' : '2.6rem',
+              fontWeight: 900,
+              color: 'white',
+              margin: '0 0 0.75rem 0',
+              textShadow: '0 0 30px rgba(168,85,247,0.7)',
+            }}>
+              انتهت الجلسة
+            </h1>
+            <p style={{
+              fontSize: isMobile ? '1rem' : '1.25rem',
+              color: 'rgba(255,255,255,0.65)',
+              margin: 0,
+              fontWeight: 600,
+              lineHeight: 1.6,
+            }}>
+              أغلق المقدم اللعبة أو انتهت صلاحية الجلسة
+            </p>
+          </div>
+
+          {/* زر إغلاق النافذة */}
+          <button
+            onClick={() => window.close()}
+            style={{
+              zIndex: 1,
+              padding: isMobile ? '0.85rem 2rem' : '1rem 3rem',
+              background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+              border: '2px solid rgba(255,255,255,0.25)',
+              borderRadius: '2rem',
+              color: 'white',
+              fontSize: isMobile ? '1rem' : '1.2rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              boxShadow: '0 0 30px rgba(168,85,247,0.5)',
+            }}
+          >
+            إغلاق الصفحة
+          </button>
+
+          <style>{`
+            @keyframes sessFade {
+              0%, 100% { opacity: 0.6; transform: scale(1); }
+              50% { opacity: 1; transform: scale(1.08); }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* شاشة التشويق - للمشاهدين */}
+      {showCardTeaser && (
+        <CardTeaserOverlay
+          letter={showCardTeaser.letter}
+          isGolden={showCardTeaser.isGolden}
+          isHost={false}
+        />
       )}
 
       {/* روليت البطاقات - متزامن مع شاشة المقدم */}
@@ -1105,11 +1372,11 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             background: 'rgba(139, 92, 246, 0.3)',
             border: '2px solid rgba(139, 92, 246, 0.5)',
             borderRadius: '1rem',
-            padding: '1.5rem 3rem',
+            padding: isMobile ? '1rem 1.5rem' : '1.5rem 3rem',
             marginBottom: '1.5rem',
           }}>
             <h2 style={{
-              fontSize: '1.75rem',
+              fontSize: isMobile ? '1.25rem' : '1.75rem',
               fontWeight: 700,
               color: 'white',
               margin: 0,
@@ -1121,7 +1388,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
 
           {/* رسالة الانتظار */}
           <p style={{
-            fontSize: '1.1rem',
+            fontSize: isMobile ? '0.9rem' : '1.1rem',
             color: 'rgba(255, 255, 255, 0.7)',
             margin: 0,
           }}>
@@ -1145,51 +1412,79 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             animation: 'buzzerFadeIn 0.3s ease-out',
           }}
         >
-          <div
-            style={{
-              background: buzzerPress.team === 'green'
-                ? 'linear-gradient(145deg, #059669, #10b981, #34d399)'
-                : 'linear-gradient(145deg, #b91c1c, #ef4444, #f87171)',
-              border: '4px solid rgba(255, 255, 255, 0.5)',
-              borderRadius: isMobile ? '2rem' : '2.5rem',
-              padding: isMobile ? '2rem 2.5rem' : '2.5rem 4rem',
-              boxShadow: buzzerPress.team === 'green'
-                ? '0 0 80px rgba(16, 185, 129, 0.6), 0 0 200px rgba(16, 185, 129, 0.2)'
-                : '0 0 80px rgba(239, 68, 68, 0.6), 0 0 200px rgba(239, 68, 68, 0.2)',
-              animation: 'buzzerBounceIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: isMobile ? '0.75rem' : '1rem',
-              minWidth: isMobile ? '280px' : '380px',
-            }}
-          >
-            <div style={{
-              fontSize: isMobile ? '3.5rem' : '5rem',
-              lineHeight: 1,
-              filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
-            }}>
-              {buzzerPress.type === 'answer' ? '📣' : '🎴'}
+          <div style={{ position: 'relative' }}>
+            <div
+              style={{
+                background: buzzerPress.team === 'green'
+                  ? 'linear-gradient(145deg, #059669, #10b981, #34d399)'
+                  : 'linear-gradient(145deg, #b91c1c, #ef4444, #f87171)',
+                border: '4px solid rgba(255, 255, 255, 0.5)',
+                borderRadius: isMobile ? '2rem' : '2.5rem',
+                padding: isMobile ? '2rem 2.5rem' : '2.5rem 4rem',
+                boxShadow: buzzerPress.team === 'green'
+                  ? '0 0 80px rgba(16, 185, 129, 0.6), 0 0 200px rgba(16, 185, 129, 0.2)'
+                  : '0 0 80px rgba(239, 68, 68, 0.6), 0 0 200px rgba(239, 68, 68, 0.2)',
+                animation: 'buzzerBounceIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: isMobile ? '0.75rem' : '1rem',
+                minWidth: isMobile ? '280px' : '380px',
+              }}
+            >
+              <div style={{
+                fontSize: isMobile ? '3.5rem' : '5rem',
+                lineHeight: 1,
+                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+              }}>
+                {buzzerPress.type === 'answer' ? '📣' : '🎴'}
+              </div>
+              <h2 style={{
+                fontSize: isMobile ? '2rem' : '3rem',
+                fontWeight: 900,
+                color: 'white',
+                margin: 0,
+                textAlign: 'center',
+                textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                letterSpacing: '-0.02em',
+              }}>
+                {buzzerPress.playerName}
+              </h2>
+              <p style={{
+                fontSize: isMobile ? '1.1rem' : '1.4rem',
+                color: 'rgba(255, 255, 255, 0.95)',
+                margin: 0,
+                fontWeight: 700,
+              }}>
+                {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
+              </p>
             </div>
-            <h2 style={{
-              fontSize: isMobile ? '2rem' : '3rem',
-              fontWeight: 900,
-              color: 'white',
-              margin: 0,
-              textAlign: 'center',
-              textShadow: '0 2px 8px rgba(0,0,0,0.3)',
-              letterSpacing: '-0.02em',
-            }}>
-              {buzzerPress.playerName}
-            </h2>
-            <p style={{
-              fontSize: isMobile ? '1.1rem' : '1.4rem',
-              color: 'rgba(255, 255, 255, 0.95)',
-              margin: 0,
-              fontWeight: 700,
-            }}>
-              {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
-            </p>
+
+            {/* زر إخفاء الإشعار من شاشة اللاعبين */}
+            <button
+              onClick={() => setBuzzerPress(null)}
+              style={{
+                position: 'absolute',
+                top: '-12px',
+                left: '-12px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'rgba(0,0,0,0.7)',
+                border: '2px solid rgba(255,255,255,0.4)',
+                color: 'white',
+                fontSize: '1rem',
+                fontWeight: 900,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1,
+              }}
+              title="إخفاء"
+            >
+              ×
+            </button>
           </div>
         </div>
       )}
@@ -1219,6 +1514,14 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           0% { transform: scale(0.3); opacity: 0; }
           60% { transform: scale(1.05); opacity: 1; }
           100% { transform: scale(1); }
+        }
+        @keyframes cellSelectedIn {
+          0% { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.9); }
+          100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+        @keyframes letterPulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255,0.4); }
+          50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(255,255,255,0); }
         }
       `}</style>
     </div>

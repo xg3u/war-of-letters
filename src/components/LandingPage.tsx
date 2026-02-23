@@ -5,12 +5,14 @@ import { ActionCardComponent } from './ActionCardComponent';
 import { categories } from '../lib/categories';
 import { actionCards } from '../lib/actionCards';
 import {
-  Play, Moon, Sun, BookOpen,
+  Play, BookOpen,
   Trophy, ShieldCheck, Zap, HelpCircle, LogOut
 } from 'lucide-react';
 import { PaymentModal } from './PaymentModal';
 import { supabase } from '../lib/supabase';
+import { useScreenSize } from '../hooks/useScreenSize';
 import HeaderImage from '../assets/ForDesign/Header.png';
+import { useTheme, themeList } from '../context/ThemeContext';
 
 // الحروف العربية للتساقط
 const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهوي";
@@ -21,9 +23,11 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const { isMobile, isTablet } = useScreenSize();
+  const { theme, themeId, setTheme } = useTheme();
   const [showPayment, setShowPayment] = useState(false);
   const [isCheckingSubscription, setIsCheckingSubscription] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
 
   // التحقق من حالة الاشتراك
   const checkSubscriptionAndProceed = async () => {
@@ -100,15 +104,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
     window.location.reload();
   };
 
+  // جميع الثيمات داكنة - isDarkMode دائماً true للحفاظ على التوافق مع الكود الموجود
+  const isDarkMode = true;
   const colors = {
-    bg: isDarkMode ? '#0a0118' : '#f8f9fa',
-    bgGradient: isDarkMode
-      ? 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)'
-      : 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%)',
-    cardBg: isDarkMode ? 'rgba(26, 11, 46, 0.7)' : 'rgba(255, 255, 255, 0.9)',
-    text: isDarkMode ? '#ffffff' : '#1a0b2e',
-    textSecondary: isDarkMode ? '#e9d5ff' : '#7c3aed',
-    border: isDarkMode ? 'rgba(168, 85, 247, 0.25)' : 'rgba(124, 58, 237, 0.2)',
+    bg: theme.bgGradient,
+    bgGradient: theme.bgGradient,
+    cardBg: theme.cardBg,
+    text: theme.textPrimary,
+    textSecondary: theme.textSecondary,
+    border: theme.cardBorder,
   };
 
   return (
@@ -173,7 +177,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0.75rem 2rem',
+          padding: isMobile ? '0.5rem 1rem' : '0.75rem 2rem',
           maxWidth: '1400px',
           margin: '0 auto',
         }}>
@@ -187,7 +191,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
               src={HeaderImage}
               alt="حرب الحروف"
               style={{
-                height: '50px',
+                height: isMobile ? '36px' : '50px',
                 objectFit: 'contain',
                 filter: isDarkMode ? 'drop-shadow(0 2px 8px rgba(168, 85, 247, 0.4))' : 'none',
               }}
@@ -219,7 +223,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                   color: isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  padding: '0.6rem 1rem',
+                  padding: isMobile ? '0.5rem' : '0.6rem 1rem',
                   fontSize: '0.9rem',
                   transition: 'all 0.2s ease',
                   borderRadius: '0.75rem',
@@ -239,7 +243,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 }}
               >
                 <span style={{ fontSize: '1rem' }}>{item.icon}</span>
-                {item.label}
+                {!isMobile && item.label}
               </button>
             ))}
           </nav>
@@ -250,36 +254,77 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
             alignItems: 'center',
             gap: '0.75rem',
           }}>
-            {/* زر الوضع الداكن/الفاتح */}
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              style={{
-                background: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-                border: `1px solid ${isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)'}`,
-                borderRadius: '0.75rem',
-                padding: '0.6rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = isDarkMode
-                  ? 'rgba(255, 255, 255, 0.15)'
-                  : 'rgba(0, 0, 0, 0.1)';
-                e.currentTarget.style.transform = 'scale(1.05)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = isDarkMode
-                  ? 'rgba(255, 255, 255, 0.1)'
-                  : 'rgba(0, 0, 0, 0.05)';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-              title={isDarkMode ? 'الوضع الفاتح' : 'الوضع الداكن'}
-            >
-              {isDarkMode ? <Sun size={20} color="#fbbf24" /> : <Moon size={20} color="#7c3aed" />}
-            </button>
+            {/* منتقي الثيم */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowThemePicker(!showThemePicker)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: `1px solid ${theme.cardBorder}`,
+                  borderRadius: '0.75rem',
+                  padding: isMobile ? '0.6rem' : '0.6rem 1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  transition: 'all 0.2s ease',
+                  color: theme.textPrimary,
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                }}
+                title="تغيير الثيم"
+              >
+                <span style={{ fontSize: '1.1rem' }}>{theme.emoji}</span>
+                {!isMobile && <span>{theme.nameAr}</span>}
+              </button>
+
+              {/* قائمة الثيمات */}
+              {showThemePicker && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 0.5rem)',
+                  left: 0,
+                  background: 'rgba(10, 1, 24, 0.95)',
+                  backdropFilter: 'blur(20px)',
+                  border: `1px solid ${theme.cardBorder}`,
+                  borderRadius: '1rem',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.4rem',
+                  zIndex: 200,
+                  minWidth: '180px',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                }}>
+                  {themeList.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => { setTheme(t.id); setShowThemePicker(false); }}
+                      style={{
+                        background: themeId === t.id ? t.cardBg : 'transparent',
+                        border: `1px solid ${themeId === t.id ? t.accent : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: '0.6rem',
+                        padding: '0.6rem 0.9rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        color: '#fff',
+                        fontSize: '0.9rem',
+                        fontWeight: themeId === t.id ? 700 : 500,
+                        transition: 'all 0.15s ease',
+                        textAlign: 'right',
+                        width: '100%',
+                      }}
+                    >
+                      <span style={{ fontSize: '1.2rem' }}>{t.emoji}</span>
+                      <span style={{ flex: 1 }}>{t.nameAr}</span>
+                      {themeId === t.id && <span style={{ color: t.accent, fontSize: '0.8rem' }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* زر تسجيل الخروج */}
             <button
@@ -289,7 +334,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 background: 'rgba(239, 68, 68, 0.1)',
                 border: '1px solid rgba(239, 68, 68, 0.3)',
                 borderRadius: '0.75rem',
-                padding: '0.6rem 1rem',
+                padding: isMobile ? '0.6rem' : '0.6rem 1rem',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -309,34 +354,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
               }}
             >
               <LogOut size={18} />
-              <span>خروج</span>
+              {!isMobile && <span>خروج</span>}
             </button>
           </div>
         </div>
       </header>
 
-      <main style={{ paddingTop: '5rem' }}>
+      <main style={{ paddingTop: isMobile ? '4rem' : '5rem' }}>
 
         {/* Hero Section */}
         <section id="hero" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{
-            maxWidth: '700px', width: '100%', padding: '3rem', borderRadius: '3rem',
+            maxWidth: '700px', width: '100%', padding: isMobile ? '1.5rem 1rem' : '3rem', borderRadius: isMobile ? '1.5rem' : '3rem',
             background: colors.cardBg, backdropFilter: 'blur(20px)', border: `2px solid ${colors.border}`,
             textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
           }}>
-            <div style={{ fontSize: '5rem', marginBottom: '1rem' }}>⚔️</div>
-            <h2 style={{ fontSize: '3.5rem', fontWeight: 900, background: 'linear-gradient(to left, #f97316, #ec4899, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+            <div style={{ fontSize: isMobile ? '3.5rem' : '5rem', marginBottom: '1rem' }}>⚔️</div>
+            <h2 style={{ fontSize: isMobile ? '2rem' : isTablet ? '2.75rem' : '3.5rem', fontWeight: 900, background: 'linear-gradient(to left, #f97316, #ec4899, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               معركة المعرفة الكبرى
             </h2>
-            <p style={{ fontSize: '1.25rem', fontWeight: 600, color: colors.textSecondary, marginBottom: '2rem' }}>
+            <p style={{ fontSize: isMobile ? '1rem' : '1.25rem', fontWeight: 600, color: colors.textSecondary, marginBottom: '2rem' }}>
               تحدَّ أصدقاءك في أول لعبة لوحية إلكترونية تعتمد على الذكاء وبناء الجسور
             </p>
             <button
               onClick={checkSubscriptionAndProceed}
               disabled={isCheckingSubscription}
               style={{
-                width: '100%', padding: '1.5rem', borderRadius: '1.5rem', background: 'linear-gradient(135deg, #f97316, #ec4899)',
-                color: 'white', fontSize: '1.5rem', fontWeight: 900, border: 'none', cursor: isCheckingSubscription ? 'wait' : 'pointer',
+                width: '100%', padding: isMobile ? '1.1rem' : '1.5rem', borderRadius: '1.5rem', background: 'linear-gradient(135deg, #f97316, #ec4899)',
+                color: 'white', fontSize: isMobile ? '1.1rem' : '1.5rem', fontWeight: 900, border: 'none', cursor: isCheckingSubscription ? 'wait' : 'pointer',
                 boxShadow: '0 10px 30px rgba(249, 115, 22, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem',
                 opacity: isCheckingSubscription ? 0.7 : 1,
               }}
@@ -351,38 +396,38 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
         </section>
 
         {/* Categories Section */}
-        <section id="categories" style={{ padding: '4rem 2rem' }}>
+        <section id="categories" style={{ padding: isMobile ? '2rem 1rem' : '4rem 2rem' }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-              <h2 style={{ fontSize: '3rem', fontWeight: 900 }}>🎯 أنواع الأسئلة</h2>
+            <div style={{ textAlign: 'center', marginBottom: isMobile ? '1.5rem' : '3rem' }}>
+              <h2 style={{ fontSize: isMobile ? '1.75rem' : '3rem', fontWeight: 900 }}>🎯 أنواع الأسئلة</h2>
               <p style={{ color: colors.textSecondary, fontSize: '1.2rem' }}>آلاف الأسئلة في كافة المجالات بانتظارك</p>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: isMobile ? '1rem' : '2rem' }}>
               {categories.map((cat) => <CategoryCard key={cat.id} category={cat} />)}
             </div>
           </div>
         </section>
 
         {/* Cards Section */}
-        <section id="cards" style={{ padding: '4rem 2rem' }}>
+        <section id="cards" style={{ padding: isMobile ? '2rem 1rem' : '4rem 2rem' }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-              <h2 style={{ fontSize: '3rem', fontWeight: 900 }}>🃏 البطاقات الإستراتيجية</h2>
+            <div style={{ textAlign: 'center', marginBottom: isMobile ? '1.5rem' : '3rem' }}>
+              <h2 style={{ fontSize: isMobile ? '1.75rem' : '3rem', fontWeight: 900 }}>🃏 البطاقات الإستراتيجية</h2>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '2rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(250px, 1fr))', gap: isMobile ? '0.75rem' : '2rem' }}>
               {actionCards.map((card) => <ActionCardComponent key={card.id} card={card} />)}
             </div>
           </div>
         </section>
 
         {/* Game Guide Section - الدليل الشامل */}
-        <section id="guide" style={{ padding: '4rem 2rem', background: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.5)' }}>
+        <section id="guide" style={{ padding: isMobile ? '2rem 1rem' : '4rem 2rem', background: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.5)' }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
             {/* العنوان */}
-            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: isMobile ? '1.5rem' : '3rem' }}>
               <div style={{
                 display: 'inline-flex',
-                padding: '1rem 2rem',
+                padding: isMobile ? '0.75rem 1rem' : '1rem 2rem',
                 borderRadius: '1.5rem',
                 background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))',
                 border: '1px solid rgba(168, 85, 247, 0.3)',
@@ -393,7 +438,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 <BookOpen size={32} color="#a855f7" />
                 <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#a855f7' }}>الدليل الشامل</span>
               </div>
-              <h2 style={{ fontSize: '2.5rem', fontWeight: 900, margin: '0.5rem 0' }}>كل ما تحتاج معرفته عن اللعبة</h2>
+              <h2 style={{ fontSize: isMobile ? '1.5rem' : '2.5rem', fontWeight: 900, margin: '0.5rem 0' }}>كل ما تحتاج معرفته عن اللعبة</h2>
               <p style={{ fontSize: '1.1rem', color: colors.textSecondary, maxWidth: '600px', margin: '0 auto' }}>
                 اقرأ هذا الدليل بعناية لتفهم آليات اللعبة وتصبح محترفاً
               </p>
@@ -435,7 +480,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 </p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', maxWidth: '700px', margin: '0 auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: isMobile ? '1rem' : '1.5rem', maxWidth: '700px', margin: '0 auto' }}>
                 <div style={{
                   background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05))',
                   borderRadius: '1rem',
@@ -489,15 +534,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>طرق الحصول على البطاقات</h3>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(250px, 1fr))', gap: isMobile ? '0.75rem' : '1rem' }}>
                 <div style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
                   borderRadius: '1rem',
-                  padding: '1.25rem',
+                  padding: isMobile ? '1rem' : '1.25rem',
                   border: `1px solid ${colors.border}`,
                   textAlign: 'center',
                 }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🃏</div>
+                  <div style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '0.75rem' }}>🃏</div>
                   <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#ec4899' }}>البطاقات المخفية</h4>
                   <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
                     بعض الخلايا تحتوي على بطاقات مخفية. عند الإجابة الصحيحة على سؤال الخلية، تحصل على بطاقة عشوائية!
@@ -507,11 +552,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 <div style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
                   borderRadius: '1rem',
-                  padding: '1.25rem',
+                  padding: isMobile ? '1rem' : '1.25rem',
                   border: `1px solid ${colors.border}`,
                   textAlign: 'center',
                 }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✨</div>
+                  <div style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '0.75rem' }}>✨</div>
                   <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#fbbf24' }}>الحرف الذهبي</h4>
                   <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
                     الخلايا الذهبية المتوهجة تمنحك بطاقة مباشرة عند الإجابة الصحيحة. ابحث عنها!
@@ -521,11 +566,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 <div style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
                   borderRadius: '1rem',
-                  padding: '1.25rem',
+                  padding: isMobile ? '1rem' : '1.25rem',
                   border: `1px solid ${colors.border}`,
                   textAlign: 'center',
                 }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🔥</div>
+                  <div style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '0.75rem' }}>🔥</div>
                   <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#f97316' }}>سلسلة الانتصارات</h4>
                   <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
                     أجب على <b>3 أسئلة صحيحة متتالية</b> واحصل على بطاقة مكافأة تلقائياً!
@@ -535,11 +580,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 <div style={{
                   background: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
                   borderRadius: '1rem',
-                  padding: '1.25rem',
+                  padding: isMobile ? '1rem' : '1.25rem',
                   border: `1px solid ${colors.border}`,
                   textAlign: 'center',
                 }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🎲</div>
+                  <div style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '0.75rem' }}>🎲</div>
                   <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#3b82f6' }}>الحرف العشوائي</h4>
                   <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
                     في بداية كل جولة، يظهر حرف عشوائي. من يجيب عليه أولاً يحصل على بطاقة!
@@ -571,7 +616,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>البطاقات الأربعة وتأثيراتها</h3>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))', gap: isMobile ? '0.75rem' : '1.5rem' }}>
                 {/* بطاقة التجميد */}
                 <div style={{
                   background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05))',
@@ -688,7 +733,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
                 <h3 style={{ fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>قواعد مهمة يجب معرفتها</h3>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(280px, 1fr))', gap: isMobile ? '0.75rem' : '1.25rem' }}>
                 <div style={{
                   display: 'flex',
                   gap: '1rem',
@@ -777,7 +822,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
           </div>
         </section>
 
-        <footer style={{ padding: '4rem 2rem', textAlign: 'center', borderTop: `1px solid ${colors.border}` }}>
+        <footer style={{ padding: isMobile ? '2rem 1rem' : '4rem 2rem', textAlign: 'center', borderTop: `1px solid ${colors.border}` }}>
           <p style={{ fontWeight: 700, color: colors.textSecondary }}>Meshal-ALshammari || xg3u</p>
           <p style={{ fontSize: '0.8rem', opacity: 0.6 }}>© 2026 حرب الحروف - جميع الحقوق محفوظة</p>
         </footer>

@@ -16,7 +16,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({ sessionId, onClose }) 
   const [copied, setCopied] = useState(false);
   const { isMobile } = useScreenSize();
 
-  // إنشاء رابط اللاعبين
+  // رابط اللاعبين - يتضمن session ID للانضمام التلقائي بدون إدخال رمز
   const playersUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}&screen=players`;
 
   useEffect(() => {
@@ -130,10 +130,10 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({ sessionId, onClose }) 
             textAlign: 'center',
             color: '#c4b5fd',
             fontSize: isMobile ? '0.85rem' : '0.95rem',
-            marginBottom: isMobile ? '1.25rem' : '1.5rem',
+            marginBottom: isMobile ? '1rem' : '1.25rem',
           }}
         >
-          افتح شاشة العرض على هذا الجهاز أو شاركها مع جهاز آخر
+          امسح الكود أو افتح الرابط — الانضمام فوري بدون أي خطوات إضافية
         </p>
 
         {/* زر فتح من نفس الجهاز */}

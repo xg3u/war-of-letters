@@ -213,16 +213,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // الجولة التالية
   nextRound: () => {
-    const { currentRound, settings } = get();
+    const { currentRound, settings, teamCards } = get();
     const maxRounds = settings.rounds === 'infinite' ? Infinity : settings.rounds;
-    
+
     if (currentRound < maxRounds) {
-      set({ 
+      // إذا كان ترحيل البطاقات مطفأ → نمسح بطاقات الفريقين
+      const newTeamCards = settings.carryCardsToNextRound
+        ? teamCards
+        : { green: [], red: [] };
+
+      set({
         currentRound: currentRound + 1,
         cells: [],
         winner: null,
         winMessage: null,
+        teamCards: newTeamCards,
       });
+
+      // بث مسح البطاقات لشاشة اللاعبين إن لزم
+      if (!settings.carryCardsToNextRound) {
+        syncManager.broadcast({
+          type: 'CARDS_CLEARED',
+          teamCards: newTeamCards,
+        });
+      }
     }
   },
 

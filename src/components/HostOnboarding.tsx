@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import {
   RefreshCw, Maximize, Pause, Dices, Palette,
-  Tv, Zap, Sparkles, ChevronRight, ChevronLeft, X
+  Tv, Zap, Sparkles, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { useScreenSize } from '../hooks/useScreenSize';
 
@@ -381,41 +381,22 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
               {step.title}
             </h2>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <button
-              onClick={handleComplete}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1.5px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '10px',
-                padding: isMobile ? '0.45rem 0.85rem' : '0.5rem 1rem',
-                cursor: 'pointer',
-                color: 'rgba(255, 255, 255, 0.6)',
-                fontSize: isMobile ? '0.85rem' : '0.9rem',
-                fontWeight: 700,
-                transition: 'all 0.2s',
-              }}
-            >
-              تخطي
-            </button>
-            <button
-              onClick={handleComplete}
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1.5px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '10px',
-                padding: '0.6rem',
-                cursor: 'pointer',
-                color: 'rgba(255, 255, 255, 0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.2s',
-              }}
-            >
-              <X size={22} />
-            </button>
-          </div>
+          <button
+            onClick={handleComplete}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1.5px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '10px',
+              padding: isMobile ? '0.45rem 0.85rem' : '0.5rem 1rem',
+              cursor: 'pointer',
+              color: 'rgba(255, 255, 255, 0.6)',
+              fontSize: isMobile ? '0.85rem' : '0.9rem',
+              fontWeight: 700,
+              transition: 'all 0.2s',
+            }}
+          >
+            تخطي
+          </button>
         </div>
 
         {/* Content */}

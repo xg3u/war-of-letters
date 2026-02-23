@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { Trophy, Star, Sparkles } from 'lucide-react';
+import { useScreenSize } from '../hooks/useScreenSize';
 
 interface MatchWinnerOverlayProps {
   winner: 'green' | 'red';
@@ -27,6 +28,8 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
   onRestartMatch,
   onGoHome,
 }) => {
+  const { isMobile, isTablet } = useScreenSize();
+  const isSmall = isMobile || isTablet;
   const winnerColor = winner === 'green' ? '#10b981' : '#ef4444';
   const winnerGradient = winner === 'green'
     ? 'linear-gradient(135deg, #10b981, #14b8a6, #059669)'
@@ -79,12 +82,12 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
       }}>
         {/* الكأس */}
         <div style={{
-          marginBottom: '2rem',
+          marginBottom: isSmall ? '1rem' : '2rem',
           animation: 'trophyBounce 1s ease-in-out infinite',
         }}>
           <div style={{
-            width: '150px',
-            height: '150px',
+            width: isSmall ? '90px' : '150px',
+            height: isSmall ? '90px' : '150px',
             margin: '0 auto',
             background: winnerGradient,
             borderRadius: '50%',
@@ -98,7 +101,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
             `,
             border: '4px solid rgba(255, 255, 255, 0.3)',
           }}>
-            <Trophy size={80} color="white" strokeWidth={1.5} />
+            <Trophy size={isSmall ? 48 : 80} color="white" strokeWidth={1.5} />
           </div>
         </div>
 
@@ -107,12 +110,12 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '1rem',
-          marginBottom: '1rem',
+          gap: isSmall ? '0.5rem' : '1rem',
+          marginBottom: isSmall ? '0.5rem' : '1rem',
         }}>
-          <Star size={32} color="#fbbf24" fill="#fbbf24" />
+          <Star size={isSmall ? 22 : 32} color="#fbbf24" fill="#fbbf24" />
           <h1 style={{
-            fontSize: '3rem',
+            fontSize: isSmall ? '1.75rem' : '3rem',
             fontWeight: 900,
             background: winnerGradient,
             WebkitBackgroundClip: 'text',
@@ -122,39 +125,39 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
           }}>
             بطل المباراة!
           </h1>
-          <Star size={32} color="#fbbf24" fill="#fbbf24" />
+          <Star size={isSmall ? 22 : 32} color="#fbbf24" fill="#fbbf24" />
         </div>
 
         {/* اسم الفائز */}
         <div style={{
-          fontSize: '2.5rem',
+          fontSize: isSmall ? '1.5rem' : '2.5rem',
           fontWeight: 900,
           color: 'white',
-          marginBottom: '2rem',
+          marginBottom: isSmall ? '1rem' : '2rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '1rem',
+          gap: isSmall ? '0.5rem' : '1rem',
         }}>
-          <Sparkles size={36} color={winnerColor} />
+          <Sparkles size={isSmall ? 24 : 36} color={winnerColor} />
           <span style={{ color: winnerColor }}>{winnerName}</span>
-          <Sparkles size={36} color={winnerColor} />
+          <Sparkles size={isSmall ? 24 : 36} color={winnerColor} />
         </div>
 
         {/* النتيجة النهائية */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.1)',
           backdropFilter: 'blur(10px)',
-          borderRadius: '2rem',
-          padding: '2rem',
-          marginBottom: '2rem',
+          borderRadius: isSmall ? '1.25rem' : '2rem',
+          padding: isSmall ? '1rem' : '2rem',
+          marginBottom: isSmall ? '1rem' : '2rem',
           border: `3px solid ${winnerColor}50`,
         }}>
           <div style={{
             color: 'rgba(255, 255, 255, 0.7)',
-            fontSize: '1rem',
+            fontSize: isSmall ? '0.8rem' : '1rem',
             fontWeight: 700,
-            marginBottom: '1rem',
+            marginBottom: isSmall ? '0.5rem' : '1rem',
           }}>
             النتيجة النهائية
           </div>
@@ -163,7 +166,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '2rem',
+            gap: isSmall ? '1rem' : '2rem',
           }}>
             {/* الفريق الأخضر */}
             <div style={{
@@ -173,7 +176,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
               transition: 'all 0.3s ease',
             }}>
               <div style={{
-                fontSize: '0.9rem',
+                fontSize: isSmall ? '0.75rem' : '0.9rem',
                 color: '#10b981',
                 fontWeight: 700,
                 marginBottom: '0.5rem',
@@ -181,7 +184,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
                 {greenTeamName}
               </div>
               <div style={{
-                fontSize: '4rem',
+                fontSize: isSmall ? '2.5rem' : '4rem',
                 fontWeight: 900,
                 color: '#10b981',
                 textShadow: winner === 'green' ? '0 0 20px rgba(16, 185, 129, 0.5)' : 'none',
@@ -192,7 +195,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
 
             {/* الفاصل */}
             <div style={{
-              fontSize: '3rem',
+              fontSize: isSmall ? '2rem' : '3rem',
               color: 'rgba(255, 255, 255, 0.3)',
               fontWeight: 900,
             }}>
@@ -207,7 +210,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
               transition: 'all 0.3s ease',
             }}>
               <div style={{
-                fontSize: '0.9rem',
+                fontSize: isSmall ? '0.75rem' : '0.9rem',
                 color: '#ef4444',
                 fontWeight: 700,
                 marginBottom: '0.5rem',
@@ -215,7 +218,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
                 {redTeamName}
               </div>
               <div style={{
-                fontSize: '4rem',
+                fontSize: isSmall ? '2.5rem' : '4rem',
                 fontWeight: 900,
                 color: '#ef4444',
                 textShadow: winner === 'red' ? '0 0 20px rgba(239, 68, 68, 0.5)' : 'none',
@@ -237,12 +240,12 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
           <button
             onClick={onNewSettings}
             style={{
-              padding: '1rem 2rem',
+              padding: isSmall ? '0.7rem 1.25rem' : '1rem 2rem',
               background: winnerGradient,
               border: 'none',
               borderRadius: '1rem',
               color: 'white',
-              fontSize: '1.1rem',
+              fontSize: isSmall ? '0.9rem' : '1.1rem',
               fontWeight: 900,
               cursor: 'pointer',
               transition: 'all 0.3s ease',
@@ -262,12 +265,12 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
           <button
             onClick={onRestartMatch}
             style={{
-              padding: '1rem 2rem',
+              padding: isSmall ? '0.7rem 1.25rem' : '1rem 2rem',
               background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
               border: 'none',
               borderRadius: '1rem',
               color: 'white',
-              fontSize: '1.1rem',
+              fontSize: isSmall ? '0.9rem' : '1.1rem',
               fontWeight: 900,
               cursor: 'pointer',
               transition: 'all 0.3s ease',
@@ -287,12 +290,12 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
           <button
             onClick={onGoHome}
             style={{
-              padding: '1rem 2rem',
+              padding: isSmall ? '0.7rem 1.25rem' : '1rem 2rem',
               background: 'rgba(255, 255, 255, 0.1)',
               border: '2px solid rgba(255, 255, 255, 0.3)',
               borderRadius: '1rem',
               color: 'white',
-              fontSize: '1.1rem',
+              fontSize: isSmall ? '0.9rem' : '1.1rem',
               fontWeight: 700,
               cursor: 'pointer',
               transition: 'all 0.3s ease',

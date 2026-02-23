@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { Mail, Lock, ArrowRight, Sparkles, Moon, Sun, UserPlus, LogIn, User, Eye, EyeOff } from 'lucide-react';
+import { useScreenSize } from '../hooks/useScreenSize';
 
 const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهوي";
 
@@ -47,6 +48,7 @@ const getPasswordRequirementsMessage = (password: string): string => {
 };
 
 export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) => {
+  const { isMobile } = useScreenSize();
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [password, setPassword] = useState('');
@@ -281,7 +283,8 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
           display: flex;
           align-items: center;
           justify-content: center;
-          overflow: hidden;
+          overflow-y: auto;
+          overflow-x: hidden;
           transition: background-color 0.5s ease;
         }
         .auth-content {
@@ -383,7 +386,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
             <h1
               className="game-title"
               style={{
-                fontSize: '4rem',
+                fontSize: isMobile ? '2.5rem' : '4rem',
                 fontWeight: 900,
                 letterSpacing: '-0.03em',
                 marginBottom: '0.5rem',
@@ -430,7 +433,7 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
             style={{
               position: 'relative',
               borderRadius: '2rem',
-              padding: '2.5rem',
+              padding: isMobile ? '1.5rem' : '2.5rem',
               border: isDarkMode ? '2px solid rgba(168, 85, 247, 0.25)' : '2px solid rgba(124, 58, 237, 0.2)',
               background: isDarkMode ? 'rgba(26, 11, 46, 0.6)' : 'rgba(255, 255, 255, 0.85)',
               backdropFilter: 'blur(12px)',
@@ -585,7 +588,12 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                       border: 'none',
                       cursor: 'pointer',
                       color: isDarkMode ? '#c084fc' : '#9333ea',
-                      padding: '0.25rem',
+                      padding: '0.5rem',
+                      minWidth: '44px',
+                      minHeight: '44px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       zIndex: 2,
                     }}
                   >
@@ -755,7 +763,12 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                       border: 'none',
                       cursor: 'pointer',
                       color: isDarkMode ? '#c084fc' : '#9333ea',
-                      padding: '0.25rem',
+                      padding: '0.5rem',
+                      minWidth: '44px',
+                      minHeight: '44px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       zIndex: 2,
                     }}
                   >
@@ -831,7 +844,12 @@ export const AuthGate: React.FC<{ onVerified: () => void }> = ({ onVerified }) =
                       border: 'none',
                       cursor: 'pointer',
                       color: isDarkMode ? '#c084fc' : '#9333ea',
-                      padding: '0.25rem',
+                      padding: '0.5rem',
+                      minWidth: '44px',
+                      minHeight: '44px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       zIndex: 2,
                     }}
                   >

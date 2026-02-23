@@ -210,3 +210,47 @@ body {
     min-width: 44px;
   }
 }
+
+/* ===== Theme CSS Custom Properties ===== */
+:root {
+  --theme-accent: #a855f7;
+  --theme-accent2: #7c3aed;
+  --theme-text: #f3e8ff;
+  --theme-radius: 1rem;
+  --theme-shadow: 0 8px 32px rgba(168, 85, 247, 0.25);
+}
+
+/* ===== Claymorphism Theme Overrides ===== */
+[data-theme="clay"] {
+  --theme-accent: #ff6ee8;
+  --theme-accent2: #c44dff;
+  --theme-text: #fff0fb;
+  --theme-radius: 2rem;
+}
+
+[data-theme="clay"] button:not([style*="background: rgba(239"]):not([style*="background: transparent"]) {
+  border-radius: 2rem !important;
+  box-shadow: 4px 4px 0 rgba(200, 40, 160, 0.3) !important;
+}
+
+/* ===== Neon Theme Overrides ===== */
+[data-theme="neon"] {
+  --theme-accent: #00ff78;
+  --theme-accent2: #ff00cc;
+}
+
+[data-theme="neon"] button:not([style*="background: rgba(239"]):not([style*="background: transparent"]) {
+  box-shadow: 0 0 12px rgba(0, 255, 120, 0.4) !important;
+}
+
+/* ===== Ocean Theme Overrides ===== */
+[data-theme="ocean"] {
+  --theme-accent: #00d4ff;
+  --theme-accent2: #0078ff;
+}
+
+/* ===== Sunset Theme Overrides ===== */
+[data-theme="sunset"] {
+  --theme-accent: #ff7043;
+  --theme-accent2: #ff1744;
+}

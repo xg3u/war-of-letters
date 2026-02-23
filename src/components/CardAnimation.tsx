@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from 'react';
 import type { CardType } from '../core/types';
+import { useScreenSize } from '../hooks/useScreenSize';
 
 interface CardAnimationProps {
   type: CardType | 'cardFound';
@@ -15,13 +16,15 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
   message,
   onComplete
 }) => {
+  const { isMobile, isTablet } = useScreenSize();
+  const isSmall = isMobile || isTablet;
   const [show, setShow] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setShow(false);
       setTimeout(onComplete, 200);
-    }, 1500);
+    }, 2800); // أبطأ من السابق (كان 1500ms)
 
     return () => clearTimeout(timer);
   }, [onComplete]);
@@ -130,20 +133,20 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       {/* المحتوى الرئيسي */}
       <div style={{
         background: config.background,
-        border: `4px solid ${config.color}`,
-        borderRadius: '2rem',
-        padding: '3rem',
+        border: `${isSmall ? '3px' : '4px'} solid ${config.color}`,
+        borderRadius: isSmall ? '1.25rem' : '2rem',
+        padding: isSmall ? '1.5rem' : '3rem',
         textAlign: 'center',
         boxShadow: `0 12px 35px ${config.color}60`,
         animation: 'scaleIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
-        maxWidth: '500px',
+        maxWidth: isSmall ? '85vw' : '500px',
         position: 'relative',
         zIndex: 1,
       }}>
         {/* الإيموجي */}
         <div style={{
-          fontSize: '5rem',
-          marginBottom: '1rem',
+          fontSize: isSmall ? '3rem' : '5rem',
+          marginBottom: isSmall ? '0.5rem' : '1rem',
           animation: 'bounce 1s ease infinite',
         }}>
           {config.emoji}
@@ -151,10 +154,10 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
 
         {/* العنوان */}
         <h2 style={{
-          fontSize: '3rem',
+          fontSize: isSmall ? '1.75rem' : '3rem',
           fontWeight: 900,
           color: 'white',
-          margin: '0 0 1rem 0',
+          margin: `0 0 ${isSmall ? '0.5rem' : '1rem'} 0`,
           textShadow: '0 2px 6px rgba(0, 0, 0, 0.4)',
         }}>
           {config.title}
@@ -163,7 +166,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
         {/* الرسالة */}
         {message && (
           <p style={{
-            fontSize: '1.5rem',
+            fontSize: isSmall ? '1rem' : '1.5rem',
             fontWeight: 700,
             color: 'white',
             margin: 0,

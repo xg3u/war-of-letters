@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import type { CardType } from '../core/types';
+import { useScreenSize } from '../hooks/useScreenSize';
 
 interface CardOption {
   id: CardType;
@@ -32,9 +33,11 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
   isViewerMode = false,
   triggerType = 'card'
 }) => {
+  const { isMobile, isTablet } = useScreenSize();
+  const isSmall = isMobile || isTablet;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isSpinning, setIsSpinning] = useState(true);
-  const [speed, setSpeed] = useState(60);
+  const [speed, setSpeed] = useState(60); // سريع
   const [finalCard, setFinalCard] = useState<CardType | null>(null);
   const [showResult, setShowResult] = useState(false);
 
@@ -65,7 +68,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
       setCurrentIndex((prev) => (prev + 1) % CARDS.length);
 
       if (speed < 300) {
-        setSpeed(prev => prev + 25);
+        setSpeed(prev => prev + 25); // سريع
       } else {
         // توقف الدوران
         setIsSpinning(false);
@@ -74,11 +77,11 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         setCurrentIndex(winnerIndex);
         setFinalCard(winner);
 
-        // إظهار النتيجة بعد تأخير قصير
+        // إظهار النتيجة - عرضها لفترة أطول حتى يقرأها الجميع
         setTimeout(() => {
           setShowResult(true);
-          setTimeout(() => onComplete(winner), 1000);
-        }, 200);
+          setTimeout(() => onComplete(winner), 1800); // أطول من الأصل (كان 1000ms)
+        }, 300);
       }
     }, speed);
 
@@ -154,17 +157,17 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         position: 'relative',
         zIndex: 10,
         textAlign: 'center',
-        marginBottom: '3rem',
+        marginBottom: isSmall ? '1.5rem' : '3rem',
       }}>
         <div style={{
-          fontSize: '4rem',
-          marginBottom: '1rem',
+          fontSize: isSmall ? '2.5rem' : '4rem',
+          marginBottom: isSmall ? '0.5rem' : '1rem',
           animation: isSpinning ? 'bounce 0.6s ease-in-out infinite' : 'none',
         }}>
           {showResult ? '🎉' : triggerIcon}
         </div>
         <h2 style={{
-          fontSize: '2.5rem',
+          fontSize: isSmall ? '1.5rem' : '2.5rem',
           fontWeight: 900,
           color: '#fbbf24',
           textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
@@ -181,8 +184,8 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         perspective: '1000px',
       }}>
         <div style={{
-          width: '220px',
-          height: '280px',
+          width: isSmall ? '150px' : '220px',
+          height: isSmall ? '190px' : '280px',
           borderRadius: '1.5rem',
           background: showResult
             ? `linear-gradient(145deg, ${displayCard.color}, ${displayCard.color}dd)`
@@ -202,7 +205,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         }}>
           {/* الأيقونة */}
           <div style={{
-            fontSize: '5rem',
+            fontSize: isSmall ? '3rem' : '5rem',
             filter: 'none',
             animation: showResult ? 'iconBounce 0.6s ease-out' : 'none',
           }}>
@@ -211,7 +214,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
 
           {/* اسم البطاقة */}
           <div style={{
-            fontSize: '1.5rem',
+            fontSize: isSmall ? '1rem' : '1.5rem',
             fontWeight: 900,
             color: 'white',
             textShadow: '0 1px 4px rgba(0,0,0,0.4)',
@@ -255,10 +258,10 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
       <div style={{
         position: 'relative',
         zIndex: 10,
-        marginTop: '2.5rem',
+        marginTop: isSmall ? '1.25rem' : '2.5rem',
         display: 'flex',
-        gap: '0.75rem',
-        padding: '1rem 1.5rem',
+        gap: isSmall ? '0.4rem' : '0.75rem',
+        padding: isSmall ? '0.5rem 0.75rem' : '1rem 1.5rem',
         background: 'rgba(0,0,0,0.3)',
         borderRadius: '1rem',
         backdropFilter: 'blur(6px)',
@@ -269,8 +272,8 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
             : idx === currentIndex;
           return (
             <div key={card.id} style={{
-              width: '50px',
-              height: '60px',
+              width: isSmall ? '36px' : '50px',
+              height: isSmall ? '42px' : '60px',
               borderRadius: '0.5rem',
               background: isActive
                 ? `linear-gradient(135deg, ${card.color}, ${card.color}cc)`
@@ -279,7 +282,7 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '1.5rem',
+              fontSize: isSmall ? '1rem' : '1.5rem',
               transition: 'all 0.2s ease',
               transform: isActive ? 'scale(1.15)' : 'scale(1)',
               boxShadow: isActive ? `0 0 12px ${card.color}60` : 'none',
@@ -295,8 +298,8 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         <div style={{
           position: 'relative',
           zIndex: 10,
-          marginTop: '2rem',
-          padding: '1rem 2.5rem',
+          marginTop: isSmall ? '1rem' : '2rem',
+          padding: isSmall ? '0.6rem 1.25rem' : '1rem 2.5rem',
           background: `linear-gradient(135deg, ${displayCard.color}30, ${displayCard.color}10)`,
           border: `2px solid ${displayCard.color}50`,
           borderRadius: '1rem',
@@ -304,14 +307,14 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
         }}>
           <div style={{
             color: 'white',
-            fontSize: '1.25rem',
+            fontSize: isSmall ? '0.95rem' : '1.25rem',
             fontWeight: 800,
             textAlign: 'center',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.75rem',
+            gap: isSmall ? '0.4rem' : '0.75rem',
           }}>
-            <span style={{ fontSize: '1.75rem' }}>{displayCard.icon}</span>
+            <span style={{ fontSize: isSmall ? '1.25rem' : '1.75rem' }}>{displayCard.icon}</span>
             <span>بطاقة {displayCard.name}</span>
           </div>
           {!isViewerMode && (

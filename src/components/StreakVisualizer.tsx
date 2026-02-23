@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { Flame } from 'lucide-react';
+import { useScreenSize } from '../hooks/useScreenSize';
 
 // استيراد صور الشخصيات
 import GreenCharacter from '../assets/Green/الفريق الاخضر يضحك.png';
@@ -23,6 +24,9 @@ export const StreakVisualizer: React.FC<StreakVisualizerProps> = ({
   redTeamName,
   enabled,
 }) => {
+  const { isMobile, isTablet } = useScreenSize();
+  const isSmall = isMobile || isTablet;
+
   if (!enabled) return null;
 
   return (
@@ -30,28 +34,30 @@ export const StreakVisualizer: React.FC<StreakVisualizerProps> = ({
       {/* عداد سلسلة الفريق الأحمر - فوق لوحة الفريق (يسار) */}
       <div style={{
         position: 'fixed',
-        top: '0.75rem',
-        left: '1.5rem',
+        top: isSmall ? '0.35rem' : '0.75rem',
+        left: isSmall ? '0.5rem' : '1.5rem',
         zIndex: 100,
       }}>
         <StreakCounter
           streak={redStreak}
           teamName={redTeamName}
           color="#ef4444"
+          isSmall={isSmall}
         />
       </div>
 
       {/* عداد سلسلة الفريق الأخضر - فوق لوحة الفريق (يمين) */}
       <div style={{
         position: 'fixed',
-        top: '0.75rem',
-        right: '1.5rem',
+        top: isSmall ? '0.35rem' : '0.75rem',
+        right: isSmall ? '0.5rem' : '1.5rem',
         zIndex: 100,
       }}>
         <StreakCounter
           streak={greenStreak}
           teamName={greenTeamName}
           color="#10b981"
+          isSmall={isSmall}
         />
       </div>
 
@@ -62,6 +68,7 @@ export const StreakVisualizer: React.FC<StreakVisualizerProps> = ({
           color="#10b981"
           position="right"
           characterImage={GreenCharacter}
+          isSmall={isSmall}
         />
       )}
 
@@ -72,6 +79,7 @@ export const StreakVisualizer: React.FC<StreakVisualizerProps> = ({
           color="#ef4444"
           position="left"
           characterImage={RedCharacter}
+          isSmall={isSmall}
         />
       )}
     </>
@@ -83,17 +91,18 @@ const StreakCounter: React.FC<{
   streak: number;
   teamName: string;
   color: string;
-}> = ({ streak, teamName, color }) => (
+  isSmall?: boolean;
+}> = ({ streak, teamName, color, isSmall = false }) => (
   <div style={{
     background: streak > 0
       ? `linear-gradient(135deg, ${color}40, ${color}20)`
       : 'rgba(0, 0, 0, 0.4)',
-    border: `2px solid ${streak > 0 ? color : 'rgba(255,255,255,0.2)'}`,
-    borderRadius: '1rem',
-    padding: '0.75rem 1.25rem',
+    border: `${isSmall ? '1.5px' : '2px'} solid ${streak > 0 ? color : 'rgba(255,255,255,0.2)'}`,
+    borderRadius: isSmall ? '0.75rem' : '1rem',
+    padding: isSmall ? '0.35rem 0.6rem' : '0.75rem 1.25rem',
     display: 'flex',
     alignItems: 'center',
-    gap: '0.75rem',
+    gap: isSmall ? '0.35rem' : '0.75rem',
     backdropFilter: 'blur(6px)',
     transition: 'transform 0.3s ease, box-shadow 0.3s ease',
     transform: streak > 0 ? 'scale(1.05)' : 'scale(1)',
@@ -102,12 +111,12 @@ const StreakCounter: React.FC<{
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: '0.25rem',
+      gap: isSmall ? '0.1rem' : '0.25rem',
     }}>
       {[1, 2, 3].map((i) => (
         <Flame
           key={i}
-          size={20}
+          size={isSmall ? 14 : 20}
           fill={i <= streak ? color : 'transparent'}
           color={i <= streak ? color : 'rgba(255,255,255,0.3)'}
           style={{
@@ -118,13 +127,15 @@ const StreakCounter: React.FC<{
         />
       ))}
     </div>
-    <span style={{
-      color: streak > 0 ? 'white' : 'rgba(255,255,255,0.5)',
-      fontSize: '0.875rem',
-      fontWeight: 700,
-    }}>
-      {teamName}
-    </span>
+    {!isSmall && (
+      <span style={{
+        color: streak > 0 ? 'white' : 'rgba(255,255,255,0.5)',
+        fontSize: '0.875rem',
+        fontWeight: 700,
+      }}>
+        {teamName}
+      </span>
+    )}
 
     <style>{`
       @keyframes flameFlicker {
@@ -141,28 +152,34 @@ const StreakReminder: React.FC<{
   color: string;
   position: 'left' | 'right';
   characterImage: string;
-}> = ({ teamName, color, position, characterImage }) => {
+  isSmall?: boolean;
+}> = ({ teamName, color, position, characterImage, isSmall = false }) => {
+  const imgSize = isSmall ? '80px' : '140px';
+  const borderRad = isSmall ? '14px' : '24px';
+
   return (
     <div style={{
       position: 'fixed',
-      bottom: '1.5rem',
-      [position]: '1.5rem',
+      bottom: isSmall ? '4.5rem' : '1.5rem',
+      [position]: isSmall ? '0.5rem' : '1.5rem',
       display: 'flex',
       flexDirection: position === 'left' ? 'row' : 'row-reverse',
       alignItems: 'flex-end',
-      gap: '0.5rem',
+      gap: isSmall ? '0.3rem' : '0.5rem',
       zIndex: 150,
       animation: 'slideInCharacter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+      maxWidth: isSmall ? '85vw' : 'none',
     }}>
       {/* الشخصية - تصميم عصري */}
       <div style={{
         position: 'relative',
         animation: 'characterFloat 2s ease-in-out infinite',
+        flexShrink: 0,
       }}>
         {/* الهالة المتوهجة */}
         <div style={{
           position: 'absolute',
-          inset: '-8px',
+          inset: isSmall ? '-4px' : '-8px',
           background: `radial-gradient(circle, ${color}60 0%, transparent 70%)`,
           borderRadius: '50%',
           animation: 'glowPulse 1.5s ease-in-out infinite',
@@ -170,13 +187,13 @@ const StreakReminder: React.FC<{
 
         {/* حاوية الصورة */}
         <div style={{
-          width: '140px',
-          height: '140px',
-          borderRadius: '24px',
+          width: imgSize,
+          height: imgSize,
+          borderRadius: borderRad,
           overflow: 'hidden',
           position: 'relative',
           background: `linear-gradient(145deg, ${color}20, ${color}40)`,
-          boxShadow: `0 8px 24px ${color}40, 0 0 0 3px ${color}`,
+          boxShadow: `0 8px 24px ${color}40, 0 0 0 ${isSmall ? '2px' : '3px'} ${color}`,
         }}>
           <img
             src={characterImage}
@@ -200,9 +217,9 @@ const StreakReminder: React.FC<{
         {/* رمز النار المتحركة */}
         <div style={{
           position: 'absolute',
-          top: '-15px',
-          [position === 'left' ? 'right' : 'left']: '-10px',
-          fontSize: '2rem',
+          top: isSmall ? '-10px' : '-15px',
+          [position === 'left' ? 'right' : 'left']: isSmall ? '-6px' : '-10px',
+          fontSize: isSmall ? '1.25rem' : '2rem',
           animation: 'fireWiggle 0.5s ease-in-out infinite',
         }}>
           🔥
@@ -212,15 +229,15 @@ const StreakReminder: React.FC<{
       {/* فقاعة الرسالة - تصميم عصري */}
       <div style={{
         position: 'relative',
-        maxWidth: '260px',
+        maxWidth: isSmall ? '160px' : '260px',
         animation: 'bubbleAppear 0.5s ease-out 0.2s both',
       }}>
         {/* خلفية الفقاعة */}
         <div style={{
           background: `linear-gradient(135deg, rgba(0,0,0,0.85), rgba(0,0,0,0.9))`,
           backdropFilter: 'blur(8px)',
-          borderRadius: '1.25rem',
-          padding: '1rem 1.25rem',
+          borderRadius: isSmall ? '0.85rem' : '1.25rem',
+          padding: isSmall ? '0.5rem 0.65rem' : '1rem 1.25rem',
           border: `2px solid ${color}`,
           boxShadow: `0 8px 24px rgba(0,0,0,0.3), 0 0 12px ${color}20`,
         }}>
@@ -230,14 +247,14 @@ const StreakReminder: React.FC<{
             alignItems: 'center',
             justifyContent: 'center',
             gap: '0.5rem',
-            marginBottom: '0.5rem',
+            marginBottom: isSmall ? '0.25rem' : '0.5rem',
           }}>
             <span style={{
               background: `linear-gradient(135deg, ${color}, ${color}dd)`,
               color: 'white',
-              padding: '0.25rem 0.75rem',
+              padding: isSmall ? '0.15rem 0.5rem' : '0.25rem 0.75rem',
               borderRadius: '1rem',
-              fontSize: '0.875rem',
+              fontSize: isSmall ? '0.65rem' : '0.875rem',
               fontWeight: 900,
               boxShadow: `0 2px 6px ${color}40`,
             }}>
@@ -248,7 +265,7 @@ const StreakReminder: React.FC<{
           {/* الرسالة */}
           <div style={{
             color: 'white',
-            fontSize: '1rem',
+            fontSize: isSmall ? '0.7rem' : '1rem',
             fontWeight: 700,
             textAlign: 'center',
             lineHeight: 1.5,
@@ -261,9 +278,9 @@ const StreakReminder: React.FC<{
 
           {/* التحذير */}
           <div style={{
-            marginTop: '0.5rem',
+            marginTop: isSmall ? '0.25rem' : '0.5rem',
             textAlign: 'center',
-            fontSize: '0.875rem',
+            fontSize: isSmall ? '0.65rem' : '0.875rem',
             color: 'rgba(255,255,255,0.7)',
             display: 'flex',
             alignItems: 'center',
@@ -278,10 +295,10 @@ const StreakReminder: React.FC<{
         {/* ذيل الفقاعة */}
         <div style={{
           position: 'absolute',
-          bottom: '25px',
+          bottom: isSmall ? '15px' : '25px',
           [position === 'left' ? 'left' : 'right']: '-8px',
-          width: '16px',
-          height: '16px',
+          width: isSmall ? '12px' : '16px',
+          height: isSmall ? '12px' : '16px',
           background: 'rgba(0,0,0,0.85)',
           border: `2px solid ${color}`,
           borderTop: 'none',

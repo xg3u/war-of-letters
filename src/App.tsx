@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { GameSettings } from './components/GameSettings';
 import { HostScreen } from './components/HostScreen';
@@ -10,6 +10,7 @@ import { AnimatedBackground } from './components/AnimatedBackground';
 import { AuthGate } from './components/AuthGate';
 import { supabase } from './lib/supabase';
 import type { GameSettingsData } from './components/GameSettings';
+import { ThemeProvider } from './context/ThemeContext';
 
 type Screen = 'landing' | 'settings' | 'host' | 'players' | 'buzzers';
 
@@ -103,16 +104,17 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleCloseWelcome = () => {
-    setShowWelcomeModal(false);
-  };
+  const handleCloseWelcome = useCallback(() => setShowWelcomeModal(false), []);
 
-  const handleStartGame = (settings: GameSettingsData) => {
+  const handleStartGame = useCallback((settings: GameSettingsData) => {
     setGameSettings(settings);
-    // حفظ الإعدادات في localStorage
     localStorage.setItem('current-game-settings', JSON.stringify(settings));
     setCurrentScreen('host');
-  };
+  }, []);
+
+  // دوال التنقل ثابتة المرجع — ضروري لمنع إعادة تشغيل useEffect في HostScreen
+  const handleBackToSettings = useCallback(() => setCurrentScreen('settings'), []);
+  const handleBackToLanding = useCallback(() => setCurrentScreen('landing'), []);
 
   // حالة التحميل - انتظار فحص المصادقة
   if (isAuthenticated === null) {
@@ -162,6 +164,7 @@ function App() {
 
   // المستخدم مسجل الدخول - عرض التطبيق
   return (
+    <ThemeProvider>
     <div style={{ position: 'relative', minHeight: '100vh' }}>
       {/* الخلفية المتحركة */}
       <AnimatedBackground />
@@ -177,7 +180,7 @@ function App() {
       {/* شاشة الإعدادات */}
       {currentScreen === 'settings' && (
         <GameSettings
-          onBack={() => setCurrentScreen('landing')}
+          onBack={handleBackToLanding}
           onStartGame={handleStartGame}
         />
       )}
@@ -186,32 +189,17 @@ function App() {
       {currentScreen === 'host' && gameSettings && (
         <HostScreen
           settings={gameSettings}
-          onBack={() => setCurrentScreen('settings')}
+          onBack={handleBackToSettings}
         />
       )}
 
       {/* شاشة اللاعبين */}
       {currentScreen === 'players' && (
-        gameSettings ? (
-          <PlayersScreen
-            settings={gameSettings}
-            currentQuestion={null}
-            selectedCell={null}
-          />
-        ) : (
-          <div style={{
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            fontSize: '2rem',
-            textAlign: 'center',
-            padding: '2rem',
-          }}>
-            ⚠️ الرجاء بدء اللعبة من شاشة المقدم أولاً
-          </div>
-        )
+        <PlayersScreen
+          settings={gameSettings}
+          currentQuestion={null}
+          selectedCell={null}
+        />
       )}
 
       {/* شاشة Answer Buzzers */}
@@ -219,6 +207,7 @@ function App() {
         <AnswerBuzzersScreen />
       )}
     </div>
+    </ThemeProvider>
   );
 }
 

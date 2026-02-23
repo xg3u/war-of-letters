@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, CreditCard, Zap, HelpCircle } from 'lucide-react';
 import { useScreenSize } from '../hooks/useScreenSize';
+import { useTheme } from '../context/ThemeContext';
 import { syncManager } from '../utils/SyncManager';
 import { playBellSound, playCardSound } from '../utils/sounds';
 import { BuzzerGuide } from './BuzzerGuide';
@@ -17,6 +18,7 @@ interface BuzzerPress {
 
 export const AnswerBuzzersScreen: React.FC = () => {
   const { isMobile } = useScreenSize();
+  const { theme } = useTheme();
   const [isRegistered, setIsRegistered] = useState(false);
   const [playerName, setPlayerName] = useState('');
   const [selectedTeam, setSelectedTeam] = useState<'green' | 'red'>('green');
@@ -134,7 +136,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           padding: '1rem',
-          background: 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)',
+          background: theme.bgGradient,
         }}
       >
         <div
@@ -330,7 +332,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1rem',
-        background: 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)',
+        background: theme.bgGradient,
         gap: '2rem',
       }}
     >

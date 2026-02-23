@@ -1,7 +1,7 @@
 // src/components/HostScreen.tsx
 // شاشة المقدم المُعاد تصميمها - تطابق الهوية البصرية النهائية
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   Palette,
   CheckCircle2,
@@ -25,6 +25,7 @@ import { playBellSound, playCardSound } from '../utils/sounds';
 import { HexGrid } from './HexGrid';
 import { ActionCardPanel } from './ActionCardPanel';
 import { CardAnimation } from './CardAnimation';
+import { CardTeaserOverlay } from './CardTeaserOverlay';
 import { CardRoulette } from './CardRoulette';
 import { ResultsOverlay } from './ResultsOverlay';
 import { StreakVisualizer } from './StreakVisualizer';
@@ -36,6 +37,7 @@ import { HostOnboarding } from './HostOnboarding';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
 import { getWinStats } from '../utils/winChecker';
+import { useTheme } from '../context/ThemeContext';
 
 interface HostScreenProps {
   settings: GameSettingsData;
@@ -84,6 +86,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showRoulette, setShowRoulette] = useState(false);
+  const [showCardTeaser, setShowCardTeaser] = useState(false); // شاشة التشويق قبل كشف البطاقة
   const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
   const [isPaused, setIsPaused] = useState(false);
   const [colorsSwapped, setColorsSwapped] = useState(false); // حالة عكس الألوان
@@ -108,19 +111,56 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [excludedQuestionIds, setExcludedQuestionIds] = useState<string[]>([]); // الأسئلة المستبعدة عند تغيير السؤال
   const [showQRCode, setShowQRCode] = useState(false); // إظهار QR Code
   const [showBuzzerQRCode, setShowBuzzerQRCode] = useState(false); // إظهار QR Code للأزرار
+  // جلسة جديدة تماماً في كل مرة يبدأ فيها المقدم لعبة
+  // initSession يُستدعى هنا مباشرة ليضمن أن SyncManager يعرف الـ session قبل أي useEffect
   const [sessionId] = useState(() => {
-    // إنشاء session ID فريد أو استخدام الموجود
-    const existing = localStorage.getItem('game-session-id');
-    if (existing) return existing;
-    const newId = Math.random().toString(36).substring(2, 10).toUpperCase();
-    localStorage.setItem('game-session-id', newId);
-    return newId;
+    const SAFE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // بدون 0,1,I,O لتجنب الالتباس
+    const code = Array.from({ length: 5 }, () => SAFE[Math.floor(Math.random() * SAFE.length)]).join('');
+    syncManager.initSession(code); // يُعِدّ Realtime فوراً ويضع SyncManager كمقدم
+    return code;
   });
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  // ── عداد الخمول: خروج تلقائي بعد ساعة من عدم الحركة ──────────────────────
+  const INACTIVITY_MS = 60 * 60 * 1000; // 60 دقيقة
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // حارس: يمنع إرسال SESSION_ENDED أكثر من مرة (يحمي من React Strict Mode وتغيّر الـ deps)
+  const sessionEndedRef = useRef(false);
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+    inactivityTimer.current = setTimeout(() => {
+      syncManager.broadcast({ type: 'SESSION_ENDED' });
+      localStorage.removeItem('game-session-id');
+      onBack();
+    }, INACTIVITY_MS);
+  }, [onBack]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('host-onboarding-done');
   });
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
+  const { theme } = useTheme();
+
+  // ── مراقبة النشاط + تنظيف الجلسة عند الخروج ──────────────────────────────
+  React.useEffect(() => {
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'] as const;
+    events.forEach(e => window.addEventListener(e, resetInactivityTimer, { passive: true }));
+    resetInactivityTimer(); // بدء العداد فور تحميل الصفحة
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
+      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
+      // إرسال SESSION_ENDED مرة واحدة فقط — يحمي من React Strict Mode وتكرار الـ cleanup
+      if (!sessionEndedRef.current) {
+        sessionEndedRef.current = true;
+        syncManager.broadcast({ type: 'SESSION_ENDED' });
+        localStorage.removeItem('game-session-id');
+        // إعادة ضبط الحارس بعد لحظة لتسمح بجلسة جديدة لاحقاً
+        setTimeout(() => { sessionEndedRef.current = false; }, 500);
+      }
+    };
+  }, [resetInactivityTimer]);
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
@@ -284,16 +324,24 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       // 🔒 LOCK the game when starting roulette or question
       setLocked(true);
 
-      // إذا كانت الخلية تحتوي على بطاقة مخفية أو حرف ذهبي، عرض الروليت
-      if (cell.hasCard || cell.isGolden) {
-        const triggerType = cell.isGolden ? 'golden' : 'card';
-        setRouletteTriggerType(triggerType);
-        setShowRoulette(true);
+      // 📡 إعلام شاشة اللاعبين بالخلية المختارة (تظليل أصفر)
+      syncManager.broadcast({
+        type: 'CELL_SELECTED',
+        cellId: cell.id,
+        letter: cell.letter,
+        hasCard: !!cell.hasCard,
+        isGolden: !!cell.isGolden,
+      });
 
-        // بث حدث بدء الروليت لشاشة اللاعبين
+      // إذا كانت الخلية تحتوي على بطاقة مخفية أو حرف ذهبي، عرض شاشة التشويق أولاً
+      if (cell.hasCard || cell.isGolden) {
+        setShowCardTeaser(true);
+
+        // بث حدث شاشة التشويق لشاشة اللاعبين
         syncManager.broadcast({
-          type: 'ROULETTE_START',
-          triggerType,
+          type: 'CARD_TEASER',
+          letter: cell.letter,
+          isGolden: !!cell.isGolden,
         });
       } else {
         // جلب سؤال ذكي من Supabase
@@ -319,6 +367,19 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         }
       }
     }
+  };
+
+  // يُستدعى عندما يضغط المقدم "اكشف البطاقة" في شاشة التشويق
+  const handleRevealCard = () => {
+    setShowCardTeaser(false);
+    const triggerType = selectedCell?.isGolden ? 'golden' : 'card';
+    setRouletteTriggerType(triggerType);
+    setShowRoulette(true);
+
+    syncManager.broadcast({
+      type: 'ROULETTE_START',
+      triggerType,
+    });
   };
 
   const handleRouletteComplete = async (card: CardType) => {
@@ -364,25 +425,47 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     // Store pending card (to be awarded to team that answers correctly)
     setPendingCard(card);
 
-    // If in random letter mode, select a random non-golden cell
-    let targetCell = selectedCell;
+    // إذا كنا في وضع الحرف العشوائي: حرّك اللون الأصفر على الشبكة ثم أظهر السؤال
     if (isRandomLetterMode) {
-      const availableCells = cells.filter(c => c.status === 'unanswered' && !c.isGolden);
-      if (availableCells.length > 0) {
-        targetCell = availableCells[Math.floor(Math.random() * availableCells.length)];
-        setSelectedCell(targetCell);
-      }
       setIsRandomLetterMode(false);
+      const availableCells = cells.filter(c => c.status === 'unanswered' && !c.isGolden);
+
+      if (availableCells.length > 0) {
+        const foundTarget = availableCells[Math.floor(Math.random() * availableCells.length)];
+        const afterMs = animateCellSelection(availableCells, foundTarget);
+
+        setTimeout(async () => {
+          const cardFoundMessage = `ظهرت بطاقة ${CARD_ICONS[card]}! أجب على السؤال لتحصل عليها 🎁`;
+          setCardAnimation({ type: 'cardFound', message: cardFoundMessage });
+          syncManager.broadcast({ type: 'CARD_FOUND', cardType: 'cardFound', message: cardFoundMessage });
+
+          setTimeout(async () => {
+            setCardAnimation(null);
+            const question = await getSmartQuestion(foundTarget.letter, settings.selectedCategories);
+            if (question) {
+              setCurrentQuestion(question.question_text);
+              setCurrentAnswer(question.correct_answer);
+              setCurrentQuestionId(question.id);
+            } else {
+              setCurrentQuestion(`سؤال تجريبي للحرف "${foundTarget.letter}"؟`);
+              setCurrentAnswer('إجابة تجريبية');
+              setCurrentQuestionId(null);
+            }
+            setShowQuestion(true);
+          }, 3500);
+        }, afterMs);
+      }
+      return; // تم التعامل مع حالة الحرف العشوائي
     }
 
-    // Show card found animation
+    // الحالة العادية: كشف بطاقة خلف حرف محدد
+    const targetCell = selectedCell;
     const cardFoundMessage = `ظهرت بطاقة ${CARD_ICONS[card]}! أجب على السؤال لتحصل عليها 🎁`;
     setCardAnimation({
       type: 'cardFound',
       message: cardFoundMessage,
     });
 
-    // بث رسالة ظهور البطاقة للاعبين
     syncManager.broadcast({
       type: 'CARD_FOUND',
       cardType: 'cardFound',
@@ -392,7 +475,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     setTimeout(async () => {
       setCardAnimation(null);
 
-      // Fetch smart question from Supabase
       const question = await getSmartQuestion(
         targetCell?.letter || '',
         settings.selectedCategories
@@ -482,6 +564,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       // Reset question UI
       setShowQuestion(false);
       setSelectedCell(null);
+      syncManager.broadcast({ type: 'CELL_SELECTED', cellId: null, letter: null, hasCard: false, isGolden: false });
       setCurrentQuestion(null);
       setCurrentQuestionId(null);
 
@@ -633,13 +716,73 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     initializeGrid(updatedSettings);
   };
 
-  // اختيار حرف عشوائي
+  // ── مساعد: يحرّك اللون الأصفر بين خلايا الشبكة ثم يثبت على الخلية المستهدفة ──
+  // يعيد المدة الكلية بالميلي ثانية (مرحلة سريعة + بطيئة + هامش)
+  const animateCellSelection = (pool: HexCellType[], target: HexCellType): number => {
+    const timings: number[] = [];
+    let t = 0;
+    // مرحلة سريعة: 15 خطوة كل 80ms
+    for (let i = 0; i < 15; i++) { timings.push(t); t += 80; }
+    // مرحلة بطيئة: تباطؤ تدريجي
+    for (const gap of [150, 200, 260, 340, 450]) { t += gap; timings.push(t); }
+
+    timings.forEach((delay, idx) => {
+      const isLast = idx === timings.length - 1;
+      setTimeout(() => {
+        const cell = isLast ? target : pool[Math.floor(Math.random() * pool.length)];
+        setSelectedCell(cell);
+        syncManager.broadcast({
+          type: 'CELL_SELECTED',
+          cellId: cell.id,
+          letter: cell.letter,
+          hasCard: isLast ? !!cell.hasCard : false,
+          isGolden: isLast ? !!cell.isGolden : false,
+        });
+      }, delay);
+    });
+
+    return t + 650; // هامش ما بعد الوقوف
+  };
+
+  // اختيار حرف عشوائي - بالأنيميشن على الشبكة
   const handleRandomLetter = () => {
+    if (isLocked || !roundStarted) return;
     const unansweredCells = cells.filter(c => c.status === 'unanswered');
-    if (unansweredCells.length > 0) {
-      const randomCell = unansweredCells[Math.floor(Math.random() * unansweredCells.length)];
-      handleCellSelect(randomCell);
-    }
+    if (unansweredCells.length === 0) return;
+
+    const targetCell = unansweredCells[Math.floor(Math.random() * unansweredCells.length)];
+    setLocked(true);
+    playBellSound();
+
+    const afterMs = animateCellSelection(unansweredCells, targetCell);
+
+    setTimeout(() => {
+      if (targetCell.hasCard || targetCell.isGolden) {
+        setShowCardTeaser(true);
+        syncManager.broadcast({
+          type: 'CARD_TEASER',
+          letter: targetCell.letter,
+          isGolden: !!targetCell.isGolden,
+        });
+      } else {
+        (async () => {
+          setIsLoadingQuestion(true);
+          const question = await getSmartQuestion(targetCell.letter, settings.selectedCategories);
+          setIsLoadingQuestion(false);
+          if (question) {
+            setCurrentQuestion(question.question_text);
+            setCurrentAnswer(question.correct_answer);
+            setCurrentQuestionId(question.id);
+            setShowQuestion(true);
+          } else {
+            setCurrentQuestion(`⚠️ لا توجد أسئلة متاحة للحرف "${targetCell.letter}" في التصنيفات المختارة!`);
+            setShowQuestion(true);
+            setCurrentAnswer('إجابة تجريبية');
+            setCurrentQuestionId(null);
+          }
+        })();
+      }
+    }, afterMs);
   };
 
   // إعادة تعيين الأزرار
@@ -686,13 +829,58 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 25%, #6366f1 50%, #4f46e5 75%, #3730a3 100%)',
+      background: theme.bgGradient,
       padding: isMobile ? '0.75rem' : isTablet ? '1rem' : '1.5rem',
       display: 'flex',
       flexDirection: isDesktop ? 'row' : 'column',
       gap: isMobile ? '0.75rem' : '1.5rem',
       position: 'relative',
     }}>
+
+      {/* رمز الجلسة - يظهر دائماً في الأعلى */}
+      {!isDesktop && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.6rem',
+          background: 'rgba(0,0,0,0.35)',
+          backdropFilter: 'blur(10px)',
+          border: '2px solid rgba(251,191,36,0.4)',
+          borderRadius: '1rem',
+          padding: isMobile ? '0.5rem 1rem' : '0.6rem 1.25rem',
+          width: '100%',
+        }}>
+          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700 }}>🔑 رمز الجلسة:</span>
+          <span style={{
+            color: '#fbbf24',
+            fontSize: isMobile ? '1.3rem' : '1.5rem',
+            fontWeight: 900,
+            letterSpacing: '0.25em',
+            fontFamily: 'monospace',
+          }}>{sessionId}</span>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(sessionId);
+              setCodeCopied(true);
+              setTimeout(() => setCodeCopied(false), 2000);
+            }}
+            style={{
+              background: codeCopied ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)',
+              border: `1.5px solid ${codeCopied ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.2)'}`,
+              borderRadius: '6px',
+              padding: '0.25rem 0.5rem',
+              cursor: 'pointer',
+              color: codeCopied ? '#10b981' : 'rgba(255,255,255,0.6)',
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              transition: 'all 0.2s',
+            }}
+          >
+            {codeCopied ? '✓ تم' : 'نسخ'}
+          </button>
+        </div>
+      )}
 
       {/* لوحتي الفريقين - صف أفقي على الموبايل/التابلت */}
       {!isDesktop && (
@@ -971,6 +1159,50 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         flexDirection: 'column',
         gap: isMobile ? '0.75rem' : '1.5rem',
       }}>
+
+        {/* رمز الجلسة - Desktop فقط */}
+        {isDesktop && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.75rem',
+            background: 'rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(10px)',
+            border: '2px solid rgba(251,191,36,0.35)',
+            borderRadius: '1rem',
+            padding: '0.6rem 1.5rem',
+          }}>
+            <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem', fontWeight: 700 }}>🔑 رمز الجلسة:</span>
+            <span style={{
+              color: '#fbbf24',
+              fontSize: '1.6rem',
+              fontWeight: 900,
+              letterSpacing: '0.3em',
+              fontFamily: 'monospace',
+            }}>{sessionId}</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(sessionId);
+                setCodeCopied(true);
+                setTimeout(() => setCodeCopied(false), 2000);
+              }}
+              style={{
+                background: codeCopied ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)',
+                border: `1.5px solid ${codeCopied ? 'rgba(16,185,129,0.6)' : 'rgba(255,255,255,0.2)'}`,
+                borderRadius: '6px',
+                padding: '0.3rem 0.75rem',
+                cursor: 'pointer',
+                color: codeCopied ? '#10b981' : 'rgba(255,255,255,0.6)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                transition: 'all 0.2s',
+              }}
+            >
+              {codeCopied ? '✓ تم النسخ' : 'نسخ الرمز'}
+            </button>
+          </div>
+        )}
 
         {/* الشبكة */}
         <div style={{
@@ -1659,6 +1891,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         greenTeamName={settings.teamNames.green}
         redTeamName={settings.teamNames.red}
         totalRounds={settings.rounds}
+        gameName={settings.gameName}
         currentRound={currentRound}
       />
 
@@ -1670,6 +1903,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           greenTeamName={settings.teamNames.green}
           redTeamName={settings.teamNames.red}
           enabled={settings.enableStreakReward}
+        />
+      )}
+
+      {/* شاشة التشويق قبل كشف البطاقة */}
+      {showCardTeaser && selectedCell && (
+        <CardTeaserOverlay
+          letter={selectedCell.letter}
+          isGolden={!!selectedCell.isGolden}
+          isHost={true}
+          onReveal={handleRevealCard}
         />
       )}
 
