@@ -1,0 +1,46 @@
+{
+  "name": "حرب الحروف",
+  "short_name": "حرب الحروف",
+  "description": "أول لعبة لوحية إلكترونية عربية تعتمد على الاستراتيجية وبناء الجسور",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1a0b2e",
+  "theme_color": "#1a0b2e",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["games", "education"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "شاشة اللعبة الرئيسية"
+    }
+  ]
+}

@@ -21,6 +21,14 @@ import {
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
 import { getSmartQuestion } from '../utils/questionEngine';
+import {
+  BuzzerChannel,
+  INITIAL_BUZZER_STATE,
+  applyAttempt,
+  applyActiveExpiry,
+  applyOpponentExpiry,
+} from '../utils/BuzzerEngine';
+import type { BuzzerAttempt, BuzzerState } from '../utils/BuzzerEngine';
 import { prefetchAllGameLetters } from '../utils/questionCache';
 import { useScreenSize } from '../hooks/useScreenSize';
 import { playBellSound, playCardSound } from '../utils/sounds';
@@ -38,8 +46,10 @@ import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
 import { HostOnboarding } from './HostOnboarding';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
-import { getWinStats } from '../utils/winChecker';
+import { getWinStats, checkWinCondition, getWinMessage } from '../utils/winChecker';
 import { useTheme } from '../context/ThemeContext';
+import { CharacterAvatar, DEFAULT_AVATAR } from './CharacterAvatar';
+import type { AvatarConfig } from './CharacterAvatar';
 
 interface HostScreenProps {
   settings: GameSettingsData;
@@ -81,6 +91,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     redoLastAction,
     history,
     future,
+    forceRoundWin,
   } = useGameStore();
 
   const [selectedCell, setSelectedCell] = useState<HexCellType | null>(null);
@@ -97,17 +108,34 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
   const [isPaused, setIsPaused] = useState(false);
   const [colorsSwapped, setColorsSwapped] = useState(false); // حالة عكس الألوان
+  const [pendingWin, setPendingWin] = useState<{
+    detectedTeam: 'green' | 'red';
+    winType: 'wall-to-wall' | 'five-connected' | 'most-letters';
+    message: string;
+  } | null>(null);
+
   const [buzzerPress, setBuzzerPress] = useState<{
     type: 'answer' | 'card';
     playerName: string;
     team: 'green' | 'red';
     timestamp: number;
+    phase?: 'phase1' | 'phase2' | 'phase3';
+    avatar?: AvatarConfig;
   } | null>(null); // حالة ضغط الزر
+  const [buzzerActiveUntil, setBuzzerActiveUntil] = useState<number | null>(null); // وقت انتهاء فرصة الإجابة
+  const [buzzerCountdown, setBuzzerCountdown] = useState(0); // العداد التنازلي (ثوانٍ)
   const [registeredPlayers, setRegisteredPlayers] = useState<{
     name: string;
     team: 'green' | 'red';
     timestamp: number;
+    avatar?: AvatarConfig;
   }[]>([]); // اللاعبون المسجلون في Answer Buzzers
+  const [hoveredPlayer, setHoveredPlayer] = useState<string | null>(null);
+  const kickPlayer = (name: string) => {
+    setRegisteredPlayers(prev => prev.filter(p => p.name !== name));
+    setHoveredPlayer(null);
+    syncManager.broadcast({ type: 'player-kicked', name });
+  };
   const [pendingCard, setPendingCard] = useState<CardType | null>(null); // Card waiting to be awarded to winning team
   const [showRandomLetterAnnouncement, setShowRandomLetterAnnouncement] = useState(false);
   const [isRandomLetterMode, setIsRandomLetterMode] = useState(false); // Track if we're in random letter round start mode
@@ -128,6 +156,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     syncManager.initSession(code); // يُعِدّ Realtime فوراً ويضع SyncManager كمقدم
     return code;
   });
+
+  // ── نظام الجرس: HostScreen هو المُحكّم الوحيد ─────────────────
+  const hostBuzzerStateRef  = useRef<BuzzerState>(INITIAL_BUZZER_STATE);
+  const hostPendingRef      = useRef<BuzzerAttempt[]>([]);
+  const hostTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buzzerChRef         = useRef<BuzzerChannel | null>(null);
 
   // ── عداد الخمول: خروج تلقائي بعد ساعة من عدم الحركة ──────────────────────
   const INACTIVITY_MS = 60 * 60 * 1000; // 60 دقيقة
@@ -169,6 +203,88 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       }
     };
   }, [resetInactivityTimer]);
+
+  // ── BuzzerChannel: HostScreen كمُحكّم وحيد للجرس ────────────────
+  React.useEffect(() => {
+    if (!sessionId) return;
+    const ch = new BuzzerChannel(sessionId);
+    buzzerChRef.current = ch;
+
+    const offAttempt = ch.onAttempt((attempt) => {
+      hostPendingRef.current.push(attempt);
+      if (!hostTimerRef.current) {
+        hostTimerRef.current = setTimeout(() => {
+          hostTimerRef.current = null;
+          const pending = [...hostPendingRef.current]
+            .sort((a, b) => a.clientTimestamp - b.clientTimestamp);
+          hostPendingRef.current = [];
+          const now = Date.now();
+          for (const att of pending) {
+            const newState = applyAttempt(hostBuzzerStateRef.current, att, now);
+            if (!newState) continue;
+            hostBuzzerStateRef.current = newState;
+            // إعلان الفائز لجميع شاشات اللاعبين
+            ch.sendWinner({
+              type: 'BUZZER_WINNER',
+              team: att.team,
+              playerName: att.playerName,
+              pressType: att.pressType,
+              clientTimestamp: att.clientTimestamp,
+              newState,
+              avatar: att.avatar,
+            });
+            // تحديث شاشة المقدم مباشرة
+            setBuzzerPress({
+              type: att.pressType,
+              playerName: att.playerName,
+              team: att.team,
+              timestamp: att.clientTimestamp,
+              avatar: att.avatar,
+            });
+            if (newState.activeUntil) setBuzzerActiveUntil(newState.activeUntil);
+            // إعلام شاشة اللاعبين (PlayersScreen)
+            syncManager.broadcast({
+              type: 'buzzer-press',
+              buzzerPress: {
+                type: att.pressType,
+                playerName: att.playerName,
+                team: att.team,
+                timestamp: att.clientTimestamp,
+                activeUntil: newState.activeUntil,
+                phase: newState.phase,
+              },
+            });
+            if (att.pressType === 'answer') playBellSound(); else playCardSound();
+            break;
+          }
+        }, 400); // نافذة 400ms لتجميع الضغطات المتزامنة
+      }
+    });
+
+    return () => {
+      offAttempt();
+      ch.close();
+      buzzerChRef.current = null;
+      if (hostTimerRef.current) { clearTimeout(hostTimerRef.current); hostTimerRef.current = null; }
+    };
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── تقدّم حالة الجرس بالوقت (للتحقق canTeamPress) ──────────────
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now();
+      const s = hostBuzzerStateRef.current;
+      if (s.activeUntil && now >= s.activeUntil) {
+        hostBuzzerStateRef.current = applyActiveExpiry(s, now);
+      } else if (
+        (s.phase === 'phase2' || s.phase === 'phase3_opp') &&
+        !s.activeTeam && s.opponentUntil && now >= s.opponentUntil
+      ) {
+        hostBuzzerStateRef.current = applyOpponentExpiry(s, now);
+      }
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
 
   // تهيئة الشبكة عند التحميل
   React.useEffect(() => {
@@ -227,39 +343,20 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     const unsubscribe = syncManager.subscribe((data) => {
       if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
-      } else if (data.type === 'buzzer-press') {
-        // تشغيل الصوت المناسب
-        if (data.buzzerPress.type === 'answer') {
-          playBellSound();
-        } else {
-          playCardSound();
-        }
-        // عرض إشعار الزر المضغوط - فقط أول من ضغط (timestamp أقل)
-        setBuzzerPress(prev => {
-          // إذا لم يكن هناك ضغطة سابقة، قبول الضغطة الجديدة
-          if (!prev) {
-            console.log('✅ First buzzer press accepted:', data.buzzerPress.playerName, data.buzzerPress.timestamp);
-            return data.buzzerPress;
-          }
-
-          // إذا كانت الضغطة الجديدة أقدم (timestamp أقل)، قبولها
-          if (data.buzzerPress.timestamp < prev.timestamp) {
-            console.log('⚡ Earlier buzzer press found! Replacing:', data.buzzerPress.playerName, 'was faster than', prev.playerName);
-            return data.buzzerPress;
-          }
-
-          // رفض الضغطة المتأخرة
-          console.log('❌ Later buzzer press rejected:', data.buzzerPress.playerName, 'was slower than', prev.playerName);
-          return prev;
-        });
       } else if (data.type === 'player-registered') {
-        // إضافة لاعب جديد إلى القائمة
+        // إضافة أو تحديث لاعب (يُحدَّث الفريق والأفاتار إذا تغيّرا)
         setRegisteredPlayers(prev => {
-          // تحقق من عدم التكرار بناءً على الاسم والفريق
-          const exists = prev.some(p => p.name === data.player.name && p.team === data.player.team);
-          if (exists) return prev;
+          const idx = prev.findIndex(p => p.name === data.player.name);
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = data.player;
+            return updated;
+          }
           return [...prev, data.player];
         });
+      } else if (data.type === 'player-left') {
+        // لاعب غادر — احذفه من القائمة
+        setRegisteredPlayers(prev => prev.filter(p => p.name !== data.name));
       } else if (data.type === 'REQUEST_FULL_STATE') {
         // جهاز بعيد يطلب الحالة الكاملة - نرسلها مباشرة
         console.log('📡 Remote device requested full state - sending...');
@@ -305,6 +402,21 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       roundStarted,
     });
   }, [cells, scores, currentRound, teamCards, winStreak, winner, winMessage, matchWinner, isLocked, colorsSwapped, isPaused, roundStarted, settings]);
+
+  // عداد الجرس التنازلي + إغلاق تلقائي بعد انتهاء الـ 5 ثوانٍ
+  React.useEffect(() => {
+    if (!buzzerActiveUntil) return;
+    setBuzzerCountdown(Math.max(0, Math.ceil((buzzerActiveUntil - Date.now()) / 1000)));
+    const interval = setInterval(() => {
+      const left = Math.max(0, Math.ceil((buzzerActiveUntil - Date.now()) / 1000));
+      setBuzzerCountdown(left);
+      if (left === 0) {
+        setBuzzerPress(null);
+        setBuzzerActiveUntil(null);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [buzzerActiveUntil]);
 
   const handleCellSelect = async (cell: HexCellType) => {
     // 🎮 لا يمكن اختيار خلية قبل بدء الجولة
@@ -572,6 +684,23 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
       }
 
+      // فحص حالة الفوز — المقدم يؤكد يدوياً
+      const latestCells = useGameStore.getState().cells;
+      const storeSettings = useGameStore.getState().settings;
+      const winCheck = checkWinCondition(latestCells, storeSettings.winCondition, storeSettings.teamColors);
+
+      if (winCheck.winner) {
+        const teamName = storeSettings.teamNames[winCheck.winner as 'green' | 'red'];
+        const message = winCheck.message || getWinMessage(winCheck.winner, winCheck.winType!, teamName);
+        setPendingWin({
+          detectedTeam: winCheck.winner as 'green' | 'red',
+          winType: (winCheck.winType || 'most-letters') as 'wall-to-wall' | 'five-connected' | 'most-letters',
+          message,
+        });
+        // اللعبة تبقى مقفلة حتى يؤكد المقدم
+        return;
+      }
+
       // 🔓 UNLOCK the game after answer is processed (only if no streak reward)
       if (!settings.enableStreakReward || winStreak[team] < 2) {
         setLocked(false);
@@ -643,6 +772,22 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
     // إغلاق لوحة البطاقات
     setShowCardPanel(false);
+
+    // فحص الفوز بعد القنبلة
+    if (cardType === 'bomb') {
+      const latestCells = useGameStore.getState().cells;
+      const storeSettings = useGameStore.getState().settings;
+      const winCheck = checkWinCondition(latestCells, storeSettings.winCondition, storeSettings.teamColors);
+      if (winCheck.winner) {
+        const teamName = storeSettings.teamNames[winCheck.winner as 'green' | 'red'];
+        const message = winCheck.message || getWinMessage(winCheck.winner, winCheck.winType!, teamName);
+        setPendingWin({
+          detectedTeam: winCheck.winner as 'green' | 'red',
+          winType: (winCheck.winType || 'most-letters') as 'wall-to-wall' | 'five-connected' | 'most-letters',
+          message,
+        });
+      }
+    }
 
     // إذا كانت بطاقة معركة، نحتاج لطرح سؤال فوراً
     if (result.triggerBattle && result.battleCellId) {
@@ -792,9 +937,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   // إعادة تعيين الأزرار
   const handleResetBuzzers = () => {
     setBuzzerPress(null);
-    syncManager.broadcast({
-      type: 'reset-buzzers',
-    });
+    setBuzzerActiveUntil(null);
+    setBuzzerCountdown(0);
+    hostBuzzerStateRef.current = INITIAL_BUZZER_STATE;
+    hostPendingRef.current = [];
+    if (hostTimerRef.current) { clearTimeout(hostTimerRef.current); hostTimerRef.current = null; }
+    syncManager.broadcast({ type: 'reset-buzzers' });
   };
 
   // بدء الجولة - يفعّل كل ميزات الجولة
@@ -1082,23 +1230,49 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               gap: '0.5rem',
             }}>
               {registeredPlayers.filter(p => p.team === 'green').length > 0 ? (
-                registeredPlayers.filter(p => p.team === 'green').map((player, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(16, 185, 129, 0.2)',
-                      border: '1px solid rgba(16, 185, 129, 0.3)',
-                      borderRadius: '0.5rem',
-                      padding: '0.5rem',
-                      color: '#10b981',
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {player.name}
-                  </div>
-                ))
+                registeredPlayers.filter(p => p.team === 'green').map((player, idx) => {
+                  const hKey = `green-${idx}`;
+                  const isSelected = hoveredPlayer === hKey;
+                  return (
+                    <div key={idx} style={{ position: 'relative' }}>
+                      {/* overlay للإغلاق عند الضغط خارج البطاقة */}
+                      {isSelected && (
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 998 }}
+                          onClick={() => setHoveredPlayer(null)} />
+                      )}
+                      <div onClick={() => setHoveredPlayer(isSelected ? null : hKey)}
+                        style={{
+                          background: isSelected ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.15)',
+                          border: `1.5px solid rgba(16,185,129,${isSelected ? '0.7' : '0.35'})`,
+                          borderRadius: '0.75rem', padding: '0.4rem',
+                          display: 'flex', justifyContent: 'center', cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          boxShadow: isSelected ? '0 0 14px rgba(16,185,129,0.35)' : 'none',
+                        }}>
+                        <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={44} />
+                      </div>
+                      {isSelected && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+                          zIndex: 999, background: 'rgba(10,5,25,0.97)',
+                          border: '1.5px solid rgba(16,185,129,0.55)',
+                          borderRadius: '1rem', padding: '0.7rem 0.8rem 0.5rem',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 20px rgba(16,185,129,0.25)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
+                          minWidth: '96px', whiteSpace: 'nowrap',
+                        }}>
+                          <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={60} />
+                          <div style={{ color: '#10b981', fontWeight: 800, fontSize: '0.75rem', textAlign: 'center' }}>{player.name}</div>
+                          <button onClick={(e) => { e.stopPropagation(); kickPlayer(player.name); }} style={{
+                            marginTop: '0.2rem', padding: '0.25rem 0.6rem', borderRadius: '0.5rem',
+                            background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)',
+                            color: '#ef4444', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
+                          }}>طرد ✕</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <div style={{
                   color: 'rgba(255, 255, 255, 0.4)',
@@ -1548,23 +1722,49 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               gap: '0.5rem',
             }}>
               {registeredPlayers.filter(p => p.team === 'red').length > 0 ? (
-                registeredPlayers.filter(p => p.team === 'red').map((player, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.2)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      borderRadius: '0.5rem',
-                      padding: '0.5rem',
-                      color: '#ef4444',
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {player.name}
-                  </div>
-                ))
+                registeredPlayers.filter(p => p.team === 'red').map((player, idx) => {
+                  const hKey = `red-${idx}`;
+                  const isSelected = hoveredPlayer === hKey;
+                  return (
+                    <div key={idx} style={{ position: 'relative' }}>
+                      {/* overlay للإغلاق عند الضغط خارج البطاقة */}
+                      {isSelected && (
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 998 }}
+                          onClick={() => setHoveredPlayer(null)} />
+                      )}
+                      <div onClick={() => setHoveredPlayer(isSelected ? null : hKey)}
+                        style={{
+                          background: isSelected ? 'rgba(239,68,68,0.28)' : 'rgba(239,68,68,0.15)',
+                          border: `1.5px solid rgba(239,68,68,${isSelected ? '0.7' : '0.35'})`,
+                          borderRadius: '0.75rem', padding: '0.4rem',
+                          display: 'flex', justifyContent: 'center', cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          boxShadow: isSelected ? '0 0 14px rgba(239,68,68,0.35)' : 'none',
+                        }}>
+                        <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={44} />
+                      </div>
+                      {isSelected && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+                          zIndex: 999, background: 'rgba(10,5,25,0.97)',
+                          border: '1.5px solid rgba(239,68,68,0.55)',
+                          borderRadius: '1rem', padding: '0.7rem 0.8rem 0.5rem',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 20px rgba(239,68,68,0.25)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
+                          minWidth: '96px', whiteSpace: 'nowrap',
+                        }}>
+                          <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={60} />
+                          <div style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.75rem', textAlign: 'center' }}>{player.name}</div>
+                          <button onClick={(e) => { e.stopPropagation(); kickPlayer(player.name); }} style={{
+                            marginTop: '0.2rem', padding: '0.25rem 0.6rem', borderRadius: '0.5rem',
+                            background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)',
+                            color: '#ef4444', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
+                          }}>طرد ✕</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <div style={{
                   color: 'rgba(255, 255, 255, 0.4)',
@@ -2040,6 +2240,194 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         />
       )}
 
+      {/* نافذة تأكيد الفوز اليدوي من المقدم */}
+      {pendingWin && (() => {
+        const isGreen   = pendingWin.detectedTeam === 'green';
+        const otherTeam = isGreen ? 'red' : 'green';
+        const teamColor = isGreen ? '#10b981' : '#ef4444';
+        const teamGlow  = isGreen ? 'rgba(16,185,129,0.35)' : 'rgba(239,68,68,0.35)';
+        const teamGrad  = isGreen
+          ? 'linear-gradient(135deg,#10b981,#14b8a6,#059669)'
+          : 'linear-gradient(135deg,#ef4444,#dc2626,#b91c1c)';
+        const otherColor = isGreen ? '#ef4444' : '#10b981';
+        return (
+          <div style={{
+            position: 'fixed', inset: 0,
+            background: 'linear-gradient(180deg,rgba(5,0,15,0.96) 0%,rgba(15,5,35,0.96) 100%)',
+            backdropFilter: 'blur(22px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 6000, direction: 'rtl', padding: '1rem',
+            animation: 'pwFadeIn 0.35s ease-out',
+          }}>
+
+            {/* جسيمات خلفية */}
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+              {[...Array(18)].map((_, i) => (
+                <div key={i} style={{
+                  position: 'absolute',
+                  width: `${2 + (i % 4)}px`, height: `${2 + (i % 4)}px`,
+                  borderRadius: '50%',
+                  background: i % 3 === 0 ? '#fbbf24' : i % 3 === 1 ? teamColor : 'rgba(255,255,255,0.4)',
+                  opacity: 0.35,
+                  left: `${(i * 43) % 100}%`, top: `${(i * 67) % 100}%`,
+                  animation: `pwFloat ${2.2 + (i % 3) * 0.7}s ease-in-out infinite`,
+                  animationDelay: `${(i * 0.15) % 2}s`,
+                }} />
+              ))}
+            </div>
+
+            {/* البطاقة الرئيسية */}
+            <div style={{
+              position: 'relative', maxWidth: '460px', width: '100%',
+              background: 'linear-gradient(145deg,rgba(26,11,46,0.98),rgba(8,0,20,0.98))',
+              border: `2px solid ${teamColor}50`,
+              borderRadius: '2rem',
+              padding: '2.25rem 1.75rem',
+              boxShadow: `0 0 60px ${teamGlow}, 0 30px 80px rgba(0,0,0,0.65)`,
+              textAlign: 'center',
+              animation: 'pwSlideUp 0.45s cubic-bezier(0.34,1.56,0.64,1)',
+              overflow: 'hidden',
+            }}>
+
+              {/* شريط لوني علوي */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0,
+                height: '4px', background: teamGrad,
+                borderRadius: '2rem 2rem 0 0',
+              }} />
+
+              {/* أيقونة التنبيه */}
+              <div style={{ position: 'relative', display: 'inline-block', marginBottom: '1.5rem' }}>
+                <div style={{
+                  width: '90px', height: '90px', margin: '0 auto',
+                  background: 'rgba(251,191,36,0.1)',
+                  border: '2px solid rgba(251,191,36,0.3)',
+                  borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 35px rgba(251,191,36,0.18)',
+                  animation: 'pwPulse 1.8s ease-in-out infinite',
+                }}>
+                  <span style={{ fontSize: '2.6rem', lineHeight: 1 }}>⚠️</span>
+                </div>
+                {/* شارة اسم الفريق */}
+                <div style={{
+                  position: 'absolute', bottom: -8, left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: teamGrad, borderRadius: '1rem',
+                  padding: '0.22rem 0.85rem',
+                  fontSize: '0.7rem', fontWeight: 800, color: 'white',
+                  whiteSpace: 'nowrap',
+                  boxShadow: `0 4px 12px ${teamGlow}`,
+                }}>
+                  {settings.teamNames[pendingWin.detectedTeam]}
+                </div>
+              </div>
+
+              {/* العنوان */}
+              <div style={{
+                fontSize: '1.45rem', fontWeight: 900, color: 'white',
+                marginTop: '0.4rem', marginBottom: '0.5rem', lineHeight: 1.3,
+              }}>
+                تم اكتشاف حالة فوز!
+              </div>
+
+              {/* رسالة الفوز */}
+              <div style={{
+                fontSize: '0.82rem', color: 'rgba(255,255,255,0.42)',
+                marginBottom: '1.5rem', lineHeight: 1.65, padding: '0 0.5rem',
+              }}>
+                {pendingWin.message}
+              </div>
+
+              {/* فاصل */}
+              <div style={{
+                height: '1px', marginBottom: '1.1rem',
+                background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)',
+              }} />
+
+              {/* تسمية */}
+              <div style={{
+                fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em',
+                color: 'rgba(255,255,255,0.28)', marginBottom: '0.85rem',
+                textTransform: 'uppercase',
+              }}>
+                اختر قرار المقدم
+              </div>
+
+              {/* الأزرار */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+
+                {/* تأكيد الفريق المكتشف */}
+                <button
+                  onClick={() => { forceRoundWin(pendingWin.detectedTeam, pendingWin.message); setPendingWin(null); setLocked(false); }}
+                  style={{
+                    width: '100%', padding: '0.88rem 1rem',
+                    background: teamGrad, border: 'none',
+                    borderRadius: '0.9rem', color: 'white',
+                    fontSize: '0.95rem', fontWeight: 800, cursor: 'pointer',
+                    boxShadow: `0 6px 20px ${teamGlow}`,
+                    transition: 'transform 0.18s, box-shadow 0.18s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                  <span>✅</span>
+                  <span>تأكيد فوز {settings.teamNames[pendingWin.detectedTeam]}</span>
+                </button>
+
+                {/* منح الفوز للفريق الآخر */}
+                <button
+                  onClick={() => { forceRoundWin(otherTeam, `🏆 ${settings.teamNames[otherTeam]} فاز بالجولة!`); setPendingWin(null); setLocked(false); }}
+                  style={{
+                    width: '100%', padding: '0.88rem 1rem',
+                    background: `${otherColor}16`,
+                    border: `1.5px solid ${otherColor}38`,
+                    borderRadius: '0.9rem', color: otherColor,
+                    fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer',
+                    transition: 'transform 0.18s, background 0.18s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.background = `${otherColor}28`; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.background = `${otherColor}16`; }}
+                >
+                  <span>🔄</span>
+                  <span>منح الفوز لـ {settings.teamNames[otherTeam]}</span>
+                </button>
+
+                {/* إلغاء */}
+                <button
+                  onClick={() => { setPendingWin(null); setLocked(false); }}
+                  style={{
+                    width: '100%', padding: '0.75rem 1rem',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1.5px solid rgba(255,255,255,0.1)',
+                    borderRadius: '0.9rem', color: 'rgba(255,255,255,0.4)',
+                    fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer',
+                    transition: 'background 0.18s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                >
+                  <span>❌</span>
+                  <span>إلغاء — لا يوجد فوز</span>
+                </button>
+              </div>
+            </div>
+
+            <style>{`
+              @keyframes pwFadeIn  { from{opacity:0}                                        to{opacity:1} }
+              @keyframes pwSlideUp { from{opacity:0;transform:translateY(40px) scale(0.92)} to{opacity:1;transform:translateY(0) scale(1)} }
+              @keyframes pwPulse   { 0%,100%{transform:scale(1);box-shadow:0 0 35px rgba(251,191,36,0.18)}
+                                     50%{transform:scale(1.07);box-shadow:0 0 55px rgba(251,191,36,0.42)} }
+              @keyframes pwFloat   { 0%,100%{opacity:0;transform:scale(0) translateY(0)}
+                                     50%{opacity:0.5;transform:scale(1) translateY(-18px)} }
+            `}</style>
+          </div>
+        );
+      })()}
+
       {/* نافذة النتائج - تظهر فقط إذا لم يكن هناك فائز بالمباراة */}
       {winner && winMessage && !matchWinner && (
         <ResultsOverlay
@@ -2177,13 +2565,48 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               minWidth: isMobile ? '280px' : '380px',
             }}
           >
-            <div style={{
-              fontSize: isMobile ? '3.5rem' : '5rem',
-              lineHeight: 1,
-              filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
-            }}>
-              {buzzerPress.type === 'answer' ? '📣' : '🎴'}
-            </div>
+            {/* شارة المرحلة */}
+            {buzzerPress.phase && (
+              <div style={{
+                fontSize: isMobile ? '0.75rem' : '0.875rem',
+                fontWeight: 900,
+                color: 'rgba(255,255,255,0.9)',
+                background: 'rgba(0,0,0,0.3)',
+                borderRadius: '2rem',
+                padding: '0.2rem 0.85rem',
+                letterSpacing: '0.04em',
+              }}>
+                {buzzerPress.phase === 'phase1' ? 'المرحلة ١' : buzzerPress.phase === 'phase2' ? 'المرحلة ٢' : 'المرحلة ٣'}
+              </div>
+            )}
+
+            {/* أفاتار اللاعب أو أيقونة احتياطية */}
+            {buzzerPress.avatar ? (
+              <div style={{
+                width: isMobile ? '100px' : '130px',
+                height: isMobile ? '100px' : '130px',
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.18)',
+                border: '4px solid rgba(255,255,255,0.5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 40px rgba(255,255,255,0.2)',
+                animation: 'buzzerAvatarBounce 1s ease-in-out infinite',
+              }}>
+                <CharacterAvatar
+                  avatar={buzzerPress.avatar}
+                  size={isMobile ? 76 : 100}
+                />
+              </div>
+            ) : (
+              <div style={{
+                fontSize: isMobile ? '3.5rem' : '5rem',
+                lineHeight: 1,
+                filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+              }}>
+                {buzzerPress.type === 'answer' ? '📣' : '🎴'}
+              </div>
+            )}
+
             <h2 style={{
               fontSize: isMobile ? '2rem' : '3rem',
               fontWeight: 900,
@@ -2203,6 +2626,23 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             }}>
               {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
             </p>
+            {/* عداد تنازلي للخمس ثوانٍ */}
+            {buzzerCountdown > 0 && (
+              <div style={{
+                fontSize: isMobile ? '3rem' : '4rem',
+                fontWeight: 900,
+                color: 'white',
+                textShadow: '0 0 24px rgba(255,255,255,0.6)',
+                lineHeight: 1,
+                background: 'rgba(0,0,0,0.2)',
+                borderRadius: '1rem',
+                padding: '0.25rem 1rem',
+                minWidth: '3rem',
+                textAlign: 'center',
+              }}>
+                {buzzerCountdown}
+              </div>
+            )}
             <button
               onClick={handleResetBuzzers}
               style={{
@@ -2250,6 +2690,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           0% { transform: scale(0.3); opacity: 0; }
           60% { transform: scale(1.05); opacity: 1; }
           100% { transform: scale(1); }
+        }
+        @keyframes buzzerAvatarBounce {
+          0%,100% { transform: translateY(0) rotate(-4deg); }
+          50%      { transform: translateY(-10px) rotate(4deg); }
         }
       `}</style>
     </div>

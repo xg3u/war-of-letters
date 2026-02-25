@@ -8,7 +8,18 @@
       "Bash(npx tsc:*)",
       "Bash(timeout 10 npm run dev:*)",
       "Bash(npm install:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(python -c \":*)",
+      "Bash(/tmp/edit_hs_full.py:*)",
+      "Bash(python /tmp/edit_hs_full.py)",
+      "Bash(python -c \"print\\(''hello''\\)\")",
+      "Bash(python -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(python -c \"open\\(''C:/Users/Admin/Desktop/test_write.txt'',''w''\\).write\\(''ok''\\); print\\(''wrote''\\)\")",
+      "Bash(python -c \"import sys; sys.stdout.reconfigure\\(encoding=''utf-8''\\); s = ''\\\\U0001F4F1''; print\\(len\\(s\\), repr\\(s\\)\\)\")",
+      "Bash(python -c \"import os; print\\(os.getcwd\\(\\)\\)\")",
+      "Bash(python -c \"open\\(''C:/Users/Admin/Desktop/write_frags.py'',''wb''\\).write\\(b''print\\(42\\)''\\)\")",
+      "Bash(python C:/Users/Admin/Desktop/write_frags.py)",
+      "Bash(python C:/Users/Admin/Desktop/do_edits.py)"
     ]
   }
 }

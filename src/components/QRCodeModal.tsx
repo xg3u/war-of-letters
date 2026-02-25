@@ -17,7 +17,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({ sessionId, onClose }) 
   const { isMobile } = useScreenSize();
 
   // رابط اللاعبين - يتضمن session ID للانضمام التلقائي بدون إدخال رمز
-  const playersUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}&screen=players`;
+  const playersUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}&screen=join`;
 
   useEffect(() => {
     if (canvasRef.current) {
@@ -175,6 +175,30 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({ sessionId, onClose }) 
           <div style={{ flex: 1, height: '1px', background: 'rgba(168, 85, 247, 0.25)' }} />
           <span style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '0.85rem', fontWeight: 600 }}>أو على جهاز آخر</span>
           <div style={{ flex: 1, height: '1px', background: 'rgba(168, 85, 247, 0.25)' }} />
+        </div>
+
+        {/* بطاقة الرمز النصي */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(99, 102, 241, 0.15))',
+          border: '2px solid rgba(168, 85, 247, 0.5)',
+          borderRadius: '1rem',
+          padding: isMobile ? '0.9rem 1rem' : '1rem 1.25rem',
+          marginBottom: isMobile ? '1rem' : '1.25rem',
+          textAlign: 'center',
+        }}>
+          <p style={{ margin: '0 0 0.4rem 0', fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>
+            أو شاركوا الرمز يدوياً
+          </p>
+          <span style={{
+            fontSize: isMobile ? '1.8rem' : '2.1rem',
+            fontWeight: 900,
+            color: '#e9d5ff',
+            letterSpacing: '0.22em',
+            fontFamily: 'monospace',
+            textShadow: '0 2px 12px rgba(168,85,247,0.5)',
+          }}>
+            {sessionId}
+          </span>
         </div>
 
         {/* QR Code */}

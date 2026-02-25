@@ -216,6 +216,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
             ].map((item) => (
               <button
                 key={item.section}
+                aria-label={`الانتقال إلى قسم ${item.label}`}
                 onClick={() => scrollToSection(item.section)}
                 style={{
                   background: 'transparent',
@@ -370,15 +371,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings }) => {
             textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
           }}>
             <div style={{ fontSize: isMobile ? '3.5rem' : '5rem', marginBottom: '1rem' }}>⚔️</div>
-            <h2 style={{ fontSize: isMobile ? '2rem' : isTablet ? '2.75rem' : '3.5rem', fontWeight: 900, background: 'linear-gradient(to left, #f97316, #ec4899, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              معركة المعرفة الكبرى
-            </h2>
+            <h1 style={{ fontSize: isMobile ? '2rem' : isTablet ? '2.75rem' : '3.5rem', fontWeight: 900, background: 'linear-gradient(to left, #f97316, #ec4899, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              حرب الحروف — لعبة مسابقات للجمعات
+            </h1>
             <p style={{ fontSize: isMobile ? '1rem' : '1.25rem', fontWeight: 600, color: colors.textSecondary, marginBottom: '2rem' }}>
-              تحدَّ أصدقاءك في أول لعبة لوحية إلكترونية تعتمد على الذكاء وبناء الجسور
+              سباق الحروف الاستراتيجي — مثالية لفعاليات الشاليهات والويكند مع أصدقاءك
             </p>
             <button
               onClick={checkSubscriptionAndProceed}
               disabled={isCheckingSubscription}
+              aria-label="ابدأ لعبة حرب الحروف الآن"
               style={{
                 width: '100%', padding: isMobile ? '1.1rem' : '1.5rem', borderRadius: '1.5rem', background: 'linear-gradient(135deg, #f97316, #ec4899)',
                 color: 'white', fontSize: isMobile ? '1.1rem' : '1.5rem', fontWeight: 900, border: 'none', cursor: isCheckingSubscription ? 'wait' : 'pointer',

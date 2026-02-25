@@ -19,6 +19,8 @@ import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
 import { PlayerGuide } from './PlayerGuide';
 import { getWinStats } from '../utils/winChecker';
 import { useTheme } from '../context/ThemeContext';
+import { CharacterAvatar, DEFAULT_AVATAR } from './CharacterAvatar';
+import type { AvatarConfig } from './CharacterAvatar';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
 
@@ -75,11 +77,15 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
     team: 'green' | 'red';
     timestamp: number;
   } | null>(null); // حالة ضغط الزر
+  const [buzzerActiveUntil, setBuzzerActiveUntil] = React.useState<number | null>(null); // وقت انتهاء فرصة الإجابة
+  const [buzzerCountdown, setBuzzerCountdown] = React.useState(0); // العداد التنازلي (ثوانٍ)
   const [registeredPlayers, setRegisteredPlayers] = React.useState<{
     name: string;
     team: 'green' | 'red';
     timestamp: number;
+    avatar?: AvatarConfig;
   }[]>([]); // اللاعبون المسجلون في Answer Buzzers
+  const [hoveredPlayer, setHoveredPlayer] = React.useState<string | null>(null);
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
   const { theme } = useTheme();
@@ -101,6 +107,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
     }
     return localStorage.getItem('game-session-id') || '';
   });
+  const [codeInput, setCodeInput] = React.useState('');
+  const [codeError, setCodeError] = React.useState(false);
 
   // المزامنة فقط
   React.useEffect(() => {
@@ -284,6 +292,10 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           console.log('❌ Later buzzer press rejected:', data.buzzerPress.playerName, 'was slower than', prev.playerName);
           return prev;
         });
+        // حفظ activeUntil للعداد التنازلي (من BuzzerEngine الجديد)
+        if (data.buzzerPress.activeUntil) {
+          setBuzzerActiveUntil(data.buzzerPress.activeUntil);
+        }
       } else if (data.type === 'SHOW_QUESTION_TO_PLAYERS') {
         // المقدم اختار إظهار السؤال للاعبين
         if (data.question) {
@@ -301,23 +313,142 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       } else if (data.type === 'reset-buzzers') {
         // إعادة تعيين الأزرار
         setBuzzerPress(null);
+        setBuzzerActiveUntil(null);
       } else if (data.type === 'player-registered') {
-        // إضافة لاعب جديد إلى القائمة
+        // إضافة أو تحديث لاعب (يُحدَّث الفريق والأفاتار إذا تغيّرا)
         setRegisteredPlayers(prev => {
-          // تحقق من عدم التكرار بناءً على الاسم والفريق
-          const exists = prev.some(p => p.name === data.player.name && p.team === data.player.team);
-          if (exists) return prev;
+          const idx = prev.findIndex(p => p.name === data.player.name);
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = data.player;
+            return updated;
+          }
           return [...prev, data.player];
         });
+      } else if (data.type === 'player-left') {
+        // لاعب غادر — احذفه من القائمة
+        setRegisteredPlayers(prev => prev.filter(p => p.name !== data.name));
       }
     });
     return unsubscribe;
   }, [syncFromExternal]);
 
+  // عداد الجرس التنازلي + إغلاق تلقائي بعد انتهاء الـ 5 ثوانٍ
+  React.useEffect(() => {
+    if (!buzzerActiveUntil) return;
+    setBuzzerCountdown(Math.max(0, Math.ceil((buzzerActiveUntil - Date.now()) / 1000)));
+    const interval = setInterval(() => {
+      const left = Math.max(0, Math.ceil((buzzerActiveUntil - Date.now()) / 1000));
+      setBuzzerCountdown(left);
+      if (left === 0) {
+        setBuzzerPress(null);
+        setBuzzerActiveUntil(null);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [buzzerActiveUntil]);
+
   // Debug: عرض حالة الشبكة
   React.useEffect(() => {
     console.log('PlayersScreen cells:', cells.length);
   }, [cells]);
+
+  // إذا لم يكن هناك session ID — اطلب من المستخدم إدخال الرمز
+  if (!sessionId) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: theme.bgGradient,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        direction: 'rtl',
+      }}>
+        <div style={{
+          maxWidth: '420px',
+          width: '100%',
+          background: 'linear-gradient(135deg, rgba(26,11,46,0.98), rgba(45,17,84,0.95))',
+          border: '2px solid rgba(168,85,247,0.4)',
+          borderRadius: '1.75rem',
+          padding: isMobile ? '2rem 1.5rem' : '2.5rem 2rem',
+          boxShadow: '0 20px 60px rgba(168,85,247,0.25)',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '0.75rem' }}>🎮</div>
+          <h2 style={{
+            fontSize: isMobile ? '1.4rem' : '1.7rem',
+            fontWeight: 900,
+            background: 'linear-gradient(135deg, #f97316, #ec4899, #a855f7)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            marginBottom: '0.5rem',
+          }}>انضم للعبة</h2>
+          <p style={{ color: 'rgba(196,181,253,0.7)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+            أدخل رمز الجلسة المكوّن من 5 أحرف
+          </p>
+          <div style={{ display: 'flex', gap: '0.6rem', direction: 'ltr', marginBottom: '0.75rem' }}>
+            <input
+              type="text"
+              value={codeInput}
+              maxLength={5}
+              placeholder="XXXXX"
+              autoFocus
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                setCodeInput(val);
+                setCodeError(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && codeInput.length === 5) {
+                  window.location.href = `${window.location.pathname}?session=${codeInput}&screen=players`;
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '0.85rem 1rem',
+                borderRadius: '0.85rem',
+                background: 'rgba(0,0,0,0.35)',
+                border: `2px solid ${codeError ? '#ef4444' : 'rgba(168,85,247,0.45)'}`,
+                color: '#e9d5ff',
+                fontSize: '1.5rem',
+                fontWeight: 900,
+                fontFamily: 'monospace',
+                letterSpacing: '0.25em',
+                textAlign: 'center',
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={() => {
+                if (codeInput.length < 5) { setCodeError(true); return; }
+                window.location.href = `${window.location.pathname}?session=${codeInput}&screen=players`;
+              }}
+              style={{
+                padding: '0.85rem 1.25rem',
+                borderRadius: '0.85rem',
+                background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                border: 'none',
+                color: 'white',
+                fontWeight: 800,
+                fontSize: '1rem',
+                cursor: 'pointer',
+                boxShadow: '0 4px 16px rgba(168,85,247,0.4)',
+              }}
+            >
+              دخول
+            </button>
+          </div>
+          {codeError && (
+            <p style={{ color: '#f87171', fontSize: '0.82rem', margin: 0 }}>
+              الرمز يجب أن يكون 5 أحرف أو أرقام
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // إذا لم تتوفر الإعدادات بعد - انتظار المزامنة مع المقدم
   if (isSyncing || !localSettings) {
@@ -680,23 +811,43 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               gap: '0.5rem',
             }}>
               {registeredPlayers.filter(p => p.team === 'green').length > 0 ? (
-                registeredPlayers.filter(p => p.team === 'green').map((player, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(16, 185, 129, 0.2)',
-                      border: '1px solid rgba(16, 185, 129, 0.3)',
-                      borderRadius: '0.5rem',
-                      padding: '0.5rem',
-                      color: '#10b981',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {player.name}
-                  </div>
-                ))
+                registeredPlayers.filter(p => p.team === 'green').map((player, idx) => {
+                  const hKey = `green-${idx}`;
+                  const isHovered = hoveredPlayer === hKey;
+                  return (
+                    <div key={idx} style={{ position: 'relative' }}
+                      onMouseEnter={() => setHoveredPlayer(hKey)}
+                      onMouseLeave={() => setHoveredPlayer(null)}
+                      onClick={() => setHoveredPlayer(isHovered ? null : hKey)}
+                    >
+                      <div style={{
+                        background: 'rgba(16,185,129,0.15)',
+                        border: '1.5px solid rgba(16,185,129,0.35)',
+                        borderRadius: '0.75rem',
+                        padding: '0.5rem',
+                        display: 'flex', justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                      }}>
+                        <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={48} />
+                      </div>
+                      {isHovered && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+                          zIndex: 999, background: 'rgba(10,5,25,0.97)',
+                          border: '1.5px solid rgba(16,185,129,0.55)',
+                          borderRadius: '1rem', padding: '0.7rem 0.8rem',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 20px rgba(16,185,129,0.25)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem',
+                          minWidth: '90px', whiteSpace: 'nowrap',
+                        }}>
+                          <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={64} />
+                          <div style={{ color: '#10b981', fontWeight: 800, fontSize: '0.78rem', textAlign: 'center' }}>{player.name}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <div style={{
                   color: 'rgba(255, 255, 255, 0.4)',
@@ -870,23 +1021,43 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               gap: '0.5rem',
             }}>
               {registeredPlayers.filter(p => p.team === 'red').length > 0 ? (
-                registeredPlayers.filter(p => p.team === 'red').map((player, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.2)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      borderRadius: '0.5rem',
-                      padding: '0.5rem',
-                      color: '#ef4444',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {player.name}
-                  </div>
-                ))
+                registeredPlayers.filter(p => p.team === 'red').map((player, idx) => {
+                  const hKey = `red-${idx}`;
+                  const isHovered = hoveredPlayer === hKey;
+                  return (
+                    <div key={idx} style={{ position: 'relative' }}
+                      onMouseEnter={() => setHoveredPlayer(hKey)}
+                      onMouseLeave={() => setHoveredPlayer(null)}
+                      onClick={() => setHoveredPlayer(isHovered ? null : hKey)}
+                    >
+                      <div style={{
+                        background: 'rgba(239,68,68,0.15)',
+                        border: '1.5px solid rgba(239,68,68,0.35)',
+                        borderRadius: '0.75rem',
+                        padding: '0.5rem',
+                        display: 'flex', justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                      }}>
+                        <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={48} />
+                      </div>
+                      {isHovered && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)',
+                          zIndex: 999, background: 'rgba(10,5,25,0.97)',
+                          border: '1.5px solid rgba(239,68,68,0.55)',
+                          borderRadius: '1rem', padding: '0.7rem 0.8rem',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 20px rgba(239,68,68,0.25)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem',
+                          minWidth: '90px', whiteSpace: 'nowrap',
+                        }}>
+                          <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={64} />
+                          <div style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.82rem', textAlign: 'center' }}>{player.name}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               ) : (
                 <div style={{
                   color: 'rgba(255, 255, 255, 0.4)',
@@ -1586,6 +1757,23 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               }}>
                 {buzzerPress.type === 'answer' ? 'يريد الإجابة!' : 'يطلب بطاقة!'}
               </p>
+              {/* عداد تنازلي للخمس ثوانٍ */}
+              {buzzerCountdown > 0 && (
+                <div style={{
+                  fontSize: isMobile ? '3rem' : '4rem',
+                  fontWeight: 900,
+                  color: 'white',
+                  textShadow: '0 0 24px rgba(255,255,255,0.6)',
+                  lineHeight: 1,
+                  background: 'rgba(0,0,0,0.2)',
+                  borderRadius: '1rem',
+                  padding: '0.25rem 1rem',
+                  minWidth: '3rem',
+                  textAlign: 'center',
+                }}>
+                  {buzzerCountdown}
+                </div>
+              )}
             </div>
 
             {/* زر إخفاء الإشعار من شاشة اللاعبين */}

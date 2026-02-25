@@ -3,7 +3,6 @@
 import { create } from 'zustand';
 import type { HexCell, Team, GameSettings, CardType } from '../core/types';
 import { syncManager } from '../utils/SyncManager';
-import { checkWinCondition, getWinMessage } from '../utils/winChecker';
 import { applyCardEffect, updateCardCounters } from '../utils/cardPermissions';
 
 // لقطة حالة اللعبة لنظام التراجع/الإعادة
@@ -51,6 +50,7 @@ interface GameStore {
   resetStreak: () => void;
   clearCards: () => void; // حذف جميع البطاقات من الفريقين
   resetMatch: () => void; // إعادة تعيين المباراة كاملة
+  forceRoundWin: (team: 'green' | 'red', winMsg?: string) => void; // إعلان الفوز يدوياً من المقدم
   decrementCounters: () => void; // تحديث عدادات التجميد والدرع بعد كل سؤال
   saveSnapshot: () => void; // حفظ لقطة قبل كل إجراء مهم
   undoLastAction: () => boolean; // تراجع خطوة
@@ -171,56 +171,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   claimCell: (cellId: string, team: Team) => {
-    const { cells, settings, scores, currentRound } = get();
+    const { cells } = get();
     const updated = cells.map((c) =>
       c.id === cellId ? { ...c, status: team as 'green' | 'red' } : c
     );
     
     set({ cells: updated });
-    
+
     // بث التحديث
     syncManager.broadcast({ type: 'CELL_CLAIMED', cellId, team, cells: updated });
-    
-    // فحص الفوز
-    const winCheck = checkWinCondition(updated, settings.winCondition, settings.teamColors);
-    
-    if (winCheck.winner) {
-      const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
-      const message = getWinMessage(winCheck.winner, winCheck.winType!, teamName);
-
-      // تحديث النقاط
-      const newScores = { ...scores };
-      newScores[winCheck.winner as 'green' | 'red']++;
-
-      // فحص الفوز بالمباراة (Best of X)
-      let matchWinnerTeam: 'green' | 'red' | null = null;
-      const totalRounds = settings.rounds;
-      if (typeof totalRounds === 'number' && totalRounds !== Infinity) {
-        const winsNeeded = Math.ceil(totalRounds / 2);
-        if (newScores.green >= winsNeeded) {
-          matchWinnerTeam = 'green';
-        } else if (newScores.red >= winsNeeded) {
-          matchWinnerTeam = 'red';
-        }
-      }
-
-      set({
-        winner: winCheck.winner,
-        winMessage: message,
-        scores: newScores,
-        matchWinner: matchWinnerTeam,
-      });
-
-      // بث الفوز
-      syncManager.broadcast({
-        type: 'GAME_WON',
-        winner: winCheck.winner,
-        winMessage: message,
-        scores: newScores,
-        round: currentRound,
-        matchWinner: matchWinnerTeam,
-      });
-    }
   },
 
   // استقبال التحديثات
@@ -284,7 +243,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   // استخدام بطاقة - تُرجع معلومات المعركة إذا كانت بطاقة معركة
   useCard: (team: 'green' | 'red', card: CardType, targetCellId: string | null): { triggerBattle?: boolean; battleCellId?: string } => {
-    const { cells, teamCards, settings } = get();
+    const { cells, teamCards } = get();
 
     // تطبيق تأثير البطاقة
     const result = applyCardEffect(card, cells, targetCellId, team);
@@ -310,34 +269,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       cells: updatedCells,
       teamCards: newTeamCards,
     });
-
-    // فحص الفوز بعد استخدام البطاقة (فقط للقنبلة لأنها قد تؤثر على الفوز)
-    if (card === 'bomb') {
-      const winCheck = checkWinCondition(updatedCells, settings.winCondition, settings.teamColors);
-
-      if (winCheck.winner) {
-        const teamName = settings.teamNames[winCheck.winner as 'green' | 'red'];
-        const message = winCheck.message || getWinMessage(winCheck.winner, winCheck.winType!, teamName);
-
-        const { scores, currentRound } = get();
-        const newScores = { ...scores };
-        newScores[winCheck.winner as 'green' | 'red']++;
-
-        set({
-          winner: winCheck.winner,
-          winMessage: message,
-          scores: newScores,
-        });
-
-        syncManager.broadcast({
-          type: 'GAME_WON',
-          winner: winCheck.winner,
-          winMessage: message,
-          scores: newScores,
-          round: currentRound,
-        });
-      }
-    }
 
     // إرجاع معلومات المعركة إذا كانت بطاقة معركة
     return {
@@ -425,6 +356,35 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     syncManager.broadcast({
       type: 'MATCH_RESET',
+    });
+  },
+
+  // إعلان الفوز يدوياً من المقدم
+  forceRoundWin: (team: 'green' | 'red', winMsg?: string) => {
+    const { scores, currentRound, settings } = get();
+    const teamName = settings.teamNames[team];
+    const message = winMsg || `🏆 ${teamName} فاز بالجولة!`;
+
+    const newScores = { ...scores };
+    newScores[team]++;
+
+    let matchWinnerTeam: 'green' | 'red' | null = null;
+    const totalRounds = settings.rounds;
+    if (typeof totalRounds === 'number' && totalRounds !== Infinity) {
+      const winsNeeded = Math.ceil(totalRounds / 2);
+      if (newScores.green >= winsNeeded) matchWinnerTeam = 'green';
+      else if (newScores.red >= winsNeeded) matchWinnerTeam = 'red';
+    }
+
+    set({ winner: team, winMessage: message, scores: newScores, matchWinner: matchWinnerTeam });
+
+    syncManager.broadcast({
+      type: 'GAME_WON',
+      winner: team,
+      winMessage: message,
+      scores: newScores,
+      round: currentRound,
+      matchWinner: matchWinnerTeam,
     });
   },
 

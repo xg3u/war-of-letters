@@ -1,12 +1,159 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>war-of-letters</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ══ العنوان والوصف الأساسي ══ -->
+    <title>حرب الحروف | لعبة مسابقات للجمعات والشاليهات — سباق الحروف الاستراتيجي</title>
+    <meta name="description" content="حرب الحروف — لعبة مسابقات مثالية للجمعات وفعاليات الشاليهات والويكند. سباق الحروف الاستراتيجي بين فريقين على شبكة سداسية تفاعلية. تُعرف أيضاً بـ لعبة حروف مع عزيز. آلاف الأسئلة المعرفية في كافة المجالات." />
+    <meta name="keywords" content="حرب الحروف, لعبة حروف مع عزيز, لعبة سباق الحروف, لعبة مسابقات للجمعات, فعاليات شاليهات وويكند, لعبة عربية, لعبة لوحية, ألعاب استراتيجية, معرفة عامة, ألعاب تعليمية, لعبة جماعية, battle of letters, arabic game" />
+    <meta name="author" content="Meshal Al-Shammari" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <link rel="canonical" href="https://battleofletter.com/" />
+
+    <!-- ══ Open Graph (مشاركة على السوشيال ميديا) ══ -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://battleofletter.com/" />
+    <meta property="og:title" content="حرب الحروف | لعبة مسابقات للجمعات والشاليهات" />
+    <meta property="og:description" content="لعبة مسابقات ممتعة للجمعات وفعاليات الشاليهات. سباق الحروف الاستراتيجي — تحدَّ أصدقاءك في معركة المعرفة الكبرى!" />
+    <meta property="og:image" content="https://battleofletter.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="حرب الحروف - لعبة اللوحة الاستراتيجية العربية" />
+    <meta property="og:locale" content="ar_SA" />
+    <meta property="og:site_name" content="حرب الحروف" />
+
+    <!-- ══ Twitter / X Card ══ -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://battleofletter.com/" />
+    <meta name="twitter:title" content="حرب الحروف | لعبة مسابقات للجمعات والشاليهات" />
+    <meta name="twitter:description" content="لعبة مسابقات للجمعات وفعاليات الشاليهات. سباق الحروف الاستراتيجي — تحدَّ أصدقاءك!" />
+    <meta name="twitter:image" content="https://battleofletter.com/og-image.png" />
+    <meta name="twitter:image:alt" content="حرب الحروف - لعبة اللوحة الاستراتيجية العربية" />
+
+    <!-- ══ ألوان وتجربة الجوال ══ -->
+    <meta name="theme-color" content="#1a0b2e" />
+    <meta name="msapplication-TileColor" content="#1a0b2e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="حرب الحروف" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- ══ أيقونات ══ -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ══ سرعة التحميل ══ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://oxrdrdovvzutfxsalxnc.supabase.co" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" />
+
+    <!-- ══ البيانات المنظمة (Schema.org) ══ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": ["WebApplication", "VideoGame"],
+      "name": "حرب الحروف",
+      "alternateName": ["Battle of Letters", "لعبة حروف مع عزيز", "لعبة سباق الحروف"],
+      "url": "https://battleofletter.com",
+      "description": "لعبة مسابقات استراتيجية مثالية للجمعات وفعاليات الشاليهات والويكند. تتنافس فريقان على خلايا سداسية تفاعلية من خلال الإجابة على آلاف الأسئلة المعرفية.",
+      "applicationCategory": "GameApplication",
+      "genre": "Strategy",
+      "numberOfPlayers": {"@type": "QuantitativeValue", "minValue": 2, "maxValue": 8},
+      "playMode": "MultiPlayer",
+      "operatingSystem": "Any",
+      "inLanguage": "ar",
+      "browserRequirements": "Requires JavaScript",
+      "offers": {
+        "@type": "Offer",
+        "price": "9.99",
+        "priceCurrency": "SAR",
+        "availability": "https://schema.org/InStock"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Meshal Al-Shammari"
+      },
+      "screenshot": "https://battleofletter.com/og-image.png",
+      "featureList": [
+        "شبكة سداسية تفاعلية",
+        "آلاف الأسئلة المعرفية",
+        "بطاقات استراتيجية",
+        "مزامنة فورية بين الأجهزة",
+        "مثالية للجمعات والشاليهات والفعاليات"
+      ]
+    }
+    </script>
+
+    <!-- ══ بيانات منظمة: FAQPage ══ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "هل حرب الحروف هي نفسها لعبة حروف مع عزيز؟",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "نعم، حرب الحروف تُعرف أيضاً بـ لعبة حروف مع عزيز، وهي نفس اللعبة الاستراتيجية العربية على الشبكة السداسية."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "هل حرب الحروف مناسبة كلعبة مسابقات للجمعات؟",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "بالتأكيد! حرب الحروف مصممة خصيصاً كلعبة مسابقات للجمعات وفعاليات الشاليهات والويكند. يمكن لفريقين من 2 إلى 8 لاعبين المشاركة بأجهزتهم الخاصة."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "كيف تعمل لعبة سباق الحروف؟",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "كل سؤال يُحدد حرفاً عربياً، فريقان يتسابقان على الإجابة الصحيحة للاستيلاء على الخلية. الفريق الذي يكمل جسراً من طرف اللوحة للطرف الآخر يفوز بالجولة."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "ما سعر الاشتراك في حرب الحروف؟",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "سعر الاشتراك 9.99 ريال سعودي."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- ══ بيانات منظمة إضافية: Organization ══ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "حرب الحروف",
+      "url": "https://battleofletter.com",
+      "logo": "https://battleofletter.com/favicon.svg",
+      "sameAs": []
+    }
+    </script>
   </head>
   <body>
+    <!-- محتوى للزواحف (قبل تحميل JavaScript) -->
+    <noscript>
+      <div style="direction:rtl;font-family:Arial,sans-serif;text-align:center;padding:2rem;background:#1a0b2e;color:white;">
+        <h1>⚔️ حرب الحروف</h1>
+        <p>يتطلب هذا الموقع تفعيل JavaScript للعمل. يرجى تفعيله في متصفحك.</p>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

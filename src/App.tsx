@@ -5,6 +5,7 @@ import { GameSettings } from './components/GameSettings';
 import { HostScreen } from './components/HostScreen';
 import { PlayersScreen } from './components/PlayersScreen';
 import { AnswerBuzzersScreen } from './components/AnswerBuzzersScreen';
+import { JoinScreen } from './components/JoinScreen';
 import { WelcomeModal } from './components/WelcomeModal';
 import { AnimatedBackground } from './components/AnimatedBackground';
 import { AuthGate } from './components/AuthGate';
@@ -12,14 +13,14 @@ import { supabase } from './lib/supabase';
 import type { GameSettingsData } from './components/GameSettings';
 import { ThemeProvider } from './context/ThemeContext';
 
-type Screen = 'landing' | 'settings' | 'host' | 'players' | 'buzzers';
+type Screen = 'landing' | 'settings' | 'host' | 'players' | 'buzzers' | 'join';
 
 function App() {
   // فحص إذا كان المستخدم يدخل عبر QR Code
   const params = new URLSearchParams(window.location.search);
   const sessionParam = params.get('session');
   const screenParam = params.get('screen');
-  const isQRCodeEntry = sessionParam && (screenParam === 'players' || screenParam === 'buzzers');
+  const isQRCodeEntry = sessionParam && (screenParam === 'players' || screenParam === 'buzzers' || screenParam === 'join');
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(isQRCodeEntry ? true : null); // null = loading
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
@@ -59,9 +60,10 @@ function App() {
           console.log('✅ User authenticated:', session.user.email);
           setIsAuthenticated(true);
 
-          // حفظ معرف المستخدم
+          // حفظ معرف المستخدم — يُستخدم في questionEngine عبر getUserId()
           const userId = session.user.id;
           setCurrentUserId(userId);
+          localStorage.setItem('game_user_id', userId); // ← ربط getUserId() بالمستخدم المصادق
 
           // فحص إذا كان المستخدم شاهد الرسالة من قبل
           const hideModalKey = `hideWelcomeModal_${userId}`;
@@ -205,6 +207,11 @@ function App() {
       {/* شاشة Answer Buzzers */}
       {currentScreen === 'buzzers' && (
         <AnswerBuzzersScreen />
+      )}
+
+      {/* شاشة اختيار الدور (QR Code entry) */}
+      {currentScreen === 'join' && (
+        <JoinScreen onSelect={(screen) => setCurrentScreen(screen)} />
       )}
     </div>
     </ThemeProvider>

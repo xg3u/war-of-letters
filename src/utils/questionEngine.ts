@@ -5,22 +5,17 @@ import { supabase, getUserId } from '../lib/supabase';
 import type { Question } from '../lib/supabase';
 import { getCachedQuestions } from './questionCache';
 
-interface WeightedQuestion extends Question {
-  weight: number;
-  isSeen: boolean;
-}
-
 // ========== الدالة الرئيسية: getSmartQuestion ==========
+// خوارزمية صارمة: لا تكرار لسؤال حتى تُستنفَد جميع أسئلة الحرف
 export const getSmartQuestion = async (
   letter: string,
   selectedCategories: string[],
-  excludeQuestionIds?: string | string[]  // استبعاد سؤال أو أكثر (للتغيير)
+  excludeQuestionIds?: string | string[]  // استبعاد مؤقت (تغيير السؤال داخل نفس الجولة)
 ): Promise<Question | null> => {
 
   try {
-    // 1. Pooling: جلب كل الأسئلة المطابقة
-    let pool = await fetchQuestionPool(letter, selectedCategories);
-
+    // 1. جلب كامل مجموعة أسئلة الحرف
+    const pool = await fetchQuestionPool(letter, selectedCategories);
     if (pool.length === 0) {
       console.warn('No questions found for letter:', letter);
       return null;
@@ -29,44 +24,34 @@ export const getSmartQuestion = async (
     // 2. جلب الأسئلة المشاهدة
     let seenQuestions = await getSeenQuestions();
 
-    // 2.5 فحص: هل شاهدنا كل أسئلة هذا الحرف؟
-    const allQuestionsSeen = pool.every(q => seenQuestions.has(q.id));
-    let shouldIgnoreExclusions = false;
+    // 3. استبعاد المشاهدة (فلترة صارمة — لا أوزان)
+    let unseen = pool.filter(q => !seenQuestions.has(q.id));
 
-    if (allQuestionsSeen) {
-      console.log('🔄 لقد شاهدت كل أسئلة الحرف "' + letter + '" - إعادة التدوير...');
+    // 4. إذا استُنفِدت أسئلة هذا الحرف → إعادة التدوير
+    if (unseen.length === 0) {
+      console.log(`🔄 استُنفِدت أسئلة الحرف "${letter}" — إعادة التدوير`);
       await resetSeenQuestionsForLetter(letter);
-      seenQuestions = new Set(); // تصفير القائمة المشاهدة محلياً
-      shouldIgnoreExclusions = true; // تجاهل قائمة الاستبعاد عند إعادة التدوير
+      seenQuestions = new Set();
+      unseen = [...pool];
     }
 
-    // 3. استبعاد الأسئلة المحددة (إذا وجدت)
-    if (excludeQuestionIds && !shouldIgnoreExclusions) {
+    // 5. استبعاد إضافي مؤقت (تغيير السؤال داخل الجولة)
+    if (excludeQuestionIds) {
       const idsToExclude = Array.isArray(excludeQuestionIds) ? excludeQuestionIds : [excludeQuestionIds];
-      pool = pool.filter(q => !idsToExclude.includes(q.id));
-
-      // إذا لم يتبقى أي أسئلة بعد الاستبعاد، نعيد تعيين كل شيء
-      if (pool.length === 0) {
-        console.log('🔄 استبعدت كل الأسئلة، إعادة التدوير...');
-        await resetSeenQuestionsForLetter(letter);
-        seenQuestions = new Set();
-        pool = await fetchQuestionPool(letter, selectedCategories);
-        // لا نطبق الاستبعاد هنا - نبدأ من جديد
-      }
+      const filtered = unseen.filter(q => !idsToExclude.includes(q.id));
+      if (filtered.length > 0) unseen = filtered;
+      // إذا لم يبقَ شيء بعد الاستبعاد المؤقت: نعود للقائمة الكاملة غير المستبعدة
     }
 
-    // 4. Weighted Random: تطبيق الأوزان
-    const weighted = applyWeights(pool, seenQuestions);
+    // 6. اختيار عشوائي بالتساوي (بدون أوزان)
+    const selected = unseen[Math.floor(Math.random() * unseen.length)];
 
-    // 5. اختيار سؤال
-    const selected = selectWeightedRandom(weighted);
-
-    // 6. تسجيل السؤال كمشاهد
+    // 7. تسجيل السؤال كمشاهد
     if (selected) {
       await markQuestionAsSeen(selected.id);
     }
 
-    return selected;
+    return selected ?? null;
 
   } catch (error) {
     console.error('Error in getSmartQuestion:', error);
@@ -160,49 +145,7 @@ const syncSeenQuestionsInBackground = async (userId: string, localKey: string) =
   }
 };
 
-// ========== 3. Weighted Random: تطبيق الأوزان ==========
-const applyWeights = (
-  pool: Question[],
-  seenQuestions: Set<string>
-): WeightedQuestion[] => {
-
-  // تطبيق الأوزان: الأسئلة الجديدة تحصل على وزن أعلى
-  return pool.map(q => {
-    const isSeen = seenQuestions.has(q.id);
-    return {
-      ...q,
-      weight: isSeen ? 1 : 10,  // جديد: 10، مشاهد: 1
-      isSeen,
-    };
-  });
-};
-
-// ========== 4. اختيار عشوائي بالأوزان ==========
-const selectWeightedRandom = (
-  weighted: WeightedQuestion[]
-): Question | null => {
-  
-  if (weighted.length === 0) return null;
-  
-  // حساب مجموع الأوزان
-  const totalWeight = weighted.reduce((sum, q) => sum + q.weight, 0);
-  
-  // اختيار رقم عشوائي
-  let random = Math.random() * totalWeight;
-  
-  // اختيار السؤال
-  for (const question of weighted) {
-    random -= question.weight;
-    if (random <= 0) {
-      return question;
-    }
-  }
-  
-  // fallback
-  return weighted[0];
-};
-
-// ========== 5. تسجيل السؤال كمشاهد ==========
+// ========== 3. تسجيل السؤال كمشاهد ==========
 const markQuestionAsSeen = async (questionId: string): Promise<void> => {
   const userId = getUserId();
 
@@ -279,9 +222,9 @@ const resetSeenQuestionsForLetter = async (letter: string): Promise<void> => {
     return;
   }
 
-  // 2. حذف الأسئلة المشاهدة لهذا الحرف فقط
   const questionIds = questions.map(q => q.id);
 
+  // 2. حذف الأسئلة المشاهدة لهذا الحرف من قاعدة البيانات
   const { error: deleteError } = await supabase
     .from('user_seen_questions')
     .delete()
@@ -290,9 +233,32 @@ const resetSeenQuestionsForLetter = async (letter: string): Promise<void> => {
 
   if (deleteError) {
     console.error('Error resetting seen questions for letter:', deleteError);
-  } else {
-    console.log(`✅ تم إعادة تعيين ${questionIds.length} سؤال للحرف: ${letter}`);
+    return;
   }
+
+  // 3. مسح الـ cache في الذاكرة لهذه الأسئلة
+  if (seenQuestionsCache) {
+    questionIds.forEach(id => seenQuestionsCache!.delete(id));
+  }
+
+  // 4. مسح localStorage لهذه الأسئلة
+  const localKey = `seen_questions_${userId}`;
+  const localData = localStorage.getItem(localKey);
+  if (localData) {
+    try {
+      const seenIds: string[] = JSON.parse(localData);
+      const filtered = seenIds.filter(id => !questionIds.includes(id));
+      localStorage.setItem(localKey, JSON.stringify(filtered));
+    } catch (e) {
+      // في حالة الخطأ، امسح localStorage بالكامل للمستخدم
+      localStorage.removeItem(localKey);
+    }
+  }
+
+  // 5. إجبار إعادة المزامنة في الاستدعاء التالي
+  lastSyncTime = 0;
+
+  console.log(`✅ تم إعادة تعيين ${questionIds.length} سؤال للحرف: ${letter}`);
 };
 
 // ========== إحصائيات: عدد الأسئلة ==========

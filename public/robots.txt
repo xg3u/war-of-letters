@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# حجب المسارات الخاصة بالجلسات والقنوات الداخلية
+Disallow: /?session=
+Disallow: /?screen=host
+
+# خريطة الموقع
+Sitemap: https://battleofletter.com/sitemap.xml
