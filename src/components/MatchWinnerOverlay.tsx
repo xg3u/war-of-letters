@@ -2,6 +2,7 @@
 // شاشة الفوز بالمباراة — متناسقة مع هوية حرب الحروف
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Trophy, Star, Crown } from 'lucide-react';
 import { useScreenSize } from '../hooks/useScreenSize';
 
@@ -37,7 +38,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
     ? 'linear-gradient(135deg,#10b981,#14b8a6,#059669)'
     : 'linear-gradient(135deg,#ef4444,#dc2626,#b91c1c)';
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       inset: 0,
@@ -133,8 +134,9 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
             fontWeight: 700,
             color: 'rgba(255,255,255,0.55)',
             letterSpacing: '0.06em',
+            fontFamily: "'Lalezar', sans-serif",
           }}>
-            بطل المباراة
+            بطل اليوم!
           </span>
           <Star size={isSmall ? 18 : 24} color="#fbbf24" fill="#fbbf24" />
         </div>
@@ -147,6 +149,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
           textShadow: `0 0 30px ${winnerGlow}`,
           marginBottom: isSmall ? '0.75rem' : '1.25rem',
           lineHeight: 1.15,
+          fontFamily: "'Lalezar', sans-serif",
         }}>
           {winnerName} 🏆
         </div>
@@ -245,7 +248,7 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
             onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
             onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
           >
-            🔄 إعادة المباراة
+            🔄 العب مرة ثانية
           </button>
 
           <button onClick={onGoHome} style={{
@@ -273,7 +276,8 @@ export const MatchWinnerOverlay: React.FC<MatchWinnerOverlayProps> = ({
         @keyframes mwBounce  { 0%,100% { transform:translateY(0) rotate(-4deg); } 50% { transform:translateY(-18px) rotate(4deg); } }
         @keyframes mwFloat   { 0%,100% { opacity:0; transform:scale(0) translateY(0); } 50% { opacity:0.7; transform:scale(1) translateY(-25px); } }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

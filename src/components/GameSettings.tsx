@@ -1,8 +1,15 @@
 // src/components/GameSettings.tsx
 // صفحة إعدادات اللعبة - اختيار الطور مع تتوريل
 
-import React, { useState } from 'react';
-import { ArrowLeft, Target, Dice5, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Target, Dice5, Users, ChevronDown, ChevronUp, Copy, Check, Share2 } from 'lucide-react';
+import QRCode from 'qrcode';
+import { syncManager } from '../utils/SyncManager';
+import { prefetchAllArabicLetters, hasPersistedCache, getLetterCountsSync } from '../utils/questionCache';
+import { updateLetterQuestionCounts } from '../utils/smartLetterPicker';
+import { warmQuestionQueue } from '../utils/questionEngine';
+import { CharacterAvatar, DEFAULT_AVATAR } from './CharacterAvatar';
+import type { AvatarConfig } from './CharacterAvatar';
 import { useScreenSize } from '../hooks/useScreenSize';
 import { useTheme } from '../context/ThemeContext';
 
@@ -64,6 +71,7 @@ const TutorialOverlay: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div style={{
         maxWidth: '680px',
         width: '100%',
+        margin: isMobile ? '0 0.5rem' : '0',
         background: 'linear-gradient(135deg, #1a0b2e, #2d1154)',
         border: '2px solid rgba(168,85,247,0.5)',
         borderRadius: '2rem',
@@ -193,6 +201,90 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
   const [customRounds, setCustomRounds] = useState<number>(7);
   const [showAdvancedCards, setShowAdvancedCards] = useState(false);
 
+  // ── Session + QR ──────────────────────────────────────────────────────────
+  const [sessionId] = useState(() => {
+    const SAFE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const code = Array.from({ length: 5 }, () => SAFE[Math.floor(Math.random() * SAFE.length)]).join('');
+    localStorage.setItem('game-session-id', code);
+    syncManager.initSession(code);
+    return code;
+  });
+  const joinUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}&screen=join`;
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const qrModalCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [copied, setCopied] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [showStartConfirm, setShowStartConfirm] = useState(false);
+  const [dontShowConfirm, setDontShowConfirm] = useState(false);
+
+  // تحميل مبكر للأسئلة + تجهيز الطابور
+  // إذا كان الـ cache الدائم موجوداً (localStorage) نتخطى الـ prefetch ونسخّن الطابور فقط — أسرع بكثير
+  useEffect(() => {
+    const ARABIC = 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي'.split('');
+    if (hasPersistedCache()) {
+      // الأسئلة محملة بالفعل في الذاكرة من localStorage — سخّن الطابور + غذّ الأوزان
+      warmQuestionQueue(ARABIC).then(() => {
+        updateLetterQuestionCounts(getLetterCountsSync(ARABIC));
+      });
+    } else {
+      // أول مرة أو انتهى الـ cache — جلب من Supabase ثم تسخين الطابور
+      prefetchAllArabicLetters().then(() => warmQuestionQueue(ARABIC)).then(() => {
+        updateLetterQuestionCounts(getLetterCountsSync(ARABIC));
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!qrCanvasRef.current) return;
+    QRCode.toCanvas(qrCanvasRef.current, joinUrl, {
+      width: 130, margin: 2,
+      color: { dark: '#1a0b2e', light: '#ffffff' },
+    });
+  }, [joinUrl]);
+
+  useEffect(() => {
+    if (!qrModalOpen || !qrModalCanvasRef.current) return;
+    QRCode.toCanvas(qrModalCanvasRef.current, joinUrl, {
+      width: 260, margin: 2,
+      color: { dark: '#1a0b2e', light: '#ffffff' },
+    });
+  }, [qrModalOpen, joinUrl]);
+
+  // ── غرفة الانتظار ─────────────────────────────────────────────────────────
+  const [waitingPlayers, setWaitingPlayers] = useState<Array<{
+    name: string; team: 'green' | 'red'; avatar: AvatarConfig; timestamp: number;
+  }>>([]);
+
+  useEffect(() => {
+    const unsub = syncManager.subscribe((data: any) => {
+      if (data.type === 'player-registered' && data.player) {
+        setWaitingPlayers(prev => {
+          const idx = prev.findIndex(p => p.name === data.player.name);
+          if (idx >= 0) { const u = [...prev]; u[idx] = data.player; return u; }
+          return [...prev, data.player];
+        });
+      } else if (data.type === 'player-left') {
+        setWaitingPlayers(prev => prev.filter(p => p.name !== data.name));
+      } else if (data.type === 'player-kicked') {
+        setWaitingPlayers(prev => prev.filter(p => p.name !== data.name));
+      }
+    });
+    return unsub;
+  }, []);
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(joinUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: 'حرب الحروف', url: joinUrl }); }
+      catch { handleCopyLink(); }
+    } else { handleCopyLink(); }
+  };
+
   const handleCloseTutorial = () => {
     localStorage.setItem('settingsTutorialSeen', 'true');
     setShowTutorial(false);
@@ -211,12 +303,25 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     }));
   };
 
+  const _doStart = () => {
+    syncManager.broadcast({ type: 'SEND_TO_BUZZERS' });
+    onStartGame(settings);
+  };
+
   const handleStart = () => {
     if (settings.gameName.trim() === '') {
       alert('⚠️ الرجاء إدخال اسم اللعبة');
       return;
     }
-    onStartGame(settings);
+    const skip = localStorage.getItem('wol_skip_start_confirm') === '1';
+    if (skip) { _doStart(); return; }
+    setShowStartConfirm(true);
+  };
+
+  const handleConfirmStart = () => {
+    if (dontShowConfirm) localStorage.setItem('wol_skip_start_confirm', '1');
+    setShowStartConfirm(false);
+    _doStart();
   };
 
   const toggleCardType = (cardType: keyof typeof settings.cardTypes) => {
@@ -306,7 +411,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           {/* Help button to reopen tutorial */}
           <button
             onClick={() => setShowTutorial(true)}
-            title="عرض التتوريل"
+            title="دليل الإعدادات — شرح كل خيار وطريقة اللعب"
             style={{
               padding: '0.65rem',
               background: 'rgba(168,85,247,0.15)',
@@ -344,7 +449,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
               gap: '0.85rem',
             }}>
               {/* Classic */}
@@ -774,7 +879,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
                           value={settings.hiddenCardsCount}
                           onChange={(e) => setSettings({ ...settings, hiddenCardsCount: parseInt(e.target.value) || 0 })}
                           style={{
-                            width: '80px',
+                            width: isMobile ? '64px' : '80px',
                             padding: '0.5rem',
                             background: 'rgba(255,255,255,0.1)',
                             border: '2px solid rgba(236,72,153,0.3)',
@@ -795,7 +900,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
                     </label>
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
                       gap: '0.5rem',
                       marginBottom: '1rem',
                     }}>
@@ -860,6 +965,181 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
 
           <Divider />
 
+          {/* ══ الخطوة الأولى: انضمام اللاعبين ══ */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(168,85,247,0.08) 0%, rgba(99,102,241,0.06) 100%)',
+            border: '1.5px solid rgba(168,85,247,0.4)',
+            borderRadius: '1.25rem',
+            padding: '1rem 1rem 0.85rem',
+            marginBottom: '1rem',
+            position: 'relative',
+            overflow: 'hidden',
+          }}>
+            {/* خط علوي متدرج */}
+            <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+              background: 'linear-gradient(90deg, transparent, #a855f7, #6366f1, transparent)',
+            }} />
+
+            {/* شارة "الخطوة الأولى" */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <div style={{
+                background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+                borderRadius: '2rem', padding: '2px 10px',
+                fontSize: '0.62rem', fontWeight: 900, color: 'white',
+                letterSpacing: '0.04em', flexShrink: 0,
+              }}>① الخطوة الأولى</div>
+              <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'white' }}>انضمام اللاعبين</span>
+              {waitingPlayers.length > 0 && (
+                <span style={{
+                  marginRight: 'auto', flexShrink: 0,
+                  background: 'rgba(16,185,129,0.18)', border: '1px solid rgba(16,185,129,0.45)',
+                  borderRadius: '2rem', padding: '2px 9px',
+                  fontSize: '0.65rem', color: '#34d399', fontWeight: 700,
+                }}>✓ {waitingPlayers.length} انضموا</span>
+              )}
+            </div>
+
+            {/* تعليمات */}
+            <div style={{
+              fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.6,
+              marginBottom: '0.85rem',
+              background: 'rgba(255,255,255,0.04)', borderRadius: '0.65rem',
+              padding: '0.5rem 0.65rem',
+              borderRight: '2px solid rgba(168,85,247,0.5)',
+            }}>
+              قبل الضغط على "ابدأ" — اطلب من اللاعبين مسح الباركود أو فتح الرابط للانضمام للغرفة
+            </div>
+
+            {/* QR + أزرار */}
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+
+              {/* QR مع إطار زوايا */}
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <div
+                  onClick={() => setQrModalOpen(true)}
+                  title="اضغط لتكبير الباركود"
+                  style={{
+                    borderRadius: '0.75rem', overflow: 'hidden',
+                    border: '2px solid rgba(168,85,247,0.2)',
+                    background: 'white',
+                    cursor: 'zoom-in',
+                    transition: 'transform 0.15s, box-shadow 0.2s',
+                    boxShadow: '0 4px 20px rgba(168,85,247,0.2)',
+                    display: 'block',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLDivElement).style.transform = 'scale(1.05)';
+                    (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 28px rgba(168,85,247,0.45)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLDivElement).style.transform = 'scale(1)';
+                    (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 20px rgba(168,85,247,0.2)';
+                  }}
+                >
+                  <canvas ref={qrCanvasRef} style={{ display: 'block' }} />
+                </div>
+                {/* زوايا الإطار الزخرفية */}
+                {[{top:'-3px',right:'-3px'},{top:'-3px',left:'-3px'},{bottom:'-3px',right:'-3px'},{bottom:'-3px',left:'-3px'}].map((pos, i) => (
+                  <div key={i} style={{
+                    position: 'absolute', ...pos,
+                    width: '12px', height: '12px',
+                    borderColor: '#a855f7',
+                    borderStyle: 'solid',
+                    borderWidth: i === 0 ? '2px 2px 0 0' : i === 1 ? '2px 0 0 2px' : i === 2 ? '0 2px 2px 0' : '0 0 2px 2px',
+                    borderRadius: i === 0 ? '0 3px 0 0' : i === 1 ? '3px 0 0 0' : i === 2 ? '0 0 3px 0' : '0 0 0 3px',
+                  }} />
+                ))}
+                {/* نص "اضغط للتكبير" */}
+                <div style={{
+                  textAlign: 'center', fontSize: '0.55rem',
+                  color: 'rgba(168,85,247,0.7)', marginTop: '4px',
+                  fontWeight: 700,
+                }}>🔍 اضغط للتكبير</div>
+              </div>
+
+              {/* أزرار النسخ والمشاركة */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.1rem' }}>
+                  أو شارك الرابط مباشرة:
+                </div>
+                <button onClick={handleCopyLink} style={{
+                  padding: '0.55rem 0.75rem', borderRadius: '0.75rem',
+                  background: copied
+                    ? 'linear-gradient(135deg, rgba(16,185,129,0.25), rgba(16,185,129,0.12))'
+                    : 'linear-gradient(135deg, rgba(168,85,247,0.25), rgba(99,102,241,0.15))',
+                  border: `1.5px solid ${copied ? 'rgba(16,185,129,0.55)' : 'rgba(168,85,247,0.5)'}`,
+                  color: copied ? '#34d399' : '#e9d5ff', fontWeight: 800,
+                  fontSize: '0.78rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem',
+                  transition: 'all 0.2s',
+                  boxShadow: copied ? '0 0 12px rgba(16,185,129,0.2)' : '0 0 12px rgba(168,85,247,0.15)',
+                }}>
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                  {copied ? '✓ تم النسخ!' : 'نسخ رابط الانضمام'}
+                </button>
+                {typeof navigator !== 'undefined' && 'share' in navigator && (
+                  <button onClick={handleShare} style={{
+                    padding: '0.55rem 0.75rem', borderRadius: '0.75rem',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1.5px solid rgba(255,255,255,0.15)',
+                    color: 'rgba(255,255,255,0.6)', fontWeight: 700,
+                    fontSize: '0.78rem', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem',
+                    transition: 'all 0.2s',
+                  }}>
+                    <Share2 size={14} /> مشاركة الرابط
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* اللاعبون في الانتظار */}
+            {waitingPlayers.length > 0 && (
+              <div style={{ marginTop: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {(['green', 'red'] as const).map(team => {
+                    const players = waitingPlayers.filter(p => p.team === team);
+                    const col = team === 'green' ? '#10b981' : '#ef4444';
+                    const lbl = team === 'green' ? 'الفريق الأخضر' : 'الفريق الأحمر';
+                    return (
+                      <div key={team} style={{ flex: 1 }}>
+                        <div style={{
+                          fontSize: '0.62rem', fontWeight: 800, color: col,
+                          marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.3rem',
+                        }}>
+                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: col, boxShadow: `0 0 4px ${col}` }} />
+                          {lbl} ({players.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                          {players.length === 0 ? (
+                            <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>لا أحد بعد</div>
+                          ) : players.map((p, i) => (
+                            <div key={i} title={p.name} style={{
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.15rem',
+                            }}>
+                              <div style={{
+                                width: '36px', height: '36px', borderRadius: '50%',
+                                background: `${col}18`, border: `1.5px solid ${col}50`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                <CharacterAvatar avatar={p.avatar ?? DEFAULT_AVATAR} size={28} />
+                              </div>
+                              <div style={{
+                                fontSize: '0.55rem', fontWeight: 700, color: 'rgba(255,255,255,0.7)',
+                                maxWidth: '40px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center',
+                              }}>{p.name}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* ══ Start Button ══ */}
           <button
             onClick={handleStart}
@@ -895,6 +1175,166 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
           </button>
         </div>
       </div>
+
+      {/* ── modal تكبير الباركود ── */}
+      {qrModalOpen && (
+        <div
+          onClick={() => setQrModalOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fadeInQr 0.18s ease',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'linear-gradient(135deg, #1a0b2e 0%, #2d1154 100%)',
+              borderRadius: '1.25rem',
+              padding: '1.75rem',
+              border: '2px solid rgba(168,85,247,0.45)',
+              boxShadow: '0 0 60px rgba(168,85,247,0.35)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem',
+            }}
+          >
+            <div style={{ color: '#e9d5ff', fontWeight: 700, fontSize: '1rem' }}>
+              امسح الباركود للانضمام
+            </div>
+            <div style={{
+              borderRadius: '0.75rem', overflow: 'hidden',
+              border: '3px solid rgba(168,85,247,0.5)',
+              boxShadow: '0 0 30px rgba(168,85,247,0.3)',
+            }}>
+              <canvas ref={qrModalCanvasRef} style={{ display: 'block' }} />
+            </div>
+            <button
+              onClick={() => setQrModalOpen(false)}
+              style={{
+                marginTop: '0.25rem',
+                padding: '0.5rem 1.5rem',
+                borderRadius: '0.65rem',
+                background: 'rgba(168,85,247,0.15)',
+                border: '1.5px solid rgba(168,85,247,0.4)',
+                color: '#c4b5fd', fontWeight: 700, fontSize: '0.85rem',
+                cursor: 'pointer',
+              }}
+            >
+              إغلاق
+            </button>
+          </div>
+          <style>{`@keyframes fadeInQr { from { opacity:0; transform:scale(0.92); } to { opacity:1; transform:scale(1); } }`}</style>
+        </div>
+      )}
+
+      {/* ── modal تأكيد بدء اللعبة ── */}
+      {showStartConfirm && (
+        <div
+          onClick={() => setShowStartConfirm(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.65)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'linear-gradient(135deg, #150a28 0%, #1e0f38 100%)',
+              borderRadius: '1.15rem',
+              padding: '1.25rem 1.35rem',
+              border: '1.5px solid rgba(168,85,247,0.45)',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 30px rgba(168,85,247,0.15)',
+              width: 'min(340px, 92vw)',
+              animation: 'fadeInQr 0.18s ease',
+            }}
+          >
+            {/* رأس */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.85rem' }}>
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
+                background: 'linear-gradient(135deg, rgba(168,85,247,0.3), rgba(99,102,241,0.2))',
+                border: '1.5px solid rgba(168,85,247,0.5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1rem',
+              }}>🚀</div>
+              <div>
+                <div style={{ color: 'white', fontWeight: 800, fontSize: '0.95rem' }}>جاهز للبدء؟</div>
+                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>تأكيد قبل انطلاق اللعبة</div>
+              </div>
+            </div>
+
+            {/* نص التنبيه */}
+            <div style={{
+              background: 'rgba(168,85,247,0.08)',
+              border: '1px solid rgba(168,85,247,0.25)',
+              borderRadius: '0.75rem',
+              padding: '0.7rem 0.85rem',
+              marginBottom: '0.85rem',
+              display: 'flex', flexDirection: 'column', gap: '0.5rem',
+            }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: '0.85rem', flexShrink: 0 }}>📱</span>
+                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.55 }}>
+                  تأكد من انضمام <strong style={{ color: '#e9d5ff' }}>جميع اللاعبين</strong> عبر الباركود قبل البدء
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: '0.85rem', flexShrink: 0 }}>⏳</span>
+                <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.55 }}>
+                  اللاعبون الذين لم ينضموا بعد لن يتمكنوا من استخدام أزرار الجرس
+                </span>
+              </div>
+            </div>
+
+            {/* "لا تظهر مجدداً" */}
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              cursor: 'pointer', marginBottom: '0.85rem', userSelect: 'none',
+            }}>
+              <input
+                type="checkbox"
+                checked={dontShowConfirm}
+                onChange={e => setDontShowConfirm(e.target.checked)}
+                style={{ width: '14px', height: '14px', accentColor: '#a855f7', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>لا تظهر هذه الرسالة مجدداً</span>
+            </label>
+
+            {/* الأزرار */}
+            <div style={{ display: 'flex', gap: '0.6rem' }}>
+              <button
+                onClick={() => setShowStartConfirm(false)}
+                style={{
+                  flex: 1, padding: '0.6rem', borderRadius: '0.75rem',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1.5px solid rgba(255,255,255,0.12)',
+                  color: 'rgba(255,255,255,0.5)', fontWeight: 700,
+                  fontSize: '0.82rem', cursor: 'pointer',
+                }}
+              >رجوع</button>
+              <button
+                onClick={handleConfirmStart}
+                style={{
+                  flex: 2, padding: '0.6rem', borderRadius: '0.75rem',
+                  background: selectedMode === 'war'
+                    ? 'linear-gradient(135deg, #ec4899, #a855f7)'
+                    : 'linear-gradient(135deg, #10b981, #14b8a6)',
+                  border: 'none',
+                  color: 'white', fontWeight: 900,
+                  fontSize: '0.9rem', cursor: 'pointer',
+                  boxShadow: selectedMode === 'war'
+                    ? '0 4px 16px rgba(168,85,247,0.4)'
+                    : '0 4px 16px rgba(16,185,129,0.4)',
+                }}
+              >ابدأ اللعبة الآن ⚔️</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

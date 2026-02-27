@@ -13,7 +13,9 @@ interface HexCellProps {
   showCardIndicator?: boolean;
 }
 
-export const HexCell: React.FC<HexCellProps> = ({
+// React.memo: يمنع إعادة الرندر إلا إذا تغيرت props الخلية فعلاً
+// بدونه: كل broadcast يُعيد رندر 74 خلية حتى لو لم تتغير
+const HexCellInner: React.FC<HexCellProps> = ({
   cell,
   onClick,
   isDecorative = false,
@@ -419,3 +421,27 @@ export const HexCell: React.FC<HexCellProps> = ({
     </div>
   );
 };
+
+// دالة مقارنة مخصصة — تتجاهل تغيير onClick (دالة جديدة كل render)
+// وتقارن فقط البيانات المؤثرة فعلاً على الشكل
+function areCellPropsEqual(prev: HexCellProps, next: HexCellProps): boolean {
+  const p = prev.cell;
+  const n = next.cell;
+  return (
+    p.id === n.id &&
+    p.status === n.status &&
+    p.letter === n.letter &&
+    p.isFrozen === n.isFrozen &&
+    p.freezeCounter === n.freezeCounter &&
+    p.isGolden === n.isGolden &&
+    p.hasCard === n.hasCard &&
+    p.isShielded === n.isShielded &&
+    p.shieldCounter === n.shieldCounter &&
+    prev.isSelected === next.isSelected &&
+    prev.isDecorative === next.isDecorative &&
+    prev.scale === next.scale &&
+    prev.showCardIndicator === next.showCardIndicator
+  );
+}
+
+export const HexCell = React.memo(HexCellInner, areCellPropsEqual);

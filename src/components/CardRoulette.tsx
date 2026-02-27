@@ -1,7 +1,8 @@
 // src/components/CardRoulette.tsx
-// روليت البطاقات - تصميم جديد وبسيط مع دعم المزامنة
+// روليت البطاقات — animation loop مستقلة عن re-renders الـ parent
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import type { CardType } from '../core/types';
 import { useScreenSize } from '../hooks/useScreenSize';
 
@@ -18,134 +19,168 @@ interface CardRouletteProps {
   syncedCard?: CardType | null;
   isViewerMode?: boolean;
   triggerType?: 'card' | 'golden';
+  preselectedCard?: CardType | null;
 }
 
 const CARDS: CardOption[] = [
   { id: 'freeze', name: 'التجميد', icon: '🧊', color: '#3b82f6', probability: 0.25 },
-  { id: 'bomb', name: 'القنبلة', icon: '💣', color: '#ef4444', probability: 0.20 },
+  { id: 'bomb',   name: 'القنبلة', icon: '💣', color: '#ef4444', probability: 0.20 },
   { id: 'battle', name: 'المعركة', icon: '⚔️', color: '#f97316', probability: 0.30 },
-  { id: 'shield', name: 'الدرع', icon: '🛡️', color: '#10b981', probability: 0.25 },
+  { id: 'shield', name: 'الدرع',   icon: '🛡️', color: '#10b981', probability: 0.25 },
 ];
+
+// كونفيتي بمواضع ثابتة — خارج المكوّن لتجنب الحسابات في كل render
+const CONFETTI = Array.from({ length: 18 }, (_, i) => ({
+  left:  (i * 5.5 + 2) % 100,
+  size:  4 + (i % 9),
+  color: ['#fbbf24', '#ec4899', '#8b5cf6', '#10b981', '#3b82f6', '#ef4444'][i % 6],
+  round: i % 2 === 0,
+  dur:   2 + (i % 3) * 0.5,
+  delay: (i * 0.06) % 0.5,
+}));
+
+const pickByProbability = (): CardType => {
+  const r = Math.random();
+  let cum = 0;
+  for (const c of CARDS) { cum += c.probability; if (r <= cum) return c.id; }
+  return CARDS[0].id;
+};
 
 export const CardRoulette: React.FC<CardRouletteProps> = ({
   onComplete,
   syncedCard = null,
   isViewerMode = false,
-  triggerType = 'card'
+  triggerType = 'card',
+  preselectedCard = null,
 }) => {
   const { isMobile, isTablet } = useScreenSize();
   const isSmall = isMobile || isTablet;
+
+  // ─── State مرئي فقط (ضروري للرسم) ───────────────────────────────────────
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isSpinning, setIsSpinning] = useState(true);
-  const [speed, setSpeed] = useState(60); // سريع
-  const [finalCard, setFinalCard] = useState<CardType | null>(null);
-  const [showResult, setShowResult] = useState(false);
+  const [finalCard,    setFinalCard]    = useState<CardType | null>(null);
+  const [showResult,   setShowResult]   = useState(false);
 
-  const selectCardByProbability = useCallback((): CardType => {
-    if (syncedCard) return syncedCard;
-    const random = Math.random();
-    let cumulative = 0;
-    for (const card of CARDS) {
-      cumulative += card.probability;
-      if (random <= cumulative) return card.id;
+  // ─── كل منطق الـ animation في refs — لا تُسبب re-renders ────────────────
+  const onCompleteRef      = useRef(onComplete);
+  const syncedCardRef      = useRef(syncedCard);
+  const isViewerRef        = useRef(isViewerMode);
+  const preselectedCardRef = useRef(preselectedCard);
+  const speedRef       = useRef(60);      // ms بين الإطارات (يبدأ سريع ثم يتباطأ)
+  const isSpinningRef  = useRef(true);
+  const timerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resolvedRef    = useRef(false);   // منع استدعاء onComplete مرتين
+
+  // تحديث الـ refs عند تغير الـ props (بدون إعادة تشغيل الحلقة)
+  useEffect(() => { onCompleteRef.current      = onComplete;      });
+  useEffect(() => { syncedCardRef.current      = syncedCard;      });
+  useEffect(() => { isViewerRef.current        = isViewerMode;    });
+  useEffect(() => { preselectedCardRef.current = preselectedCard; });
+
+  // ─── إيقاف الروليت على بطاقة محددة ──────────────────────────────────────
+  const settle = useCallback((winner: CardType) => {
+    if (resolvedRef.current) return;
+    resolvedRef.current = true;
+    isSpinningRef.current = false;
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    const idx = CARDS.findIndex(c => c.id === winner);
+    setCurrentIndex(idx);
+    setFinalCard(winner);
+
+    setTimeout(() => {
+      setShowResult(true);
+      // المشاهد يتبع المقدم — delay أقل لأن التزامن يكفي
+      const delay = isViewerRef.current ? 900 : 1800;
+      setTimeout(() => onCompleteRef.current(winner), delay);
+    }, 300);
+  }, []);
+
+  // ─── حلقة الـ animation — تعمل مرة واحدة عند mount ─────────────────────
+  const tick = useCallback(() => {
+    if (!isSpinningRef.current) return;
+
+    // في وضع المشاهد: إذا وصل syncedCard → أوقف فوراً
+    if (isViewerRef.current && syncedCardRef.current) {
+      settle(syncedCardRef.current);
+      return;
     }
-    return CARDS[0].id;
-  }, [syncedCard]);
 
-  // دوران الروليت
-  useEffect(() => {
-    if (!isSpinning) return;
+    setCurrentIndex(prev => (prev + 1) % CARDS.length);
 
-    // في وضع المشاهد، انتظر حتى يصل syncedCard
-    if (isViewerMode && speed >= 300 && !syncedCard) {
-      const timer = setTimeout(() => {
-        setCurrentIndex((prev) => (prev + 1) % CARDS.length);
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-
-    const timer = setTimeout(() => {
-      setCurrentIndex((prev) => (prev + 1) % CARDS.length);
-
-      if (speed < 300) {
-        setSpeed(prev => prev + 25); // سريع
+    if (speedRef.current < 320) {
+      speedRef.current += 18;
+      timerRef.current = setTimeout(tick, speedRef.current);
+    } else {
+      // وصلنا للسرعة البطيئة
+      if (isViewerRef.current) {
+        // انتظر syncedCard
+        if (syncedCardRef.current) {
+          settle(syncedCardRef.current);
+        } else {
+          timerRef.current = setTimeout(tick, 180);
+        }
       } else {
-        // توقف الدوران
-        setIsSpinning(false);
-        const winner = selectCardByProbability();
-        const winnerIndex = CARDS.findIndex(c => c.id === winner);
-        setCurrentIndex(winnerIndex);
-        setFinalCard(winner);
-
-        // إظهار النتيجة - عرضها لفترة أطول حتى يقرأها الجميع
-        setTimeout(() => {
-          setShowResult(true);
-          setTimeout(() => onComplete(winner), 1800); // أطول من الأصل (كان 1000ms)
-        }, 300);
+        // المقدم: استخدم البطاقة المحسوبة مسبقاً أو اختر عشوائياً كاحتياط
+        settle(preselectedCardRef.current ?? pickByProbability());
       }
-    }, speed);
-
-    return () => clearTimeout(timer);
-  }, [currentIndex, speed, isSpinning, onComplete, selectCardByProbability, isViewerMode, syncedCard]);
-
-  // في وضع المشاهد: عندما يصل syncedCard
-  useEffect(() => {
-    if (isViewerMode && syncedCard && isSpinning) {
-      setIsSpinning(false);
-      const winnerIndex = CARDS.findIndex(c => c.id === syncedCard);
-      setCurrentIndex(winnerIndex);
-      setFinalCard(syncedCard);
-
-      setTimeout(() => {
-        setShowResult(true);
-        setTimeout(() => onComplete(syncedCard), 1000);
-      }, 200);
     }
-  }, [isViewerMode, syncedCard, isSpinning, onComplete]);
+  }, [settle]);
 
-  const currentCard = CARDS[currentIndex];
-  const displayCard = finalCard ? CARDS.find(c => c.id === finalCard)! : currentCard;
+  // ─── بدء الحلقة عند mount ────────────────────────────────────────────────
+  useEffect(() => {
+    timerRef.current = setTimeout(tick, speedRef.current);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [tick]);
+
+  // ─── وضع المشاهد: syncedCard يصل بعد أن تباطأت الحلقة ───────────────────
+  useEffect(() => {
+    if (isViewerMode && syncedCard && isSpinningRef.current && !resolvedRef.current) {
+      settle(syncedCard);
+    }
+  }, [syncedCard, isViewerMode, settle]);
+
+  // ─── الـ UI ───────────────────────────────────────────────────────────────
+  const displayCard = finalCard
+    ? CARDS.find(c => c.id === finalCard)!
+    : CARDS[currentIndex];
+
   const triggerIcon = triggerType === 'golden' ? '✨' : '🎁';
-  const triggerText = triggerType === 'golden' ? 'الحرف الذهبي!' : 'بطاقة مخفية!';
+  const triggerText = triggerType === 'golden' ? 'حرفك الذهبي! ✨' : 'بطاقة مخفية! 🎁';
+  const isSpinning  = !finalCard;
 
-  return (
+  return createPortal(
     <div style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'linear-gradient(135deg, #1a0533 0%, #2d1b4e 50%, #1a0533 100%)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 2500,
-      overflow: 'hidden',
+      position: 'fixed', inset: 0,
+      background: 'linear-gradient(135deg,#1a0533 0%,#2d1b4e 50%,#1a0533 100%)',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      zIndex: 2500, overflow: 'hidden',
     }}>
-      {/* خلفية متحركة */}
+
+      {/* خلفية متوهجة ثابتة */}
       <div style={{
-        position: 'absolute',
-        inset: 0,
+        position: 'absolute', inset: 0, pointerEvents: 'none',
         background: `
-          radial-gradient(circle at 20% 80%, rgba(168, 85, 247, 0.3) 0%, transparent 40%),
-          radial-gradient(circle at 80% 20%, rgba(236, 72, 153, 0.3) 0%, transparent 40%),
-          radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.15) 0%, transparent 50%)
+          radial-gradient(circle at 20% 80%, rgba(168,85,247,0.3) 0%, transparent 40%),
+          radial-gradient(circle at 80% 20%, rgba(236,72,153,0.3) 0%, transparent 40%),
+          radial-gradient(circle at 50% 50%, rgba(251,191,36,0.15) 0%, transparent 50%)
         `,
-        animation: 'pulse 3s ease-in-out infinite',
+        animation: 'rqPulse 3s ease-in-out infinite',
       }} />
 
-      {/* الكونفيتي عند النتيجة */}
+      {/* كونفيتي */}
       {showResult && (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-          {[...Array(18)].map((_, i) => (
+          {CONFETTI.map((c, i) => (
             <div key={i} style={{
               position: 'absolute',
-              left: `${Math.random() * 100}%`,
-              top: '-10px',
-              width: `${Math.random() * 8 + 4}px`,
-              height: `${Math.random() * 8 + 4}px`,
-              background: ['#fbbf24', '#ec4899', '#8b5cf6', '#10b981', '#3b82f6', '#ef4444'][Math.floor(Math.random() * 6)],
-              borderRadius: Math.random() > 0.5 ? '50%' : '2px',
-              animation: `fall ${Math.random() * 2 + 2}s linear forwards`,
-              animationDelay: `${Math.random() * 0.5}s`,
+              left: `${c.left}%`, top: '-10px',
+              width: `${c.size}px`, height: `${c.size}px`,
+              background: c.color,
+              borderRadius: c.round ? '50%' : '2px',
+              animation: `rqFall ${c.dur}s linear forwards`,
+              animationDelay: `${c.delay}s`,
               willChange: 'transform',
             }} />
           ))}
@@ -153,137 +188,87 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
       )}
 
       {/* العنوان */}
-      <div style={{
-        position: 'relative',
-        zIndex: 10,
-        textAlign: 'center',
-        marginBottom: isSmall ? '1.5rem' : '3rem',
-      }}>
+      <div style={{ position: 'relative', zIndex: 10, textAlign: 'center', marginBottom: isSmall ? '1.5rem' : '3rem' }}>
         <div style={{
           fontSize: isSmall ? '2.5rem' : '4rem',
           marginBottom: isSmall ? '0.5rem' : '1rem',
-          animation: isSpinning ? 'bounce 0.6s ease-in-out infinite' : 'none',
+          animation: isSpinning ? 'rqBounce 0.6s ease-in-out infinite' : 'none',
         }}>
           {showResult ? '🎉' : triggerIcon}
         </div>
         <h2 style={{
           fontSize: isSmall ? '1.5rem' : '2.5rem',
-          fontWeight: 900,
-          color: '#fbbf24',
-          textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-          margin: 0,
+          fontWeight: 900, color: '#fbbf24', margin: 0,
+          textShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          fontFamily: "'Lalezar', sans-serif",
         }}>
-          {showResult ? 'مبروك!' : triggerText}
+          {showResult ? 'مبروووك! 🎊' : triggerText}
         </h2>
       </div>
 
       {/* البطاقة الرئيسية */}
-      <div style={{
-        position: 'relative',
-        zIndex: 10,
-        perspective: '1000px',
-      }}>
+      <div style={{ position: 'relative', zIndex: 10, perspective: '1000px' }}>
         <div style={{
-          width: isSmall ? '150px' : '220px',
+          width:  isSmall ? '150px' : '220px',
           height: isSmall ? '190px' : '280px',
           borderRadius: '1.5rem',
           background: showResult
-            ? `linear-gradient(145deg, ${displayCard.color}, ${displayCard.color}dd)`
-            : `linear-gradient(145deg, ${currentCard.color}80, ${currentCard.color}40)`,
+            ? `linear-gradient(145deg,${displayCard.color},${displayCard.color}dd)`
+            : `linear-gradient(145deg,${displayCard.color}80,${displayCard.color}40)`,
           border: `4px solid ${showResult ? displayCard.color : 'rgba(255,255,255,0.3)'}`,
           boxShadow: showResult
             ? `0 0 30px ${displayCard.color}60, 0 12px 30px rgba(0,0,0,0.3)`
             : '0 8px 20px rgba(0,0,0,0.25)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '1rem',
-          transition: 'all 0.3s ease',
-          transform: showResult ? 'scale(1.1)' : isSpinning ? 'scale(0.95)' : 'scale(1)',
-          animation: isSpinning ? 'cardSpin 0.15s ease-in-out infinite' : showResult ? 'cardReveal 0.5s ease-out' : 'none',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: '1rem',
+          transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s',
+          animation: isSpinning
+            ? 'rqCardSpin 0.3s ease-in-out infinite'
+            : showResult ? 'rqCardReveal 0.5s ease-out forwards' : 'none',
         }}>
-          {/* الأيقونة */}
           <div style={{
             fontSize: isSmall ? '3rem' : '5rem',
-            filter: 'none',
-            animation: showResult ? 'iconBounce 0.6s ease-out' : 'none',
+            animation: showResult ? 'rqIconBounce 0.6s ease-out' : 'none',
           }}>
-            {showResult ? displayCard.icon : currentCard.icon}
+            {displayCard.icon}
           </div>
-
-          {/* اسم البطاقة */}
-          <div style={{
-            fontSize: isSmall ? '1rem' : '1.5rem',
-            fontWeight: 900,
-            color: 'white',
-            textShadow: '0 1px 4px rgba(0,0,0,0.4)',
-          }}>
-            {showResult ? displayCard.name : currentCard.name}
+          <div style={{ fontSize: isSmall ? '1rem' : '1.5rem', fontWeight: 900, color: 'white', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
+            {displayCard.name}
           </div>
         </div>
 
         {/* مؤشرات الاختيار */}
-        {!showResult && (
+        {isSpinning && (
           <>
-            <div style={{
-              position: 'absolute',
-              top: '-20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 0,
-              height: 0,
-              borderLeft: '15px solid transparent',
-              borderRight: '15px solid transparent',
-              borderTop: '20px solid #fbbf24',
-              animation: 'arrowPulse 0.5s ease-in-out infinite',
-            }} />
-            <div style={{
-              position: 'absolute',
-              bottom: '-20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 0,
-              height: 0,
-              borderLeft: '15px solid transparent',
-              borderRight: '15px solid transparent',
-              borderBottom: '20px solid #fbbf24',
-              animation: 'arrowPulse 0.5s ease-in-out infinite',
-            }} />
+            <div style={{ position: 'absolute', top: '-20px', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '15px solid transparent', borderRight: '15px solid transparent', borderTop: '20px solid #fbbf24', animation: 'rqArrow 0.5s ease-in-out infinite' }} />
+            <div style={{ position: 'absolute', bottom: '-20px', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '15px solid transparent', borderRight: '15px solid transparent', borderBottom: '20px solid #fbbf24', animation: 'rqArrow 0.5s ease-in-out infinite' }} />
           </>
         )}
       </div>
 
-      {/* شريط البطاقات الصغير */}
+      {/* شريط البطاقات */}
       <div style={{
-        position: 'relative',
-        zIndex: 10,
+        position: 'relative', zIndex: 10,
         marginTop: isSmall ? '1.25rem' : '2.5rem',
-        display: 'flex',
-        gap: isSmall ? '0.4rem' : '0.75rem',
+        display: 'flex', gap: isSmall ? '0.4rem' : '0.75rem',
         padding: isSmall ? '0.5rem 0.75rem' : '1rem 1.5rem',
-        background: 'rgba(0,0,0,0.3)',
-        borderRadius: '1rem',
+        background: 'rgba(0,0,0,0.3)', borderRadius: '1rem',
         backdropFilter: 'blur(6px)',
       }}>
         {CARDS.map((card, idx) => {
-          const isActive = showResult
-            ? card.id === finalCard
-            : idx === currentIndex;
+          const isActive = showResult ? card.id === finalCard : idx === currentIndex;
           return (
             <div key={card.id} style={{
-              width: isSmall ? '36px' : '50px',
+              width:  isSmall ? '36px' : '50px',
               height: isSmall ? '42px' : '60px',
               borderRadius: '0.5rem',
               background: isActive
-                ? `linear-gradient(135deg, ${card.color}, ${card.color}cc)`
+                ? `linear-gradient(135deg,${card.color},${card.color}cc)`
                 : 'rgba(255,255,255,0.1)',
-              border: isActive ? `2px solid ${card.color}` : '2px solid rgba(255,255,255,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              border: `2px solid ${isActive ? card.color : 'rgba(255,255,255,0.2)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: isSmall ? '1rem' : '1.5rem',
-              transition: 'all 0.2s ease',
+              transition: 'all 0.15s ease',
               transform: isActive ? 'scale(1.15)' : 'scale(1)',
               boxShadow: isActive ? `0 0 12px ${card.color}60` : 'none',
             }}>
@@ -296,77 +281,37 @@ export const CardRoulette: React.FC<CardRouletteProps> = ({
       {/* رسالة النتيجة */}
       {showResult && (
         <div style={{
-          position: 'relative',
-          zIndex: 10,
+          position: 'relative', zIndex: 10,
           marginTop: isSmall ? '1rem' : '2rem',
           padding: isSmall ? '0.6rem 1.25rem' : '1rem 2.5rem',
-          background: `linear-gradient(135deg, ${displayCard.color}30, ${displayCard.color}10)`,
+          background: `linear-gradient(135deg,${displayCard.color}30,${displayCard.color}10)`,
           border: `2px solid ${displayCard.color}50`,
           borderRadius: '1rem',
-          animation: 'fadeUp 0.4s ease-out',
+          animation: 'rqFadeUp 0.4s ease-out',
         }}>
-          <div style={{
-            color: 'white',
-            fontSize: isSmall ? '0.95rem' : '1.25rem',
-            fontWeight: 800,
-            textAlign: 'center',
-            display: 'flex',
-            alignItems: 'center',
-            gap: isSmall ? '0.4rem' : '0.75rem',
-          }}>
+          <div style={{ color: 'white', fontSize: isSmall ? '0.95rem' : '1.25rem', fontWeight: 800, textAlign: 'center', display: 'flex', alignItems: 'center', gap: isSmall ? '0.4rem' : '0.75rem', fontFamily: "'Lalezar', sans-serif" }}>
             <span style={{ fontSize: isSmall ? '1.25rem' : '1.75rem' }}>{displayCard.icon}</span>
-            <span>بطاقة {displayCard.name}</span>
+            <span>اكتسبت بطاقة {displayCard.name}!</span>
           </div>
           {!isViewerMode && (
-            <div style={{
-              color: 'rgba(255,255,255,0.7)',
-              fontSize: '0.9rem',
-              textAlign: 'center',
-              marginTop: '0.5rem',
-            }}>
-              أجب بشكل صحيح لتفوز بها! 🎯
+            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', textAlign: 'center', marginTop: '0.5rem', fontFamily: "'Lalezar', sans-serif" }}>
+              جاوب صح وتاخذها! 🎯
             </div>
           )}
         </div>
       )}
 
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-        @keyframes bounce {
-          0%, 100% { transform: translate3d(0, 0, 0); }
-          50% { transform: translate3d(0, -10px, 0); }
-        }
-        @keyframes cardSpin {
-          0% { transform: scale(0.95); }
-          50% { transform: scale(0.98); }
-          100% { transform: scale(0.95); }
-        }
-        @keyframes cardReveal {
-          0% { transform: scale(0.8); opacity: 0; }
-          60% { transform: scale(1.15); }
-          100% { transform: scale(1.1); opacity: 1; }
-        }
-        @keyframes iconBounce {
-          0% { transform: scale(0); }
-          60% { transform: scale(1.2); }
-          100% { transform: scale(1); }
-        }
-        @keyframes arrowPulse {
-          0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
-          50% { opacity: 0.6; transform: translateX(-50%) scale(0.9); }
-        }
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translate3d(0, 15px, 0); }
-          to { opacity: 1; transform: translate3d(0, 0, 0); }
-        }
-        @keyframes fall {
-          0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 1; }
-          100% { transform: translate3d(0, 100vh, 0) rotate(540deg); opacity: 0; }
-        }
+        @keyframes rqPulse      { 0%,100% { opacity:1; } 50% { opacity:0.7; } }
+        @keyframes rqBounce     { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-10px); } }
+        @keyframes rqCardSpin   { 0%,100% { transform:scale(0.96); } 50% { transform:scale(0.99); } }
+        @keyframes rqCardReveal { 0% { transform:scale(0.8); opacity:0; } 60% { transform:scale(1.15); } 100% { transform:scale(1.1); opacity:1; } }
+        @keyframes rqIconBounce { 0% { transform:scale(0); } 60% { transform:scale(1.2); } 100% { transform:scale(1); } }
+        @keyframes rqArrow      { 0%,100% { opacity:1; transform:translateX(-50%) scale(1); } 50% { opacity:0.6; transform:translateX(-50%) scale(0.9); } }
+        @keyframes rqFadeUp     { from { opacity:0; transform:translateY(15px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes rqFall       { 0% { transform:translateY(0) rotate(0deg); opacity:1; } 100% { transform:translateY(100vh) rotate(540deg); opacity:0; } }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 };

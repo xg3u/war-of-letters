@@ -36,8 +36,7 @@ export const PlayerGuide: React.FC<PlayerGuideProps> = ({ onClose, onDontShowAga
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center' }}>
           <div style={{ fontSize: isMobile ? '3.5rem' : '4.5rem', lineHeight: 1 }}>🎮</div>
           <p style={{ color: 'white', fontSize: isMobile ? '1.15rem' : '1.35rem', lineHeight: '2', margin: 0, fontWeight: 600 }}>
-            هذي الشاشة اللي تعرضونها على
-            <br /><span style={{ color: '#fbbf24', fontWeight: 900 }}>التلفزيون أو الشاشة الكبيرة</span>
+            شاشة العرض على <span style={{ color: '#fbbf24', fontWeight: 900 }}>التلفزيون أو الشاشة الكبيرة</span>
           </p>
           <div style={{
             background: 'rgba(168, 85, 247, 0.12)',
@@ -47,10 +46,10 @@ export const PlayerGuide: React.FC<PlayerGuideProps> = ({ onClose, onDontShowAga
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '0.6rem' : '0.75rem' }}>
               {[
-                { text: 'شبكة الحروف وحالة كل حرف', emoji: '🔤' },
-                { text: 'نقاط الفريقين وبطاقاتهم', emoji: '📊' },
-                { text: 'أنيميشنات البطاقات والروليت', emoji: '🃏' },
-                { text: 'إشعارات الأزرار (Answer Buzzers)', emoji: '📣' },
+                { text: 'شبكة الحروف', emoji: '🔤' },
+                { text: 'النقاط والبطاقات', emoji: '📊' },
+                { text: 'تأثيرات البطاقات والروليت', emoji: '🃏' },
+                { text: 'إشعارات الأزرار', emoji: '📣' },
               ].map((item, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <span style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', lineHeight: 1 }}>{item.emoji}</span>
@@ -65,13 +64,13 @@ export const PlayerGuide: React.FC<PlayerGuideProps> = ({ onClose, onDontShowAga
       ),
     },
     {
-      title: 'طرق الحصول على البطاقات',
+      title: 'مصادر البطاقات',
       icon: '🎁',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '1rem' : '1.25rem' }}>
           {[
-            { emoji: '🎲', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'الحرف العشوائي', desc: 'بداية كل جولة يُختار حرف عشوائي - اللي يجاوب صح ياخذ بطاقة مكافأة!' },
-            { emoji: '🃏', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', name: 'بطاقات مخفية', desc: 'بعض الخلايا فيها بطاقات مخفية، لما يختارها المقدم يظهر الروليت ويختار بطاقة عشوائية - الفريق اللي يجاوب صح ياخذها!' },
+            { emoji: '🎲', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'الحرف العشوائي', desc: 'حرف عشوائي ببداية الجولة — الرابح يأخذ بطاقة' },
+            { emoji: '🃏', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', name: 'بطاقات مخفية', desc: 'خلايا تفتح روليت — الرابح يأخذ البطاقة' },
             { emoji: '✨', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)', name: 'الحرف الذهبي', desc: 'حرف واحد ذهبي في كل جولة - يعطي بطاقة إضافية!' },
             { emoji: '🔥', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'مكافأة السلسلة', desc: '3 إجابات صحيحة متتالية لفريق واحد = بطاقة مكافأة مجانية!' },
           ].map((item, i) => (
@@ -92,18 +91,15 @@ export const PlayerGuide: React.FC<PlayerGuideProps> = ({ onClose, onDontShowAga
       ),
     },
     {
-      title: 'تأثير البطاقات',
+      title: 'البطاقات',
       icon: '🃏',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '0.75rem' : '1rem' }}>
-          <p style={{ color: '#d4bfff', fontSize: isMobile ? '0.95rem' : '1.1rem', margin: 0, lineHeight: '1.7', textAlign: 'center' }}>
-            كل بطاقة لها تأثير خاص على اللعبة
-          </p>
           {[
-            { emoji: '🧊', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)', name: 'تجميد', desc: 'جمّد خلية فارغة لدورتين - الخصم ما يقدر يختارها' },
-            { emoji: '💣', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'قنبلة', desc: 'دمّر حرف الخصم - يرجع فارغ!' },
-            { emoji: '⚔️', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.3)', name: 'معركة', desc: 'تحدّي على حرف الخصم - اللي يجاوب صح ياخذه!' },
-            { emoji: '🛡️', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'درع', desc: 'احمِ حرفك لـ 5 أسئلة - ما أحد يقدر يقنبله أو يحاربه!' },
+            { emoji: '🧊', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)', name: 'تجميد', desc: 'تمنع الخصم من اختيارها لدورتين' },
+            { emoji: '💣', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'قنبلة', desc: 'دمّر حرف الخصم — يرجع فارغاً' },
+            { emoji: '⚔️', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.3)', name: 'معركة', desc: 'تحدٍّ على حرف الخصم — الرابح يأخذه' },
+            { emoji: '🛡️', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'درع', desc: 'حصانة من القنبلة والمعركة لـ 5 أسئلة' },
           ].map((item, i) => (
             <div key={i} style={{
               display: 'flex',
@@ -329,7 +325,7 @@ export const PlayerGuide: React.FC<PlayerGuideProps> = ({ onClose, onDontShowAga
                 onChange={(e) => setDontShow(e.target.checked)}
                 style={{ cursor: 'pointer', width: '16px', height: '16px' }}
               />
-              لا تظهر هذا الشرح مرة أخرى
+              لا تظهر مجدداً
             </label>
           )}
         </div>

@@ -49,14 +49,13 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
 
   const steps: TutorialStep[] = [
     {
-      title: 'مرحباً بك يا مقدم!',
+      title: 'شاشة المقدم 🎮',
       icon: '👋',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'center' }}>
           <div style={{ fontSize: isMobile ? '3.5rem' : '4.5rem', lineHeight: 1 }}>🎮</div>
           <p style={{ color: 'white', fontSize: isMobile ? '1.15rem' : '1.35rem', lineHeight: '2', margin: 0, fontWeight: 600 }}>
-            أنت الآن في <span style={{ color: '#fbbf24', fontWeight: 900 }}>شاشة المقدم</span>
-            <br />أنت المتحكم الكامل باللعبة!
+            أنت <span style={{ color: '#fbbf24', fontWeight: 900 }}>المتحكم الكامل</span> باللعبة
           </p>
           <div style={cardBox('rgba(168, 85, 247, 0.12)', 'rgba(168, 85, 247, 0.35)')}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '0.6rem' : '0.75rem' }}>
@@ -96,9 +95,9 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '1rem' : '1.25rem' }}>
           {[
-            { color: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.35)', titleColor: '#34d399', title: 'ابدأ الجولة ▶️', desc: 'اضغط "ابدأ الجولة" - يبدأ بحرف عشوائي (إذا مفعّل)، اللي يجاوب صح ياخذ بطاقة مكافأة!' },
-            { color: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.35)', titleColor: '#c084fc', title: 'اختر حرف 🔤', desc: 'اضغط على أي خلية في الشبكة - راح يطلع لك السؤال والإجابة' },
-            { color: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.35)', titleColor: '#fb923c', title: 'حدد الفائز ✅', desc: 'اللي يجاوب صح أول، اضغط على اسم فريقه - الحرف يصير لهم!' },
+            { color: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.35)', titleColor: '#34d399', title: 'ابدأ الجولة ▶️', desc: 'اضغط "ابدأ الجولة" — يبدأ الحرف العشوائي (إن مُفعَّل)' },
+            { color: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.35)', titleColor: '#c084fc', title: 'اختر حرف 🔤', desc: 'اضغط خلية — يظهر السؤال والإجابة' },
+            { color: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.35)', titleColor: '#fb923c', title: 'حدد الفائز ✅', desc: 'اضغط اسم الفريق الرابح — الحرف يصير له' },
           ].map((item, i) => (
             <div key={i} style={cardBox(item.color, item.border)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -155,14 +154,14 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
       ),
     },
     {
-      title: 'المزيد من الأزرار',
+      title: 'أزرار الشاشات',
       icon: '🔧',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '0.75rem' : '1rem' }}>
           {[
-            { color: '#14b8a6', icon: <Tv size={iconSize} />, name: 'شاشة اللاعبين', desc: 'يفتح خيارات عرض شاشة اللاعبين: من نفس الجهاز أو بالباركود لجهاز ثاني' },
-            { color: '#f59e0b', icon: <Zap size={iconSize} />, name: 'Answer Buzzers', desc: 'باركود للاعبين يضغطون أزرار الإجابة من جوالاتهم' },
-            { color: '#f97316', icon: <Sparkles size={iconSize} />, name: 'البطاقات', desc: 'لوحة استخدام بطاقات الأكشن كارد' },
+            { color: '#14b8a6', icon: <Tv size={iconSize} />, name: 'شاشة اللاعبين', desc: 'تاب جديد أو QR لجهاز آخر' },
+            { color: '#f59e0b', icon: <Zap size={iconSize} />, name: 'Answer Buzzers', desc: 'QR يربط جوالات اللاعبين للإجابة' },
+            { color: '#f97316', icon: <Sparkles size={iconSize} />, name: 'البطاقات', desc: 'لوحة استخدام البطاقات' },
           ].map((item, i) => (
             <div key={i} style={{
               display: 'flex',
@@ -199,7 +198,7 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
               <span style={{ color: '#34d399', fontWeight: 800, fontSize: isMobile ? '1.05rem' : '1.15rem' }}>من نفس الجهاز</span>
             </div>
             <p style={{ color: '#d4bfff', fontSize: isMobile ? '0.9rem' : '1rem', margin: 0, lineHeight: '1.7' }}>
-              اضغط "فتح شاشة اللاعبين" - تنفتح في تاب جديد. مناسب إذا عندك شاشتين أو تبي تعرضها على بروجكتر من نفس اللابتوب
+              تفتح في تاب جديد — مناسب للبروجكتر أو شاشتين
             </p>
           </div>
 
@@ -210,7 +209,7 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
               <span style={{ color: '#c084fc', fontWeight: 800, fontSize: isMobile ? '1.05rem' : '1.15rem' }}>بالباركود (QR)</span>
             </div>
             <p style={{ color: '#d4bfff', fontSize: isMobile ? '0.9rem' : '1rem', margin: 0, lineHeight: '1.7' }}>
-              امسح الباركود من آيباد أو شاشة ذكية أو جوال ثاني - شاشة اللاعبين تنفتح تلقائياً وتتزامن مع شاشتك مباشرة!
+              امسح QR من أي جهاز — تتزامن تلقائياً
             </p>
           </div>
 
@@ -221,7 +220,7 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
               <span style={{ color: '#818cf8', fontWeight: 800, fontSize: isMobile ? '1.05rem' : '1.15rem' }}>نسخ الرابط أو مشاركة</span>
             </div>
             <p style={{ color: '#d4bfff', fontSize: isMobile ? '0.9rem' : '1rem', margin: 0, lineHeight: '1.7' }}>
-              انسخ الرابط وأرسله بالواتساب أو أي طريقة - أي شخص يفتحه يشوف شاشة اللاعبين محدّثة لحظياً
+              أرسل الرابط بالواتساب — يتزامن لحظياً
             </p>
           </div>
 
@@ -234,14 +233,14 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
             textAlign: 'center',
           }}>
             <p style={{ color: '#fbbf24', fontSize: isMobile ? '0.9rem' : '1rem', margin: 0, lineHeight: '1.8', fontWeight: 700 }}>
-              💡 الجهاز الثاني لا يحتاج تسجيل دخول! حتى لو فتحوا الرابط في منتصف اللعبة راح يشوفون الحالة الحالية
+              💡 لا يشترط تسجيل دخول في الجهاز الثاني
             </p>
           </div>
         </div>
       ),
     },
     {
-      title: 'بطاقات الأكشن',
+      title: 'البطاقات',
       icon: '🃏',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '0.75rem' : '1rem' }}>
@@ -249,10 +248,10 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
             البطاقات تظهر عشوائياً في الخلايا أو كمكافأة للسلسلة
           </p>
           {[
-            { emoji: '🧊', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)', name: 'تجميد', desc: 'جمّد خلية فارغة لدورتين - الخصم ما يقدر يختارها' },
-            { emoji: '💣', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'قنبلة', desc: 'دمّر حرف الخصم - يرجع فارغ!' },
-            { emoji: '⚔️', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.3)', name: 'معركة', desc: 'تحدّي على حرف الخصم - اللي يجاوب صح ياخذه!' },
-            { emoji: '🛡️', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'درع', desc: 'احمِ حرفك لـ 5 أسئلة - ما أحد يقدر يقنبله أو يحاربه!' },
+            { emoji: '🧊', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)', name: 'تجميد', desc: 'تمنع الخصم من اختيارها لدورتين' },
+            { emoji: '💣', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'قنبلة', desc: 'دمّر حرف الخصم — يرجع فارغاً' },
+            { emoji: '⚔️', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.3)', name: 'معركة', desc: 'تحدٍّ على حرف الخصم — الرابح يأخذه' },
+            { emoji: '🛡️', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'درع', desc: 'حصانة من القنبلة والمعركة لـ 5 أسئلة' },
           ].map((item, i) => (
             <div key={i} style={{
               display: 'flex',
@@ -274,13 +273,13 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
       ),
     },
     {
-      title: 'طرق الحصول على البطاقات',
+      title: 'مصادر البطاقات',
       icon: '🎁',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '1rem' : '1.25rem' }}>
           {[
-            { emoji: '🎲', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'الحرف العشوائي', desc: 'بداية كل جولة يُختار حرف عشوائي - اللي يجاوب صح ياخذ بطاقة مكافأة!' },
-            { emoji: '🃏', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', name: 'بطاقات مخفية', desc: 'بعض الخلايا فيها بطاقات مخفية - لما تضغط عليها يظهر الروليت ويختار بطاقة عشوائية، الفريق اللي يجاوب صح ياخذها!' },
+            { emoji: '🎲', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'الحرف العشوائي', desc: 'حرف عشوائي ببداية الجولة — الرابح يأخذ بطاقة' },
+            { emoji: '🃏', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', name: 'بطاقات مخفية', desc: 'خلايا تفتح روليت — الرابح يأخذ البطاقة' },
             { emoji: '✨', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)', name: 'الحرف الذهبي', desc: 'حرف واحد ذهبي في كل جولة - يعطي بطاقة إضافية!' },
             { emoji: '🔥', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'مكافأة السلسلة', desc: '3 إجابات صحيحة متتالية لفريق واحد = بطاقة مكافأة مجانية!' },
           ].map((item, i) => (
@@ -317,7 +316,7 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
             width: '100%',
           }}>
             <p style={{ color: '#34d399', fontSize: isMobile ? '1.05rem' : '1.15rem', margin: 0, lineHeight: '1.8', fontWeight: 700 }}>
-              💡 نصيحة: افتح شاشة اللاعبين على شاشة كبيرة، وأدر اللعبة من جهازك!
+              💡 افتح شاشة اللاعبين على شاشة كبيرة وأدِر اللعبة من جهازك
             </p>
           </div>
         </div>
@@ -534,7 +533,7 @@ export const HostOnboarding: React.FC<HostOnboardingProps> = ({ onComplete, onDo
               onChange={(e) => setDontShow(e.target.checked)}
               style={{ cursor: 'pointer', width: '16px', height: '16px' }}
             />
-            لا تظهر هذا الشرح مرة أخرى
+            لا تظهر مجدداً
           </label>
         </div>
       </div>

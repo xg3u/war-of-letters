@@ -3,6 +3,24 @@
 
 import { supabase } from '../lib/supabase';
 
+// رسائل لا تحتاج debounce — حرجة وتُرسل فوراً
+const INSTANT_TYPES = new Set([
+  'GRID_INITIALIZED', 'GAME_WON', 'ROUND_TRANSITION',
+  'MATCH_VICTORY', 'SESSION_ENDED', 'MATCH_RESET',
+  'player-registered', 'player-join-approved', 'player-join-rejected',
+  'reset-buzzers', 'REQUEST_FULL_STATE',
+  // الروليت: ROULETTE_END يُرسَل مباشرةً بعده CARD_FOUND — الـ debounce يحذف ROULETTE_END
+  'ROULETTE_START', 'ROULETTE_END',
+  // بداية الجولة وإرسال اللاعبين: حرجة لغرفة الانتظار — لا debounce
+  'ROUND_STARTED', 'SEND_TO_BUZZERS',
+  // الجرس: حرجة للتوقيت الدقيق
+  'buzzer-press', 'BUZZER_WINNER',
+  // تلوين الخلية: حرجة — لا تُفقد خلف debounce CELL_SELECTED اللاحق
+  'CELL_CLAIMED',
+  // Ping/Pong: حرجة للقياس الدقيق
+  'host-ping', 'player-pong',
+]);
+
 export class SyncManager {
   private channel: BroadcastChannel;
   private listeners: Set<(data: any) => void> = new Set();
@@ -15,6 +33,18 @@ export class SyncManager {
   private pendingPresenceTrack: any = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ─── Debounce: Realtime+Presence لـ saveFullState ────────────────────────
+  private _fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _fsLatest: any = null;
+
+  // ─── Debounce: كتابة localStorage ────────────────────────────────────────
+  private _lsTimer: ReturnType<typeof setTimeout> | null = null;
+  private _lsLatest: any = null;
+
+  // ─── Debounce: Realtime broadcast للرسائل غير الحرجة ─────────────────────
+  private _rtTimer: ReturnType<typeof setTimeout> | null = null;
+  private _rtLatest: any = null;
+
   constructor(channelName: string = 'war-of-letters-sync') {
     this.channel = new BroadcastChannel(channelName);
 
@@ -22,32 +52,24 @@ export class SyncManager {
       this.listeners.forEach(listener => listener(event.data));
     };
 
-    // الاستماع لتغييرات localStorage (للتابات الأخرى على نفس الجهاز)
     window.addEventListener('storage', (e) => {
       if (e.key === this.storageKey && e.newValue) {
         try {
           const data = JSON.parse(e.newValue);
-          // SESSION_ENDED لا يُعاد تشغيله من localStorage — يصل فقط عبر BroadcastChannel/Realtime مباشرة
           if (data.type === 'SESSION_ENDED') return;
           this.listeners.forEach(listener => listener(data));
-        } catch (err) {
-          console.error('localStorage parse error:', err);
-        }
+        } catch { /* ignore */ }
       }
-      // إذا تحدّثت full state في tab آخر — أبلغ المستمعين
       if (e.key === this.fullStateKey && e.newValue) {
         try {
           const data = JSON.parse(e.newValue);
           if (data?.type === 'FULL_STATE_SYNC') {
             this.listeners.forEach(listener => listener(data));
           }
-        } catch (err) {
-          console.error('fullState storage parse error:', err);
-        }
+        } catch { /* ignore */ }
       }
     });
 
-    // تحديد session ID — URL أولاً ثم localStorage
     const params = new URLSearchParams(window.location.search);
     const urlSessionId = params.get('session');
     const localSessionId = localStorage.getItem('game-session-id');
@@ -62,27 +84,21 @@ export class SyncManager {
     }
   }
 
-  // تعيين هذا الجهاز كمقدم
   setAsHost() {
     this.isHost = true;
-    console.log('🎙️ SyncManager: set as host');
   }
 
-  // تهيئة جلسة جديدة (يستدعيها HostScreen فور توليد الـ sessionId)
   initSession(sessionId: string) {
-    if (this.sessionId === sessionId && this.realtimeChannel) return; // لا داعي لإعادة التهيئة
-    console.log('🔧 SyncManager.initSession:', sessionId);
+    if (this.sessionId === sessionId && this.realtimeChannel) return;
     this.sessionId = sessionId;
     this.isHost = true;
     localStorage.setItem('game-session-id', sessionId);
     this.setupRealtimeChannel();
   }
 
-  // إعداد قناة Supabase Realtime
   private setupRealtimeChannel() {
     if (!this.sessionId) return;
 
-    // إزالة القناة القديمة إن وُجدت
     if (this.realtimeChannel) {
       supabase.removeChannel(this.realtimeChannel);
       this.realtimeChannel = null;
@@ -97,13 +113,10 @@ export class SyncManager {
       },
     });
 
-    // استقبال تحديثات اللعبة
     this.realtimeChannel.on('broadcast', { event: 'game-update' }, ({ payload }: any) => {
-      console.log('📡 Realtime received:', payload.type);
       this.listeners.forEach(listener => listener(payload));
     });
 
-    // عند انضمام جهاز جديد — يقرأ حالة اللعبة من Presence المقدم
     this.realtimeChannel.on('presence', { event: 'sync' }, () => {
       if (this.isHost) return;
 
@@ -113,9 +126,7 @@ export class SyncManager {
         if (Array.isArray(entries)) {
           for (const entry of entries) {
             if (entry?.type === 'FULL_STATE_SYNC' && entry?.cells?.length > 0) {
-              console.log('✅ Got full state from Presence!', entry.cells.length, 'cells');
               this.listeners.forEach(listener => listener(entry));
-              // إلغاء أي retry معلق
               if (this.retryTimer) {
                 clearTimeout(this.retryTimer);
                 this.retryTimer = null;
@@ -127,72 +138,98 @@ export class SyncManager {
       }
     });
 
-    // حالة الاتصال
     this.realtimeChannel.subscribe((status: string) => {
-      console.log(`📡 Realtime status [${this.sessionId}]: ${status}`);
-
       if (status === 'SUBSCRIBED') {
         this.isSubscribed = true;
 
-        // إرسال الحالة المعلقة إذا كان المقدم
         if (this.isHost && this.pendingPresenceTrack) {
           this.realtimeChannel.track(this.pendingPresenceTrack);
           this.pendingPresenceTrack = null;
         }
       }
 
-      // إعادة الاتصال التلقائي عند الانقطاع
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.warn(`⚠️ Realtime channel error: ${status} — reconnecting...`);
         setTimeout(() => this.setupRealtimeChannel(), 3000);
       }
     });
   }
 
-  // بث تحديث لجميع الشاشات (نفس الجهاز + أجهزة أخرى)
+  // بث تحديث لجميع الشاشات
+  // - BroadcastChannel: فوري دائماً (نفس الجهاز)
+  // - Realtime: فوري للرسائل الحرجة، debounce 32ms لغيرها (يدمج التحديثات المتتالية السريعة)
+  // - localStorage: debounce 16ms (backup فقط)
   broadcast(data: any) {
-    try {
-      localStorage.setItem(this.storageKey, JSON.stringify(data));
-    } catch (err) {
-      console.error('localStorage save error:', err);
-    }
-
+    // ① BroadcastChannel — نفس الجهاز، فوري دائماً
     this.channel.postMessage(data);
 
+    // ② Realtime — أجهزة أخرى
     if (this.realtimeChannel && this.sessionId) {
-      this.realtimeChannel.send({
-        type: 'broadcast',
-        event: 'game-update',
-        payload: data,
-      }).catch((err: any) => console.error('Realtime send error:', err));
+      if (INSTANT_TYPES.has(data.type)) {
+        // رسائل حرجة: إرسال فوري بدون debounce
+        this.realtimeChannel.send({
+          type: 'broadcast',
+          event: 'game-update',
+          payload: data,
+        }).catch(() => { /* silent */ });
+      } else {
+        // رسائل غير حرجة: debounce 32ms (يدمج التحديثات السريعة المتتالية)
+        this._rtLatest = data;
+        if (this._rtTimer) clearTimeout(this._rtTimer);
+        this._rtTimer = setTimeout(() => {
+          const payload = this._rtLatest;
+          this._rtLatest = null;
+          if (!payload || !this.realtimeChannel || !this.sessionId) return;
+          this.realtimeChannel.send({
+            type: 'broadcast',
+            event: 'game-update',
+            payload,
+          }).catch(() => { /* silent */ });
+        }, 32);
+      }
     }
+
+    // ③ localStorage: debounce 16ms (backup للتابات الجديدة)
+    this._lsLatest = data;
+    if (this._lsTimer) clearTimeout(this._lsTimer);
+    this._lsTimer = setTimeout(() => {
+      try {
+        if (this._lsLatest) localStorage.setItem(this.storageKey, JSON.stringify(this._lsLatest));
+        this._lsLatest = null;
+      } catch { /* ignore quota errors */ }
+    }, 16);
   }
 
-  // حفظ الحالة الكاملة للعبة (يُستدعى من HostScreen عند كل تغيير)
+  // حفظ الحالة الكاملة للعبة (debounce 300ms على Realtime+Presence)
   saveFullState(state: any) {
-    try {
-      const fullState = { ...state, type: 'FULL_STATE_SYNC', timestamp: Date.now() };
-      localStorage.setItem(this.fullStateKey, JSON.stringify(fullState));
+    const fullState = { ...state, type: 'FULL_STATE_SYNC', timestamp: Date.now() };
 
-      this.channel.postMessage(fullState);
+    try {
+      localStorage.setItem(this.fullStateKey, JSON.stringify(fullState));
+    } catch { /* ignore quota */ }
+
+    this.channel.postMessage(fullState);
+
+    this._fsLatest = fullState;
+    if (this._fsDebounceTimer) clearTimeout(this._fsDebounceTimer);
+    this._fsDebounceTimer = setTimeout(() => {
+      const payload = this._fsLatest;
+      this._fsLatest = null;
+      if (!payload) return;
 
       if (this.realtimeChannel && this.sessionId) {
         this.realtimeChannel.send({
           type: 'broadcast',
           event: 'game-update',
-          payload: fullState,
-        }).catch((err: any) => console.error('Realtime saveFullState error:', err));
+          payload,
+        }).catch(() => { /* silent */ });
       }
 
       if (this.isHost) {
-        this.trackPresence(fullState);
+        this.trackPresence(payload);
       }
-    } catch (err) {
-      console.error('saveFullState error:', err);
-    }
+    }, 300);
   }
 
-  // تتبع حالة اللعبة في Presence (للمقدم فقط — يصلها الداخلون الجدد تلقائياً)
   trackPresence(state: any) {
     if (!this.isHost) return;
     const presenceData = { ...state, type: 'FULL_STATE_SYNC' };
@@ -204,32 +241,26 @@ export class SyncManager {
     }
   }
 
-  // طلب الحالة الكاملة من المقدم
   requestFullState() {
-    console.log('📡 Requesting full state from host...');
     this.broadcast({ type: 'REQUEST_FULL_STATE', timestamp: Date.now() });
   }
 
-  // الاشتراك في التحديثات — يحمّل الحالة المحلية فوراً ثم يبدأ الطلب من الشبكة
   subscribe(callback: (data: any) => void) {
     this.listeners.add(callback);
 
     let foundLocalState = false;
 
     try {
-      // أولوية: full state snapshot
       const fullState = localStorage.getItem(this.fullStateKey);
       if (fullState) {
         const data = JSON.parse(fullState);
         if (data?.type === 'FULL_STATE_SYNC' && data.cells) {
-          console.log('📦 Loaded full state from localStorage');
           callback(data);
           foundLocalState = true;
         }
       }
 
       if (!foundLocalState) {
-        // fallback: GRID_INITIALIZED القديم
         const stored = localStorage.getItem(this.storageKey);
         if (stored) {
           const data = JSON.parse(stored);
@@ -239,11 +270,8 @@ export class SyncManager {
           }
         }
       }
-    } catch (err) {
-      console.error('localStorage load error:', err);
-    }
+    } catch { /* ignore */ }
 
-    // إذا لم تتوفر بيانات محلية وهذا جهاز عميل بعيد → اطلب من المقدم مع retry
     if (!foundLocalState && this.sessionId && !this.isHost) {
       this.startRetryLoop(callback);
     }
@@ -253,57 +281,45 @@ export class SyncManager {
     };
   }
 
-  // حلقة retry لطلب الحالة من المقدم عبر Realtime
   private startRetryLoop(callbackForFirstLoad: (data: any) => void) {
     let attempts = 0;
     const maxAttempts = 8;
+    const FIBONACCI_DELAYS = [1000, 2000, 3000, 5000, 8000, 13000, 21000, 30000];
 
     const tryOnce = () => {
-      // تحقق إذا وصلت الحالة من Presence بالفعل (وتم استدعاء callback)
       const snap = localStorage.getItem(this.fullStateKey);
       if (snap) {
         try {
           const data = JSON.parse(snap);
           if (data?.type === 'FULL_STATE_SYNC' && data.cells) {
-            console.log('✅ Full state arrived — stopping retry');
             callbackForFirstLoad(data);
             return;
           }
         } catch { /* ignore */ }
       }
 
-      if (attempts >= maxAttempts) {
-        console.warn('⚠️ Max retry attempts reached — waiting for host to broadcast');
-        return;
-      }
+      if (attempts >= maxAttempts) return;
 
+      const delay = FIBONACCI_DELAYS[attempts] ?? 30000;
       attempts++;
-      console.log(`🔄 Requesting full state (attempt ${attempts}/${maxAttempts})...`);
       this.requestFullState();
-
-      // retry بعد 2 ثانية (أسرع من 3)
-      this.retryTimer = setTimeout(tryOnce, 2000);
+      this.retryTimer = setTimeout(tryOnce, delay);
     };
 
-    // ابدأ بعد ثانية واحدة (وقت كافٍ لـ Realtime يتصل)
-    this.retryTimer = setTimeout(tryOnce, 1000);
+    this.retryTimer = setTimeout(tryOnce, FIBONACCI_DELAYS[0]);
   }
 
-  // مسح حالة اللعبة (عند reset)
   clearFullState() {
     try {
       localStorage.removeItem(this.fullStateKey);
-    } catch (err) {
-      console.error('clearFullState error:', err);
-    }
+    } catch { /* ignore */ }
   }
 
-  // إغلاق القناة
   close() {
-    if (this.retryTimer) {
-      clearTimeout(this.retryTimer);
-      this.retryTimer = null;
-    }
+    if (this.retryTimer)      { clearTimeout(this.retryTimer);      this.retryTimer = null; }
+    if (this._fsDebounceTimer){ clearTimeout(this._fsDebounceTimer); this._fsDebounceTimer = null; }
+    if (this._lsTimer)        { clearTimeout(this._lsTimer);        this._lsTimer = null; }
+    if (this._rtTimer)        { clearTimeout(this._rtTimer);        this._rtTimer = null; }
     this.channel.close();
     if (this.realtimeChannel) {
       supabase.removeChannel(this.realtimeChannel);
@@ -312,5 +328,4 @@ export class SyncManager {
   }
 }
 
-// Instance مشتركة واحدة لكل التطبيق
 export const syncManager = new SyncManager();

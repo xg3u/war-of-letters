@@ -1,9 +1,19 @@
 // src/components/CardAnimation.tsx
 // أنيميشن البطاقات الأربعة
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CardType } from '../core/types';
 import { useScreenSize } from '../hooks/useScreenSize';
+
+// ثوابت الجسيمات — خارج المكوّن لتجنب إعادة الحساب
+const PARTICLES = Array.from({ length: 8 }, (_, i) => ({
+  id: i,
+  left: (i * 13 + 5) % 100,
+  top:  (i * 17 + 10) % 100,
+  dur:  2.5 + (i % 3) * 0.5,
+  delay: (i * 0.25) % 1.5,
+}));
 
 interface CardAnimationProps {
   type: CardType | 'cardFound';
@@ -20,14 +30,19 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
   const isSmall = isMobile || isTablet;
   const [show, setShow] = useState(true);
 
+  // نحتفظ بأحدث نسخة من onComplete في ref
+  // حتى لا يتسبب تغيير المرجع في إعادة تشغيل الـ timer
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => { onCompleteRef.current = onComplete; });
+
+  // timer يعمل مرة واحدة عند mount — لا يتأثر بأي re-render
   useEffect(() => {
     const timer = setTimeout(() => {
       setShow(false);
-      setTimeout(onComplete, 200);
-    }, 2800); // أبطأ من السابق (كان 1500ms)
-
+      setTimeout(() => onCompleteRef.current(), 200);
+    }, 2800);
     return () => clearTimeout(timer);
-  }, [onComplete]);
+  }, []); // ← deps فارغة: يعمل مرة واحدة فقط
 
   const getAnimationConfig = () => {
     switch (type) {
@@ -35,7 +50,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       case 'freeze':
         return {
           emoji: '🧊',
-          title: 'تجميد!',
+          title: 'جمّدناها! ❄️',
           color: '#60a5fa',
           particles: '❄️',
           background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
@@ -45,7 +60,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       case 'bomb':
         return {
           emoji: '💣',
-          title: 'انفجار!',
+          title: 'دمّرناها! 💥',
           color: '#ef4444',
           particles: '💥',
           background: 'linear-gradient(135deg, #ef4444, #dc2626)',
@@ -55,7 +70,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       case 'battle':
         return {
           emoji: '⚔️',
-          title: 'معركة!',
+          title: 'على السيف! ⚔️',
           color: '#fb923c',
           particles: '⚡',
           background: 'linear-gradient(135deg, #fb923c, #ea580c)',
@@ -65,7 +80,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       case 'shield':
         return {
           emoji: '🛡️',
-          title: 'حماية!',
+          title: 'ما تلمسها! 🛡️',
           color: '#34d399',
           particles: '✨',
           background: 'linear-gradient(135deg, #34d399, #10b981)',
@@ -75,7 +90,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       case 'cardFound':
         return {
           emoji: '🎁',
-          title: 'مبروك!',
+          title: 'مبروووك! 🎊',
           color: '#fbbf24',
           particles: '🎉',
           background: 'linear-gradient(135deg, #fbbf24, #f59e0b)',
@@ -84,7 +99,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       default:
         return {
           emoji: '✨',
-          title: 'رائع!',
+          title: 'يسلمو! ✨',
           color: '#a855f7',
           particles: '⭐',
           background: 'linear-gradient(135deg, #a855f7, #ec4899)',
@@ -96,7 +111,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
 
   if (!show) return null;
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       top: 0,
@@ -111,21 +126,19 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
       zIndex: 2000,
       animation: 'fadeIn 0.3s ease',
     }}>
-      {/* الجزيئات المتحركة */}
-      {[...Array(8)].map((_, i) => (
-        <div
-          key={i}
-          style={{
-            position: 'absolute',
-            fontSize: '1.75rem',
-            animation: `float ${2.5 + Math.random() * 2}s ease-in-out infinite`,
-            animationDelay: `${Math.random() * 2}s`,
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            opacity: 0.5,
-            willChange: 'transform',
-          }}
-        >
+      {/* الجزيئات المتحركة — مواضع ثابتة لتجنب re-renders */}
+      {PARTICLES.map(p => (
+        <div key={p.id} style={{
+          position: 'absolute',
+          fontSize: '1.75rem',
+          animation: `float ${p.dur}s ease-in-out infinite`,
+          animationDelay: `${p.delay}s`,
+          left: `${p.left}%`,
+          top:  `${p.top}%`,
+          opacity: 0.5,
+          willChange: 'transform',
+          pointerEvents: 'none',
+        }}>
           {config.particles}
         </div>
       ))}
@@ -159,6 +172,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           color: 'white',
           margin: `0 0 ${isSmall ? '0.5rem' : '1rem'} 0`,
           textShadow: '0 2px 6px rgba(0, 0, 0, 0.4)',
+          fontFamily: "'Lalezar', sans-serif",
         }}>
           {config.title}
         </h2>
@@ -171,6 +185,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
             color: 'white',
             margin: 0,
             textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+            fontFamily: "'Lalezar', sans-serif",
           }}>
             {message}
           </p>
@@ -199,6 +214,7 @@ export const CardAnimation: React.FC<CardAnimationProps> = ({
           }
         `}
       </style>
-    </div>
+    </div>,
+    document.body,
   );
 };

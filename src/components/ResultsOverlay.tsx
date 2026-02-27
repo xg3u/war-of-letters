@@ -2,6 +2,7 @@
 // نافذة نتائج الجولة — متناسقة مع هوية حرب الحروف
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Trophy, Star } from 'lucide-react';
 import type { Team } from '../core/types';
 import { useScreenSize } from '../hooks/useScreenSize';
@@ -42,12 +43,12 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
   const winnerName   = winner === 'green' ? greenTeamName : winner === 'red' ? redTeamName : '';
 
   const winTypeLabel: Record<string, string> = {
-    'wall-to-wall':   '🧱 ربط الجدار',
-    'five-connected': '🔗 خمس خلايا متصلة',
-    'most-letters':   '📊 الأكثر حروفاً',
+    'wall-to-wall':   '🧱 وصّل الجدارين!',
+    'five-connected': '🔗 خمس متصلة مع بعض!',
+    'most-letters':   '📊 أكثر حروف!',
   };
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       inset: 0,
@@ -138,8 +139,9 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
             fontWeight: 700,
             color: 'rgba(255,255,255,0.6)',
             letterSpacing: '0.05em',
+            fontFamily: "'Lalezar', sans-serif",
           }}>
-            فائز الجولة
+            اكتسح الجولة!
           </span>
           <Star size={isSmall ? 16 : 20} color="#fbbf24" fill="#fbbf24" />
         </div>
@@ -152,6 +154,7 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
           textShadow: `0 0 24px ${winnerGlow}`,
           marginBottom: isSmall ? '0.6rem' : '1rem',
           lineHeight: 1.2,
+          fontFamily: "'Lalezar', sans-serif",
         }}>
           {winnerName}
         </div>
@@ -247,7 +250,7 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
               >
-                🎮 جولة جديدة
+                🎮 جولة ثانية
               </button>
             )}
             {onClose && (
@@ -265,7 +268,7 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
                 onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
               >
-                إغلاق
+                سكّر
               </button>
             )}
           </div>
@@ -278,6 +281,7 @@ export const ResultsOverlay: React.FC<ResultsOverlayProps> = ({
         @keyframes rwBounce   { 0%,100% { transform:translateY(0) rotate(-3deg); } 50% { transform:translateY(-14px) rotate(3deg); } }
         @keyframes rwFloat    { 0%,100% { opacity:0; transform:scale(0) translateY(0); } 50% { opacity:0.7; transform:scale(1) translateY(-20px); } }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 };

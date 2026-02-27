@@ -7,16 +7,23 @@ import {
   CheckCircle2,
   RefreshCw,
   Users,
-  Tv,
   Sparkles,
   Maximize,
   Pause,
   Dices,
   Play,
-  Zap,
   HelpCircle,
   Undo2,
   Redo2,
+  Settings,
+  ChevronDown,
+  ChevronUp,
+  UserCheck,
+  UserX,
+  QrCode,
+  BellOff,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { syncManager } from '../utils/SyncManager';
@@ -24,12 +31,15 @@ import { getSmartQuestion } from '../utils/questionEngine';
 import {
   BuzzerChannel,
   INITIAL_BUZZER_STATE,
+  PHASE1_DURATION,
   applyAttempt,
   applyActiveExpiry,
   applyOpponentExpiry,
 } from '../utils/BuzzerEngine';
 import type { BuzzerAttempt, BuzzerState } from '../utils/BuzzerEngine';
-import { prefetchAllGameLetters } from '../utils/questionCache';
+import { prefetchAllGameLetters, hasPersistedCache, getLetterCountsSync } from '../utils/questionCache';
+import { updateLetterQuestionCounts } from '../utils/smartLetterPicker';
+import { warmQuestionQueue } from '../utils/questionEngine';
 import { useScreenSize } from '../hooks/useScreenSize';
 import { playBellSound, playCardSound } from '../utils/sounds';
 import { HexGrid } from './HexGrid';
@@ -41,14 +51,15 @@ import { ResultsOverlay } from './ResultsOverlay';
 import { StreakVisualizer } from './StreakVisualizer';
 import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
-import { QRCodeModal } from './QRCodeModal';
 import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
 import { HostOnboarding } from './HostOnboarding';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
 import { getWinStats, checkWinCondition, getWinMessage } from '../utils/winChecker';
+import { selectSmartCard, recordCardDrawn, resetCardHistory, resetRoundStats } from '../utils/cardSelector';
 import { useTheme } from '../context/ThemeContext';
 import { CharacterAvatar, DEFAULT_AVATAR } from './CharacterAvatar';
+import { LoadingBar, InlineLoader } from './LoadingBar';
 import type { AvatarConfig } from './CharacterAvatar';
 
 interface HostScreenProps {
@@ -100,12 +111,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null);
   const [showQuestion, setShowQuestion] = useState(false);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false); // Loading state for question fetch
+  const [questionsReady, setQuestionsReady] = useState(false); // الأسئلة جاهزة في الذاكرة
   const [zoom, setZoom] = useState(1);
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showRoulette, setShowRoulette] = useState(false);
   const [showCardTeaser, setShowCardTeaser] = useState(false); // شاشة التشويق قبل كشف البطاقة
   const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
+  const [preselectedCard, setPreselectedCard] = useState<CardType | null>(null);
+  // الحرف الذهبي — الفريق الفائز يختار بطاقته بنفسه (الروليت لا يعمل له)
+  const [showGoldenAnnouncement, setShowGoldenAnnouncement] = useState(false);
+  const [goldenCardPicker, setGoldenCardPicker] = useState<{ team: 'green' | 'red' } | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [colorsSwapped, setColorsSwapped] = useState(false); // حالة عكس الألوان
   const [pendingWin, setPendingWin] = useState<{
@@ -130,30 +146,86 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     timestamp: number;
     avatar?: AvatarConfig;
   }[]>([]); // اللاعبون المسجلون في Answer Buzzers
+  // ref دائماً يحمل القيمة الحالية — يُستخدم داخل subscribe لتجنب stale closure
+  const registeredPlayersRef = useRef<{ name: string; team: 'green' | 'red'; timestamp: number; avatar?: AvatarConfig }[]>([]);
+  registeredPlayersRef.current = registeredPlayers;
   const [hoveredPlayer, setHoveredPlayer] = useState<string | null>(null);
   const kickPlayer = (name: string) => {
     setRegisteredPlayers(prev => prev.filter(p => p.name !== name));
     setHoveredPlayer(null);
     syncManager.broadcast({ type: 'player-kicked', name });
   };
+
+  const approveJoinRequest = (name: string) => {
+    const req = joinRequests.find(p => p.name === name);
+    if (!req) return;
+    setJoinRequests(prev => prev.filter(p => p.name !== name));
+    setRegisteredPlayers(prev => {
+      const idx = prev.findIndex(p => p.name === name);
+      if (idx >= 0) { const u = [...prev]; u[idx] = req; return u; }
+      return [...prev, req];
+    });
+    // أرسل الموافقة أولاً
+    syncManager.broadcast({ type: 'player-join-approved', name, roundStarted: roundStartedRef.current });
+    // أرسل الحالة الكاملة فوراً بعدها حتى يرى اللاعب اللعبة بشكل صحيح
+    const state = useGameStore.getState();
+    if (state.cells.length > 0) {
+      syncManager.saveFullState({
+        cells: state.cells,
+        settings: state.settings,
+        scores: state.scores,
+        currentRound: state.currentRound,
+        teamCards: state.teamCards,
+        winStreak: state.winStreak,
+        winner: state.winner,
+        winMessage: state.winMessage,
+        matchWinner: state.matchWinner,
+        isLocked: state.isLocked,
+        colorsSwapped,
+        isPaused,
+        roundStarted: roundStartedRef.current,
+      });
+    }
+  };
+
+  const rejectJoinRequest = (name: string) => {
+    setJoinRequests(prev => prev.filter(p => p.name !== name));
+    syncManager.broadcast({ type: 'player-join-rejected', name });
+  };
+
   const [pendingCard, setPendingCard] = useState<CardType | null>(null); // Card waiting to be awarded to winning team
   const [showRandomLetterAnnouncement, setShowRandomLetterAnnouncement] = useState(false);
   const [isRandomLetterMode, setIsRandomLetterMode] = useState(false); // Track if we're in random letter round start mode
   const [hasTriggeredRandomLetter, setHasTriggeredRandomLetter] = useState(false); // Prevent re-triggering
   const [roundStarted, setRoundStarted] = useState(false); // Control when round actually begins
+  const roundStartedRef = useRef(false);
+  const isPausedRef = useRef(false);
+  const hasTriggeredRandomLetterRef = useRef(false);
+  // debounce timer لـ saveFullState — يمنع إغراق المزامنة بعشرات الطلبات/ثانية
+  const saveStateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  roundStartedRef.current = roundStarted;
+  isPausedRef.current = isPaused;
+  hasTriggeredRandomLetterRef.current = hasTriggeredRandomLetter;
+  const [joinRequests, setJoinRequests] = useState<{
+    name: string; team: 'green' | 'red'; timestamp: number; avatar?: AvatarConfig;
+  }[]>([]); // طلبات الانضمام في منتصف اللعبة
   const [isStreakRewardMode, setIsStreakRewardMode] = useState(false); // Track if roulette is from streak reward
   const [streakRewardTeam, setStreakRewardTeam] = useState<'green' | 'red' | null>(null); // Team that earned streak reward
   const [showStreakAnnouncement, setShowStreakAnnouncement] = useState(false); // إعلان السلسلة — يتحكم فيه المقدم
   const [showQuestionOnPlayers, setShowQuestionOnPlayers] = useState(false); // إظهار السؤال في شاشة اللاعبين
   const [excludedQuestionIds, setExcludedQuestionIds] = useState<string[]>([]); // الأسئلة المستبعدة عند تغيير السؤال
-  const [showQRCode, setShowQRCode] = useState(false); // إظهار QR Code
   const [showBuzzerQRCode, setShowBuzzerQRCode] = useState(false); // إظهار QR Code للأزرار
-  // جلسة جديدة تماماً في كل مرة يبدأ فيها المقدم لعبة
-  // initSession يُستدعى هنا مباشرة ليضمن أن SyncManager يعرف الـ session قبل أي useEffect
+  // استخدام الجلسة التي هيّأتها شاشة الإعدادات (محفوظة في localStorage)
+  // إذا لم توجد (دخول مباشر) تُولَّد جلسة جديدة
   const [sessionId] = useState(() => {
-    const SAFE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // بدون 0,1,I,O لتجنب الالتباس
+    const existing = localStorage.getItem('game-session-id');
+    if (existing) {
+      syncManager.initSession(existing);
+      return existing;
+    }
+    const SAFE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const code = Array.from({ length: 5 }, () => SAFE[Math.floor(Math.random() * SAFE.length)]).join('');
-    syncManager.initSession(code); // يُعِدّ Realtime فوراً ويضع SyncManager كمقدم
+    syncManager.initSession(code);
     return code;
   });
 
@@ -168,6 +240,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // حارس: يمنع إرسال SESSION_ENDED أكثر من مرة (يحمي من React Strict Mode وتغيّر الـ deps)
   const sessionEndedRef = useRef(false);
+  // حارس Strict Mode: يُعيَّن true فقط بعد 800ms من الـ mount الفعلي
+  // في Strict Mode يُنظَّف الـ effect فوراً قبل 800ms → isEffectActive=false → لا SESSION_ENDED
+  const isEffectActiveRef = useRef(false);
 
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
@@ -180,6 +255,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('host-onboarding-done');
   });
+  const [showMobileInfo, setShowMobileInfo] = useState(false); // قائمة معلومات الفريقين على الجوال
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
   const { theme } = useTheme();
@@ -190,16 +266,22 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     events.forEach(e => window.addEventListener(e, resetInactivityTimer, { passive: true }));
     resetInactivityTimer(); // بدء العداد فور تحميل الصفحة
 
+    // 800ms كافية لتمييز الـ mount الحقيقي من cleanup الـ StrictMode الفوري
+    const activateTimer = setTimeout(() => { isEffectActiveRef.current = true; }, 800);
+
     return () => {
+      clearTimeout(activateTimer);
       events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-      // إرسال SESSION_ENDED مرة واحدة فقط — يحمي من React Strict Mode وتكرار الـ cleanup
-      if (!sessionEndedRef.current) {
+      // إرسال SESSION_ENDED فقط إذا كان الـ effect نشطاً فعلاً (ليس cleanup فوري من StrictMode)
+      if (isEffectActiveRef.current && !sessionEndedRef.current) {
         sessionEndedRef.current = true;
+        isEffectActiveRef.current = false;
         syncManager.broadcast({ type: 'SESSION_ENDED' });
         localStorage.removeItem('game-session-id');
-        // إعادة ضبط الحارس بعد لحظة لتسمح بجلسة جديدة لاحقاً
         setTimeout(() => { sessionEndedRef.current = false; }, 500);
+      } else {
+        isEffectActiveRef.current = false;
       }
     };
   }, [resetInactivityTimer]);
@@ -233,7 +315,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               newState,
               avatar: att.avatar,
             });
-            // تحديث شاشة المقدم مباشرة
+            // تحديث شاشة المقدم مباشرة: أظهر الاسم فوراً
             setBuzzerPress({
               type: att.pressType,
               playerName: att.playerName,
@@ -241,7 +323,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               timestamp: att.clientTimestamp,
               avatar: att.avatar,
             });
-            if (newState.activeUntil) setBuzzerActiveUntil(newState.activeUntil);
+            // ابدأ العداد بعد تأخير يعادل وصول الرسالة للاعبين تقريباً
+            // حتى يبدأ العد في شاشتي المقدم والجرس في نفس الوقت تقريباً
+            if (newState.activeUntil) {
+              const DISPLAY_BUFFER = 600;
+              setTimeout(() => setBuzzerActiveUntil(Date.now() + PHASE1_DURATION), DISPLAY_BUFFER);
+            }
             // إعلام شاشة اللاعبين (PlayersScreen)
             syncManager.broadcast({
               type: 'buzzer-press',
@@ -293,13 +380,25 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     setHasTriggeredRandomLetter(false);
   }, [initializeGrid, settings]);
 
-  // Pre-fetch: تحميل الأسئلة مسبقاً عند تهيئة الشبكة
+  // Pre-fetch + warm queue: تحميل الأسئلة ثم تجهيز سؤال جاهز لكل حرف
   React.useEffect(() => {
     if (cells.length > 0) {
-      console.log('🚀 Pre-fetching questions for all letters...');
-      prefetchAllGameLetters(cells).then(() => {
-        console.log('✅ Questions pre-fetched successfully!');
-      });
+      const letters = [...new Set(cells.map(c => c.letter))];
+      if (hasPersistedCache()) {
+        // الأسئلة محملة من localStorage — سخّن الطابور + غذّ الأوزان
+        warmQuestionQueue(letters).then(() => {
+          updateLetterQuestionCounts(getLetterCountsSync(letters));
+          setQuestionsReady(true);
+        });
+      } else {
+        setQuestionsReady(false);
+        prefetchAllGameLetters(cells)
+          .then(() => warmQuestionQueue(letters))
+          .then(() => {
+            updateLetterQuestionCounts(getLetterCountsSync(letters));
+            setQuestionsReady(true);
+          });
+      }
     }
   }, [cells.length]);
 
@@ -326,6 +425,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       // After showing announcement, start roulette
       setTimeout(() => {
         setShowRandomLetterAnnouncement(false);
+        const { cells: c, scores: sc, teamCards: tc } = useGameStore.getState();
+        setPreselectedCard(selectSmartCard({ cells: c, scores: sc, teamCards: tc }));
         setRouletteTriggerType('card');
         setShowRoulette(true);
 
@@ -344,16 +445,29 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
       } else if (data.type === 'player-registered') {
-        // إضافة أو تحديث لاعب (يُحدَّث الفريق والأفاتار إذا تغيّرا)
-        setRegisteredPlayers(prev => {
-          const idx = prev.findIndex(p => p.name === data.player.name);
-          if (idx >= 0) {
-            const updated = [...prev];
-            updated[idx] = data.player;
-            return updated;
-          }
-          return [...prev, data.player];
-        });
+        // هل اللاعب معتمد مسبقاً؟ (استجابة لـ REQUEST_PLAYER_LIST أو إعادة اتصال)
+        const alreadyApproved = registeredPlayersRef.current.some(p => p.name === data.player.name);
+        if (alreadyApproved) {
+          // تحديث بياناته فقط (avatar/team) دون إضافته كطلب جديد
+          setRegisteredPlayers(prev => prev.map(p =>
+            p.name === data.player.name ? { ...p, ...data.player } : p
+          ));
+        } else if (!roundStartedRef.current) {
+          // قبل بدء اللعبة: قبول فوري — اللاعع وصل في الوقت المناسب
+          setRegisteredPlayers(prev => {
+            const exists = prev.some(p => p.name === data.player.name);
+            if (exists) return prev;
+            return [...prev, data.player];
+          });
+          syncManager.broadcast({ type: 'player-join-approved', name: data.player.name, roundStarted: false });
+        } else {
+          // منتصف اللعبة: اعرض طلب الانضمام للمقدم ليوافق أو يرفض
+          setJoinRequests(prev => {
+            const exists = prev.some(p => p.name === data.player.name);
+            if (exists) return prev;
+            return [...prev, data.player];
+          });
+        }
       } else if (data.type === 'player-left') {
         // لاعب غادر — احذفه من القائمة
         setRegisteredPlayers(prev => prev.filter(p => p.name !== data.name));
@@ -378,29 +492,67 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             roundStarted,
           });
         }
+      } else if (data.type === 'player-pong') {
+        const rtt = Date.now() - (data.ts as number);
+        setPlayerPings(prev => ({ ...prev, [data.name as string]: rtt }));
       }
     });
     return unsubscribe;
   }, [syncFromExternal, colorsSwapped, isPaused, roundStarted]);
 
-  // حفظ حالة اللعبة الكاملة في localStorage لمزامنة شاشة اللاعبين
+  // ── Ping لكل لاعب لقياس جودة الاتصال ────────────────────────────────────
+  const [playerPings, setPlayerPings] = useState<Record<string, number>>({});
+  const playerPingsRef = useRef<Record<string, number>>({});
+  playerPingsRef.current = playerPings;
+
+  // ── استطلاع دوري لقائمة اللاعبين كل 12 ثانية ────────────────────────────
+  // يطلب من جميع الأجهزة المتصلة إرسال بياناتهم → يُحدّث قائمة المقدم تلقائياً
   React.useEffect(() => {
-    if (cells.length === 0) return; // لا نحفظ قبل تهيئة الشبكة
-    syncManager.saveFullState({
-      cells,
-      settings,
-      scores,
-      currentRound,
-      teamCards,
-      winStreak,
-      winner,
-      winMessage,
-      matchWinner,
-      isLocked,
-      colorsSwapped,
-      isPaused,
-      roundStarted,
-    });
+    if (!roundStarted) return;
+    const id = setInterval(() => {
+      syncManager.broadcast({ type: 'REQUEST_PLAYER_LIST' });
+    }, 12000);
+    return () => clearInterval(id);
+  }, [roundStarted]);
+
+  // ── Ping دوري كل 5 ثوانٍ لقياس الاتصال ─────────────────────────────────
+  React.useEffect(() => {
+    if (!roundStarted) return;
+    const id = setInterval(() => {
+      syncManager.broadcast({ type: 'host-ping', ts: Date.now() });
+    }, 5000);
+    return () => clearInterval(id);
+  }, [roundStarted]);
+
+  // حفظ حالة اللعبة الكاملة — debounce 300ms
+  // إذا تغيرت cells + scores + winStreak معاً خلال 50ms (إجابة صحيحة)
+  // يُرسَل طلب واحد فقط بعد 300ms بدلاً من 3 طلبات متتالية
+  React.useEffect(() => {
+    if (cells.length === 0) return;
+
+    if (saveStateTimerRef.current) clearTimeout(saveStateTimerRef.current);
+
+    saveStateTimerRef.current = setTimeout(() => {
+      syncManager.saveFullState({
+        cells,
+        settings,
+        scores,
+        currentRound,
+        teamCards,
+        winStreak,
+        winner,
+        winMessage,
+        matchWinner,
+        isLocked,
+        colorsSwapped,
+        isPaused,
+        roundStarted,
+      });
+    }, 300);
+
+    return () => {
+      if (saveStateTimerRef.current) clearTimeout(saveStateTimerRef.current);
+    };
   }, [cells, scores, currentRound, teamCards, winStreak, winner, winMessage, matchWinner, isLocked, colorsSwapped, isPaused, roundStarted, settings]);
 
   // عداد الجرس التنازلي + إغلاق تلقائي بعد انتهاء الـ 5 ثوانٍ
@@ -419,21 +571,22 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   }, [buzzerActiveUntil]);
 
   const handleCellSelect = async (cell: HexCellType) => {
-    // 🎮 لا يمكن اختيار خلية قبل بدء الجولة
-    if (!roundStarted) {
-      console.warn('⚠️ Action blocked: Round not started yet');
-      return;
-    }
-
     // ⏸️ لا يمكن اختيار خلية أثناء الإيقاف المؤقت
-    if (isPaused) {
+    // نستخدم ref لتجنب stale closure في HexCell المحفوظة بـ React.memo
+    if (isPausedRef.current) {
       console.warn('⚠️ Action blocked: Game is paused');
       return;
     }
 
     // 🔒 ACTION LOCK: Prevent cell selection during active processes
-    if (isLocked) {
+    // نستخدم getState() للحصول على القيمة الحالية دائماً (لا stale closure)
+    if (useGameStore.getState().isLocked) {
       console.warn('⚠️ Action blocked: Game is locked during roulette/question');
+      return;
+    }
+
+    // 🎮 منع اختيار الخلايا قبل ضغط زر "ابدأ الجولة"
+    if (!roundStartedRef.current) {
       return;
     }
 
@@ -453,15 +606,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         isGolden: !!cell.isGolden,
       });
 
-      // إذا كانت الخلية تحتوي على بطاقة مخفية أو حرف ذهبي، عرض شاشة التشويق أولاً
-      if (cell.hasCard || cell.isGolden) {
+      if (cell.isGolden) {
+        // ✨ الحرف الذهبي: يُظهر إعلاناً للمقدم والجمهور — لا روليت
+        setShowGoldenAnnouncement(true);
+        syncManager.broadcast({ type: 'GOLDEN_ANNOUNCEMENT', letter: cell.letter });
+      } else if (cell.hasCard) {
+        // 🎴 بطاقة مخفية: عرض شاشة التشويق ثم الروليت
         setShowCardTeaser(true);
-
-        // بث حدث شاشة التشويق لشاشة اللاعبين
         syncManager.broadcast({
           type: 'CARD_TEASER',
           letter: cell.letter,
-          isGolden: !!cell.isGolden,
+          isGolden: false,
         });
       } else {
         // جلب سؤال ذكي من Supabase
@@ -493,6 +648,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const handleRevealCard = () => {
     setShowCardTeaser(false);
     const triggerType = selectedCell?.isGolden ? 'golden' : 'card';
+    const { cells: c, scores: sc, teamCards: tc } = useGameStore.getState();
+    setPreselectedCard(selectSmartCard({ cells: c, scores: sc, teamCards: tc }));
     setRouletteTriggerType(triggerType);
     setShowRoulette(true);
 
@@ -502,8 +659,53 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     });
   };
 
+  // ✨ يُستدعى عندما يضغط المقدم "ابدأ السؤال الذهبي" في إعلان الحرف الذهبي
+  const handleStartGoldenQuestion = async () => {
+    setShowGoldenAnnouncement(false);
+    syncManager.broadcast({ type: 'GOLDEN_DISMISSED' });
+    if (!selectedCell) return;
+
+    setIsLoadingQuestion(true);
+    const question = await getSmartQuestion(selectedCell.letter, settings.selectedCategories);
+    setIsLoadingQuestion(false);
+
+    if (question) {
+      setCurrentQuestion(question.question_text);
+      setCurrentAnswer(question.correct_answer);
+      setCurrentQuestionId(question.id);
+    } else {
+      setCurrentQuestion(`⚠️ لا توجد أسئلة للحرف "${selectedCell.letter}"`);
+      setCurrentAnswer('إجابة تجريبية');
+      setCurrentQuestionId(null);
+    }
+    setShowQuestion(true);
+  };
+
+  // 🏆 يُستدعى عندما يختار المقدم البطاقة من منتقي بطاقة الحرف الذهبي
+  const handleGoldenCardSelected = (card: CardType) => {
+    if (!goldenCardPicker) return;
+    const { team } = goldenCardPicker;
+    setGoldenCardPicker(null);
+
+    addCardToTeam(team, card);
+    recordCardDrawn(card, true); // isGolden=true → لا يُحسب في حد القنابل
+
+    const teamName = settings.teamNames[team];
+    const message = `✨ ${teamName} اختار بطاقة ${CARD_ICONS[card]} من الحرف الذهبي! 🏆`;
+
+    setCardAnimation({ type: card, message });
+    syncManager.broadcast({ type: 'CARD_WON', cardType: card, message });
+
+    setTimeout(() => {
+      setCardAnimation(null);
+      setLocked(false);
+    }, 3500);
+  };
+
   const handleRouletteComplete = async (card: CardType) => {
     setShowRoulette(false);
+    setPreselectedCard(null);
+    recordCardDrawn(card);
 
     // بث حدث انتهاء الروليت للاعبين
     syncManager.broadcast({
@@ -548,7 +750,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     // إذا كنا في وضع الحرف العشوائي: حرّك اللون الأصفر على الشبكة ثم أظهر السؤال
     if (isRandomLetterMode) {
       setIsRandomLetterMode(false);
-      const availableCells = cells.filter(c => c.status === 'unanswered' && !c.isGolden);
+      const availableCells = cells.filter(c => c.status === 'unanswered' && !c.isGolden && !c.hasCard);
 
       if (availableCells.length > 0) {
         const foundTarget = availableCells[Math.floor(Math.random() * availableCells.length)];
@@ -623,8 +825,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       // تحديث عدادات التجميد والدرع بعد كل سؤال
       decrementCounters();
 
-      // Award pending card to the winning team (if any)
-      if (pendingCard) {
+      // ✨ الحرف الذهبي: اعرض منتقي البطاقة بدلاً من الروليت
+      if (selectedCell.isGolden) {
+        setGoldenCardPicker({ team });
+        // لا نفتح القفل هنا — يُفتح بعد اختيار المقدم للبطاقة
+      } else if (pendingCard) {
+        // Award pending card to the winning team (if any)
         addCardToTeam(team, pendingCard);
 
         // Show card awarded animation
@@ -701,8 +907,9 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         return;
       }
 
-      // 🔓 UNLOCK the game after answer is processed (only if no streak reward)
-      if (!settings.enableStreakReward || winStreak[team] < 2) {
+      // 🔓 UNLOCK: لا نفتح القفل إذا كان الحرف ذهبياً (ينتظر اختيار البطاقة)
+      const wasGoldenCell = selectedCell.isGolden;
+      if (!wasGoldenCell && (!settings.enableStreakReward || winStreak[team] < 2)) {
         setLocked(false);
       }
     }
@@ -896,7 +1103,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   // اختيار حرف عشوائي - بالأنيميشن على الشبكة
   const handleRandomLetter = () => {
     if (isLocked || !roundStarted) return;
-    const unansweredCells = cells.filter(c => c.status === 'unanswered');
+    // استبعاد الحرف الذهبي والخلايا التي تحتوي على بطاقة — يُختاران يدوياً من المقدم فقط
+    const unansweredCells = cells.filter(c => c.status === 'unanswered' && !c.isGolden && !c.hasCard);
     if (unansweredCells.length === 0) return;
 
     const targetCell = unansweredCells[Math.floor(Math.random() * unansweredCells.length)];
@@ -906,12 +1114,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     const afterMs = animateCellSelection(unansweredCells, targetCell);
 
     setTimeout(() => {
-      if (targetCell.hasCard || targetCell.isGolden) {
+      if (targetCell.hasCard) {
+        // بطاقة مخفية فقط — الحرف الذهبي مستبعد من الاختيار العشوائي
         setShowCardTeaser(true);
         syncManager.broadcast({
           type: 'CARD_TEASER',
           letter: targetCell.letter,
-          isGolden: !!targetCell.isGolden,
+          isGolden: false,
         });
       } else {
         (async () => {
@@ -945,16 +1154,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     syncManager.broadcast({ type: 'reset-buzzers' });
   };
 
-  // بدء الجولة - يفعّل كل ميزات الجولة
-  const handleStartRound = () => {
-    setRoundStarted(true);
-
-    // بث إشارة بدء الجولة للاعبين
-    syncManager.broadcast({
-      type: 'ROUND_STARTED',
-    });
-  };
-
   // إعادة تعيين الجولة
   const handleResetRound = () => {
     if (window.confirm('هل تريد إعادة تعيين الجولة الحالية؟')) {
@@ -977,6 +1176,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       document.exitFullscreen();
     }
   };
+
+  // حروف كل فريق من الشبكة الحالية
+  const greenLetters = cells.filter(c => c.status === 'green').map(c => c.letter);
+  const redLetters   = cells.filter(c => c.status === 'red').map(c => c.letter);
 
   return (
     <div style={{
@@ -1013,8 +1216,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             gap: isMobile ? '0.5rem' : '0.75rem',
           }}>
             <div style={{
-              width: isMobile ? '36px' : '42px',
-              height: isMobile ? '36px' : '42px',
+              width: '44px',
+              height: '44px',
               borderRadius: '10px',
               background: 'linear-gradient(135deg, #10b981, #14b8a6)',
               display: 'flex',
@@ -1025,11 +1228,22 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               <Users size={isMobile ? 18 : 22} color="white" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700, color: '#10b981', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
                 {settings.teamNames.green}
               </div>
-              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
-                {scores.green}
+              {/* الحروف المجابة */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                {greenLetters.length > 0 ? greenLetters.map((l, i) => (
+                  <span key={i} style={{
+                    minWidth: isMobile ? '18px' : '22px', height: isMobile ? '18px' : '22px',
+                    background: 'rgba(16, 185, 129, 0.25)', border: '1px solid rgba(16, 185, 129, 0.5)',
+                    borderRadius: '4px', fontSize: isMobile ? '0.6rem' : '0.7rem', fontWeight: 900,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981',
+                    padding: '0 2px',
+                  }}>{l}</span>
+                )) : (
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.65rem' }}>لا توجد حروف</span>
+                )}
               </div>
             </div>
             {teamCards.green.length > 0 && (
@@ -1054,8 +1268,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             gap: isMobile ? '0.5rem' : '0.75rem',
           }}>
             <div style={{
-              width: isMobile ? '36px' : '42px',
-              height: isMobile ? '36px' : '42px',
+              width: '44px',
+              height: '44px',
               borderRadius: '10px',
               background: 'linear-gradient(135deg, #ef4444, #dc2626)',
               display: 'flex',
@@ -1066,11 +1280,22 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               <Users size={isMobile ? 18 : 22} color="white" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700, color: '#ef4444', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
                 {settings.teamNames.red}
               </div>
-              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
-                {scores.red}
+              {/* الحروف المجابة */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                {redLetters.length > 0 ? redLetters.map((l, i) => (
+                  <span key={i} style={{
+                    minWidth: isMobile ? '18px' : '22px', height: isMobile ? '18px' : '22px',
+                    background: 'rgba(239, 68, 68, 0.25)', border: '1px solid rgba(239, 68, 68, 0.5)',
+                    borderRadius: '4px', fontSize: isMobile ? '0.6rem' : '0.7rem', fontWeight: 900,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
+                    padding: '0 2px',
+                  }}>{l}</span>
+                )) : (
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.65rem' }}>لا توجد حروف</span>
+                )}
               </div>
             </div>
             {teamCards.red.length > 0 && (
@@ -1133,26 +1358,34 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             {settings.teamNames.green}
           </h3>
 
-          {/* النقاط */}
+          {/* الحروف المجابة */}
           <div style={{
-            textAlign: 'center',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
             marginBottom: '1rem',
           }}>
             <div style={{
-              fontSize: '0.875rem',
-              color: 'rgba(255, 255, 255, 0.7)',
-              marginBottom: '0.5rem',
+              fontSize: '0.72rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.6rem',
+              textAlign: 'center',
             }}>
-              النقاط
+              الحروف المجابة ({greenLetters.length})
             </div>
-            <div style={{
-              fontSize: '4rem',
-              fontWeight: 900,
-              color: '#10b981',
-              textShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
-              lineHeight: 1,
-            }}>
-              {scores.green}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', justifyContent: 'center' }}>
+              {greenLetters.length > 0 ? greenLetters.map((l, i) => (
+                <span key={i} style={{
+                  width: '30px', height: '30px',
+                  background: 'rgba(16, 185, 129, 0.22)', border: '1.5px solid rgba(16, 185, 129, 0.55)',
+                  borderRadius: '8px', fontSize: '0.85rem', fontWeight: 900,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981',
+                }}>{l}</span>
+              )) : (
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', textAlign: 'center', width: '100%', padding: '0.4rem 0' }}>
+                  لا توجد حروف بعد
+                </div>
+              )}
             </div>
           </div>
 
@@ -1246,10 +1479,19 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                           border: `1.5px solid rgba(16,185,129,${isSelected ? '0.7' : '0.35'})`,
                           borderRadius: '0.75rem', padding: '0.4rem',
                           display: 'flex', justifyContent: 'center', cursor: 'pointer',
-                          transition: 'all 0.15s',
+                          transition: 'all 0.15s', position: 'relative',
                           boxShadow: isSelected ? '0 0 14px rgba(16,185,129,0.35)' : 'none',
                         }}>
                         <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={44} />
+                        {/* نقطة Ping صغيرة */}
+                        <div style={{
+                          position: 'absolute', bottom: 2, right: 2,
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: playerPings[player.name] === undefined ? '#6b7280'
+                            : playerPings[player.name] < 150 ? '#10b981'
+                            : playerPings[player.name] < 350 ? '#fbbf24' : '#ef4444',
+                          border: '1.5px solid rgba(0,0,0,0.6)',
+                        }} />
                       </div>
                       {isSelected && (
                         <div style={{
@@ -1259,10 +1501,22 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                           borderRadius: '1rem', padding: '0.7rem 0.8rem 0.5rem',
                           boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 20px rgba(16,185,129,0.25)',
                           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
-                          minWidth: '96px', whiteSpace: 'nowrap',
+                          minWidth: '96px', maxWidth: 'calc(100vw - 2rem)', whiteSpace: 'normal',
                         }}>
                           <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={60} />
                           <div style={{ color: '#10b981', fontWeight: 800, fontSize: '0.75rem', textAlign: 'center' }}>{player.name}</div>
+                          {/* Ping */}
+                          <div style={{
+                            fontSize: '0.6rem', fontWeight: 700,
+                            color: playerPings[player.name] === undefined ? '#6b7280'
+                              : playerPings[player.name] < 150 ? '#10b981'
+                              : playerPings[player.name] < 350 ? '#fbbf24' : '#ef4444',
+                          }}>
+                            {playerPings[player.name] === undefined ? '● جاري القياس...'
+                              : playerPings[player.name] < 150 ? `● ${playerPings[player.name]}ms ممتاز`
+                              : playerPings[player.name] < 350 ? `● ${playerPings[player.name]}ms جيد`
+                              : `● ${playerPings[player.name]}ms ضعيف`}
+                          </div>
                           <button onClick={(e) => { e.stopPropagation(); kickPlayer(player.name); }} style={{
                             marginTop: '0.2rem', padding: '0.25rem 0.6rem', borderRadius: '0.5rem',
                             background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)',
@@ -1310,101 +1564,28 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           position: 'relative',
           overflow: 'hidden',
         }}>
-          {/* 🎮 زر بدء الجولة - يظهر قبل بدء الجولة */}
-          {!roundStarted && (
+          {/* 🔄 مؤشر تحميل الأسئلة — يظهر فقط أثناء التحميل الأولي */}
+          {!questionsReady && (
             <div style={{
               position: 'absolute',
-              inset: 0,
-              background: 'rgba(0, 0, 0, 0.6)',
-              backdropFilter: 'blur(5px)',
+              bottom: '12px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 10,
+              background: 'rgba(0,0,0,0.7)',
+              borderRadius: '12px',
+              padding: '8px 16px',
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 20,
-              gap: '2rem',
+              gap: '8px',
+              pointerEvents: 'none',
             }}>
-              <div style={{
-                textAlign: 'center',
-                color: 'white',
-              }}>
-                <div style={{ fontSize: isMobile ? '2.5rem' : '4rem', marginBottom: isMobile ? '0.5rem' : '1rem' }}>🎮</div>
-                <h2 style={{
-                  fontSize: isMobile ? '1.25rem' : '2rem',
-                  fontWeight: 900,
-                  margin: 0,
-                  marginBottom: '0.5rem',
-                }}>
-                  جاهز للبدء؟
-                </h2>
-                <p style={{
-                  fontSize: isMobile ? '0.875rem' : '1.125rem',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  margin: 0,
-                }}>
-                  افتح شاشة اللاعبين أولاً ثم اضغط على زر البدء
-                </p>
-              </div>
-
-              <button
-                onClick={handleStartRound}
-                style={{
-                  padding: isMobile ? '1rem 2.5rem' : '1.5rem 4rem',
-                  fontSize: isMobile ? '1.25rem' : '1.75rem',
-                  fontWeight: 900,
-                  color: 'white',
-                  background: 'linear-gradient(135deg, #10b981, #059669)',
-                  border: 'none',
-                  borderRadius: '1.5rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  boxShadow: '0 6px 24px rgba(16, 185, 129, 0.35)',
-                  transition: 'all 0.3s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'scale(1.05)';
-                  e.currentTarget.style.boxShadow = '0 8px 30px rgba(16, 185, 129, 0.45)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                  e.currentTarget.style.boxShadow = '0 6px 24px rgba(16, 185, 129, 0.35)';
-                }}
-              >
-                <Play size={32} fill="white" />
-                ابدأ الجولة
-              </button>
-
-              {/* زر فتح شاشة اللاعبين */}
-              <button
-                onClick={() => setShowQRCode(true)}
-                style={{
-                  padding: '1rem 2rem',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  color: '#14b8a6',
-                  background: 'rgba(20, 184, 166, 0.15)',
-                  border: '2px solid rgba(20, 184, 166, 0.5)',
-                  borderRadius: '1rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  transition: 'all 0.2s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(20, 184, 166, 0.25)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(20, 184, 166, 0.15)';
-                }}
-              >
-                <Tv size={20} />
-                فتح شاشة اللاعبين
-              </button>
+              <InlineLoader size={16} color="white" />
+              <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 700 }}>جاري تحميل الأسئلة...</span>
             </div>
           )}
+
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
           {/* 🔒 Overlay when locked */}
           {isLocked && roundStarted && !isPaused && (
@@ -1495,6 +1676,61 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               </button>
             </div>
           )}
+          {/* 🎮 زر "ابدأ الجولة" — يظهر عند الانتقال من الإعدادات */}
+          {!roundStarted && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.55)',
+              backdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 20,
+              borderRadius: '24px',
+            }}>
+              <button
+                onClick={() => {
+                  setRoundStarted(true);
+                  roundStartedRef.current = true;
+                  // اللاعبون قبل بداية اللعبة تم قبولهم فوراً عند تسجيلهم
+                  // نظّف أي طلبات طارئة وابدأ الجولة
+                  setJoinRequests([]);
+                  syncManager.broadcast({ type: 'ROUND_STARTED' });
+                }}
+                style={{
+                  padding: isMobile ? '1rem 2rem' : '1.25rem 3rem',
+                  fontSize: isMobile ? '1.25rem' : '1.75rem',
+                  fontWeight: 900,
+                  color: 'white',
+                  background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
+                  border: '3px solid rgba(167, 139, 250, 0.7)',
+                  borderRadius: '1.5rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  boxShadow: '0 8px 40px rgba(124, 58, 237, 0.6), 0 0 0 8px rgba(124, 58, 237, 0.15)',
+                  animation: 'startBtnPulse 1.8s ease-in-out infinite',
+                  fontFamily: 'Tajawal, sans-serif',
+                  letterSpacing: '0.02em',
+                }}
+              >
+                <Play size={isMobile ? 22 : 28} fill="white" />
+                ابدأ الجولة
+              </button>
+              <style>{`
+                @keyframes startBtnPulse {
+                  0%, 100% { transform: scale(1); box-shadow: 0 8px 40px rgba(124,58,237,0.6), 0 0 0 8px rgba(124,58,237,0.15); }
+                  50% { transform: scale(1.05); box-shadow: 0 12px 50px rgba(124,58,237,0.8), 0 0 0 14px rgba(124,58,237,0.1); }
+                }
+              `}</style>
+            </div>
+          )}
+
           <HexGrid
             cells={cells}
             onCellClick={handleCellSelect}
@@ -1507,73 +1743,321 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
         {/* شريط التحكم */}
         <div style={{
-          overflowX: isMobile ? 'auto' : 'visible',
-          overflowY: 'visible',
-          WebkitOverflowScrolling: 'touch' as any,
-          borderRadius: '2rem',
-          alignSelf: 'center',
-          maxWidth: '100%',
-        }}>
-        <div style={{
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: isMobile ? '0.5rem' : isTablet ? '0.75rem' : '1.25rem',
-          flexWrap: isMobile ? 'nowrap' : 'wrap',
-          background: 'rgba(0, 0, 0, 0.35)',
-          backdropFilter: 'blur(10px)',
-          padding: isMobile ? '0.6rem 1rem' : '0.75rem 1.25rem',
-          borderRadius: '2rem',
-          border: '2px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-          minWidth: isMobile ? 'max-content' : 'auto',
+          gap: '0.5rem',
         }}>
-          {/* Zoom Slider */}
-          <input
-            type="range"
-            min="0.5"
-            max="2"
-            step="0.1"
-            value={zoom}
-            onChange={(e) => {
-              const newZoom = parseFloat(e.target.value);
-              setZoom(newZoom);
-              // Broadcast zoom change to player screens
-              syncManager.broadcast({ type: 'ZOOM_CHANGED', zoom: newZoom });
-            }}
-            style={{
-              width: '120px',
-              height: '6px',
-              borderRadius: '3px',
-              background: 'linear-gradient(90deg, #a855f7, #ec4899)',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
-          />
 
-          {/* الأزرار - 🔒 معطلة أثناء القفل */}
-          <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={isMobile ? 16 : 20} />} title="إعادة الجولة" disabled={isLocked} isMobile={isMobile} />
-          {/* زرا التراجع والإعادة */}
-          <ControlButton onClick={() => undoLastAction()} color="#f59e0b" icon={<Undo2 size={isMobile ? 16 : 20} />} title="تراجع" disabled={isLocked || history.length === 0} isMobile={isMobile} />
-          <ControlButton onClick={() => redoLastAction()} color="#06b6d4" icon={<Redo2 size={isMobile ? 16 : 20} />} title="إعادة" disabled={isLocked || future.length === 0} isMobile={isMobile} />
-          <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={isMobile ? 16 : 20} />} title="ملء الشاشة" disabled={false} isMobile={isMobile} />
-          <ControlButton onClick={() => {
-            const newPausedState = !isPaused;
-            setIsPaused(newPausedState);
-            // بث حالة الإيقاف المؤقت لشاشة اللاعبين
-            syncManager.broadcast({
-              type: 'GAME_PAUSED',
-              isPaused: newPausedState,
-            });
-          }} color={isPaused ? "#10b981" : "#8b5cf6"} icon={isPaused ? <Play size={isMobile ? 16 : 20} /> : <Pause size={isMobile ? 16 : 20} />} title={isPaused ? "استمرار" : "إيقاف مؤقت"} disabled={isLocked} isMobile={isMobile} />
-          <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={isMobile ? 16 : 20} />} title="حرف عشوائي" disabled={isLocked} isMobile={isMobile} />
-          <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={isMobile ? 16 : 20} />} title="عكس الألوان" disabled={isLocked} isMobile={isMobile} />
-          <ControlButton onClick={() => setShowQRCode(true)} color="#14b8a6" icon={<Tv size={isMobile ? 16 : 20} />} title="شاشة اللاعبين" disabled={false} isMobile={isMobile} />
-          <ControlButton onClick={() => setShowBuzzerQRCode(true)} color="#f59e0b" icon={<Zap size={isMobile ? 16 : 20} />} title="Answer Buzzers" disabled={false} isMobile={isMobile} />
-          <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={isMobile ? 16 : 20} />} title="البطاقات" disabled={isLocked} isMobile={isMobile} />
-          <ControlButton onClick={() => setShowOnboarding(true)} color="#6366f1" icon={<HelpCircle size={isMobile ? 16 : 20} />} title="الدليل" disabled={false} isMobile={isMobile} />
+          {/* زر الرجوع للإعدادات */}
+          <button
+            onClick={onBack}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.45rem 1rem',
+              background: 'rgba(255, 255, 255, 0.07)',
+              border: '1.5px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '0.75rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              alignSelf: 'center',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)';
+              e.currentTarget.style.color = 'white';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)';
+              e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+            }}
+          >
+            <Settings size={13} />
+            الرجوع للإعدادات
+          </button>
+
+          {/* الأزرار الرئيسية */}
+          <div style={{
+            overflowX: isMobile ? 'auto' : 'visible',
+            overflowY: 'visible',
+            WebkitOverflowScrolling: 'touch' as any,
+            borderRadius: '2rem',
+            alignSelf: 'center',
+            maxWidth: '100%',
+          }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            gap: isMobile ? '0.4rem' : isTablet ? '0.5rem' : '0.6rem',
+            flexWrap: isMobile ? 'nowrap' : 'wrap',
+            background: 'rgba(0, 0, 0, 0.35)',
+            backdropFilter: 'blur(10px)',
+            padding: isMobile ? '0.6rem 1rem' : '0.85rem 1.25rem',
+            borderRadius: '2rem',
+            border: '2px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+            minWidth: isMobile ? 'max-content' : 'auto',
+          }}>
+            {/* Zoom Slider */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={zoom}
+                onChange={(e) => {
+                  const newZoom = parseFloat(e.target.value);
+                  setZoom(newZoom);
+                  syncManager.broadcast({ type: 'ZOOM_CHANGED', zoom: newZoom });
+                }}
+                style={{
+                  width: isMobile ? '80px' : '110px',
+                  height: '6px',
+                  borderRadius: '3px',
+                  background: 'linear-gradient(90deg, #a855f7, #ec4899)',
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              />
+              {!isMobile && (
+                <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', fontWeight: 700 }}>تكبير الشبكة</span>
+              )}
+            </div>
+
+            {/* الأزرار - 🔒 معطلة أثناء القفل */}
+            <ControlButton onClick={handleResetRound} color="#ef4444" icon={<RefreshCw size={isMobile ? 16 : 20} />} title="إعادة الجولة — تُمسح جميع الخلايا وتبدأ من جديد" label="إعادة الجولة" disabled={isLocked} isMobile={isMobile} />
+            <ControlButton onClick={() => undoLastAction()} color="#f59e0b" icon={<Undo2 size={isMobile ? 16 : 20} />} title="تراجع — إلغاء آخر خطوة" label="تراجع" disabled={isLocked || history.length === 0} isMobile={isMobile} />
+            <ControlButton onClick={() => redoLastAction()} color="#06b6d4" icon={<Redo2 size={isMobile ? 16 : 20} />} title="إعادة — استعادة الخطوة الملغاة" label="إعادة" disabled={isLocked || future.length === 0} isMobile={isMobile} />
+            <ControlButton onClick={handleFullscreen} color="#3b82f6" icon={<Maximize size={isMobile ? 16 : 20} />} title="ملء الشاشة — وضع العرض الكامل للجمهور" label="ملء الشاشة" disabled={false} isMobile={isMobile} />
+            <ControlButton onClick={() => {
+              const newPausedState = !isPaused;
+              setIsPaused(newPausedState);
+              syncManager.broadcast({ type: 'GAME_PAUSED', isPaused: newPausedState });
+            }} color={isPaused ? "#10b981" : "#8b5cf6"} icon={isPaused ? <Play size={isMobile ? 16 : 20} /> : <Pause size={isMobile ? 16 : 20} />} title={isPaused ? "استمرار — استئناف اللعبة" : "إيقاف مؤقت — تجميد جميع الشاشات"} label={isPaused ? "استمرار" : "إيقاف مؤقت"} disabled={isLocked} isMobile={isMobile} />
+            <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={isMobile ? 16 : 20} />} title="حرف عشوائي — تحديد حرف غير مُجاب تلقائياً" label="حرف عشوائي" disabled={isLocked} isMobile={isMobile} />
+            <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={isMobile ? 16 : 20} />} title="عكس الألوان — تبديل اتجاه مسار الفريقين" label="عكس الألوان" disabled={isLocked} isMobile={isMobile} />
+            <ControlButton onClick={() => setShowBuzzerQRCode(true)} color="#10b981" icon={<QrCode size={isMobile ? 16 : 20} />} title="غرفة الانضمام — امسح الباركود للدخول كجارس" label="انضم للغرفة" disabled={false} isMobile={isMobile} />
+            <ControlButton onClick={handleResetBuzzers} color="#f43f5e" icon={<BellOff size={isMobile ? 16 : 20} />} title="ريست الجرس — إلغاء الضغط الحالي وإعادة تعيين الجرس" label="ريست الجرس" disabled={false} isMobile={isMobile} />
+            <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={isMobile ? 16 : 20} />} title="البطاقات — توزيع وإدارة بطاقات الفريقين" label="البطاقات" disabled={isLocked} isMobile={isMobile} />
+            <ControlButton onClick={() => setShowOnboarding(true)} color="#6366f1" icon={<HelpCircle size={isMobile ? 16 : 20} />} title="الدليل — شرح قواعد اللعبة وأدوات المقدم" label="الدليل" disabled={false} isMobile={isMobile} />
+          </div>
+          </div>
         </div>
-        </div>
+
+        {/* ══ قسم المعلومات على الجوال/التابلت فقط (قائمة منسدلة) ══ */}
+        {!isDesktop && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+
+            {/* زر التوسيع/الطي */}
+            <button
+              onClick={() => setShowMobileInfo(v => !v)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                width: '100%',
+                padding: '0.55rem 1rem',
+                background: showMobileInfo ? 'rgba(168, 85, 247, 0.15)' : 'rgba(255, 255, 255, 0.07)',
+                border: `1.5px solid ${showMobileInfo ? 'rgba(168, 85, 247, 0.4)' : 'rgba(255, 255, 255, 0.12)'}`,
+                borderRadius: '0.875rem',
+                color: showMobileInfo ? '#d8b4fe' : 'rgba(255,255,255,0.6)',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <Users size={14} />
+              معلومات الفريقين والحروف والبطاقات
+              {showMobileInfo ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+
+            {/* المحتوى المنسدل */}
+            {showMobileInfo && (
+          <div style={{
+            display: 'flex',
+            gap: '0.6rem',
+            width: '100%',
+          }}>
+
+            {/* بطاقة الفريق الأخضر - تفاصيل كاملة */}
+            <div style={{
+              flex: 1,
+              background: 'rgba(16, 185, 129, 0.07)',
+              border: '1.5px solid rgba(16, 185, 129, 0.25)',
+              borderRadius: '1rem',
+              padding: '0.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.6rem',
+            }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#10b981', textAlign: 'center' }}>
+                {settings.teamNames.green}
+              </div>
+
+              {/* الحروف المجابة */}
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
+                  الحروف المجابة ({greenLetters.length})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                  {greenLetters.length > 0 ? greenLetters.map((l, i) => (
+                    <span key={i} style={{
+                      minWidth: '22px', height: '22px',
+                      background: 'rgba(16, 185, 129, 0.22)', border: '1px solid rgba(16, 185, 129, 0.5)',
+                      borderRadius: '5px', fontSize: '0.72rem', fontWeight: 900,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981', padding: '0 2px',
+                    }}>{l}</span>
+                  )) : (
+                    <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)' }}>لا توجد حروف بعد</span>
+                  )}
+                </div>
+              </div>
+
+              {/* البطاقات الممتلكة */}
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
+                  البطاقات الممتلكة ({teamCards.green.length})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                  {teamCards.green.length > 0 ? teamCards.green.map((card, i) => (
+                    <span key={i} style={{
+                      width: '26px', height: '26px',
+                      background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.45)',
+                      borderRadius: '6px', fontSize: '1rem',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>{CARD_ICONS[card]}</span>
+                  )) : (
+                    <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)' }}>لا توجد بطاقات</span>
+                  )}
+                </div>
+              </div>
+
+              {/* اللاعبون - Answer Buzzers */}
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
+                  اللاعبون ({registeredPlayers.filter(p => p.team === 'green').length})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {registeredPlayers.filter(p => p.team === 'green').length > 0 ? (
+                    registeredPlayers.filter(p => p.team === 'green').map((player, idx) => (
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                        <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={34} />
+                        <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.7)', maxWidth: '38px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                          {player.name}
+                        </span>
+                        <button
+                          onClick={() => kickPlayer(player.name)}
+                          style={{
+                            fontSize: '0.48rem', padding: '1px 5px', borderRadius: '4px',
+                            background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)',
+                            color: '#ef4444', cursor: 'pointer', fontWeight: 800,
+                          }}>طرد</button>
+                      </div>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)' }}>لا يوجد لاعبون</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* بطاقة الفريق الأحمر - تفاصيل كاملة */}
+            <div style={{
+              flex: 1,
+              background: 'rgba(239, 68, 68, 0.07)',
+              border: '1.5px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: '1rem',
+              padding: '0.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.6rem',
+            }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ef4444', textAlign: 'center' }}>
+                {settings.teamNames.red}
+              </div>
+
+              {/* الحروف المجابة */}
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
+                  الحروف المجابة ({redLetters.length})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                  {redLetters.length > 0 ? redLetters.map((l, i) => (
+                    <span key={i} style={{
+                      minWidth: '22px', height: '22px',
+                      background: 'rgba(239, 68, 68, 0.22)', border: '1px solid rgba(239, 68, 68, 0.5)',
+                      borderRadius: '5px', fontSize: '0.72rem', fontWeight: 900,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', padding: '0 2px',
+                    }}>{l}</span>
+                  )) : (
+                    <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)' }}>لا توجد حروف بعد</span>
+                  )}
+                </div>
+              </div>
+
+              {/* البطاقات الممتلكة */}
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
+                  البطاقات الممتلكة ({teamCards.red.length})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                  {teamCards.red.length > 0 ? teamCards.red.map((card, i) => (
+                    <span key={i} style={{
+                      width: '26px', height: '26px',
+                      background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.45)',
+                      borderRadius: '6px', fontSize: '1rem',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>{CARD_ICONS[card]}</span>
+                  )) : (
+                    <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)' }}>لا توجد بطاقات</span>
+                  )}
+                </div>
+              </div>
+
+              {/* اللاعبون - Answer Buzzers */}
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', marginBottom: '4px' }}>
+                  اللاعبون ({registeredPlayers.filter(p => p.team === 'red').length})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {registeredPlayers.filter(p => p.team === 'red').length > 0 ? (
+                    registeredPlayers.filter(p => p.team === 'red').map((player, idx) => (
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                        <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={34} />
+                        <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.7)', maxWidth: '38px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                          {player.name}
+                        </span>
+                        <button
+                          onClick={() => kickPlayer(player.name)}
+                          style={{
+                            fontSize: '0.48rem', padding: '1px 5px', borderRadius: '4px',
+                            background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)',
+                            color: '#ef4444', cursor: 'pointer', fontWeight: 800,
+                          }}>طرد</button>
+                      </div>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.3)' }}>لا يوجد لاعبون</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+      </div>
+        )}
       </div>
 
       {/* لوحة الفريق الأيسر (الأحمر) - Desktop فقط */}
@@ -1625,26 +2109,34 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             {settings.teamNames.red}
           </h3>
 
-          {/* النقاط */}
+          {/* الحروف المجابة */}
           <div style={{
-            textAlign: 'center',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '1rem',
             marginBottom: '1rem',
           }}>
             <div style={{
-              fontSize: '0.875rem',
-              color: 'rgba(255, 255, 255, 0.7)',
-              marginBottom: '0.5rem',
+              fontSize: '0.72rem',
+              color: 'rgba(255, 255, 255, 0.6)',
+              marginBottom: '0.6rem',
+              textAlign: 'center',
             }}>
-              النقاط
+              الحروف المجابة ({redLetters.length})
             </div>
-            <div style={{
-              fontSize: '4rem',
-              fontWeight: 900,
-              color: '#ef4444',
-              textShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
-              lineHeight: 1,
-            }}>
-              {scores.red}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', justifyContent: 'center' }}>
+              {redLetters.length > 0 ? redLetters.map((l, i) => (
+                <span key={i} style={{
+                  width: '30px', height: '30px',
+                  background: 'rgba(239, 68, 68, 0.22)', border: '1.5px solid rgba(239, 68, 68, 0.55)',
+                  borderRadius: '8px', fontSize: '0.85rem', fontWeight: 900,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
+                }}>{l}</span>
+              )) : (
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.75rem', textAlign: 'center', width: '100%', padding: '0.4rem 0' }}>
+                  لا توجد حروف بعد
+                </div>
+              )}
             </div>
           </div>
 
@@ -1738,10 +2230,19 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                           border: `1.5px solid rgba(239,68,68,${isSelected ? '0.7' : '0.35'})`,
                           borderRadius: '0.75rem', padding: '0.4rem',
                           display: 'flex', justifyContent: 'center', cursor: 'pointer',
-                          transition: 'all 0.15s',
+                          transition: 'all 0.15s', position: 'relative',
                           boxShadow: isSelected ? '0 0 14px rgba(239,68,68,0.35)' : 'none',
                         }}>
                         <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={44} />
+                        {/* نقطة Ping صغيرة */}
+                        <div style={{
+                          position: 'absolute', bottom: 2, right: 2,
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: playerPings[player.name] === undefined ? '#6b7280'
+                            : playerPings[player.name] < 150 ? '#10b981'
+                            : playerPings[player.name] < 350 ? '#fbbf24' : '#ef4444',
+                          border: '1.5px solid rgba(0,0,0,0.6)',
+                        }} />
                       </div>
                       {isSelected && (
                         <div style={{
@@ -1751,10 +2252,22 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                           borderRadius: '1rem', padding: '0.7rem 0.8rem 0.5rem',
                           boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 20px rgba(239,68,68,0.25)',
                           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
-                          minWidth: '96px', whiteSpace: 'nowrap',
+                          minWidth: '96px', maxWidth: 'calc(100vw - 2rem)', whiteSpace: 'normal',
                         }}>
                           <CharacterAvatar avatar={player.avatar ?? DEFAULT_AVATAR} size={60} />
                           <div style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.75rem', textAlign: 'center' }}>{player.name}</div>
+                          {/* Ping */}
+                          <div style={{
+                            fontSize: '0.6rem', fontWeight: 700,
+                            color: playerPings[player.name] === undefined ? '#6b7280'
+                              : playerPings[player.name] < 150 ? '#10b981'
+                              : playerPings[player.name] < 350 ? '#fbbf24' : '#ef4444',
+                          }}>
+                            {playerPings[player.name] === undefined ? '● جاري القياس...'
+                              : playerPings[player.name] < 150 ? `● ${playerPings[player.name]}ms ممتاز`
+                              : playerPings[player.name] < 350 ? `● ${playerPings[player.name]}ms جيد`
+                              : `● ${playerPings[player.name]}ms ضعيف`}
+                          </div>
                           <button onClick={(e) => { e.stopPropagation(); kickPlayer(player.name); }} style={{
                             marginTop: '0.2rem', padding: '0.25rem 0.6rem', borderRadius: '0.5rem',
                             background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.45)',
@@ -1779,6 +2292,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           </div>
         </div>
       </div>
+      )}
+
+      {/* شريط تحميل السؤال — يظهر بين الضغط على الخلية وظهور السؤال */}
+      {isLoadingQuestion && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0,
+          zIndex: 1500, pointerEvents: 'none',
+        }}>
+          <LoadingBar height={4} color="#a855f7" duration={1.1} />
+        </div>
       )}
 
       {/* نافذة السؤال */}
@@ -1854,7 +2377,43 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               borderRadius: '1.5rem',
               padding: isMobile ? '1rem' : '2rem',
               marginBottom: isMobile ? '1rem' : '2rem',
+              position: 'relative',
             }}>
+              {/* أيقونة إظهار/إخفاء السؤال على شاشة اللاعبين */}
+              <button
+                onClick={() => {
+                  const next = !showQuestionOnPlayers;
+                  setShowQuestionOnPlayers(next);
+                  if (next) {
+                    syncManager.broadcast({
+                      type: 'SHOW_QUESTION_TO_PLAYERS',
+                      question: currentQuestion,
+                      letter: selectedCell?.letter ?? '',
+                    });
+                  } else {
+                    syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
+                  }
+                }}
+                title={showQuestionOnPlayers ? 'إخفاء السؤال من شاشة اللاعبين' : 'إظهار السؤال على شاشة اللاعبين'}
+                style={{
+                  position: 'absolute',
+                  top: '0.55rem',
+                  left: '0.55rem',
+                  width: isMobile ? '30px' : '36px',
+                  height: isMobile ? '30px' : '36px',
+                  borderRadius: '50%',
+                  background: showQuestionOnPlayers ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.08)',
+                  border: `1.5px solid ${showQuestionOnPlayers ? 'rgba(16,185,129,0.55)' : 'rgba(255,255,255,0.18)'}`,
+                  color: showQuestionOnPlayers ? '#10b981' : 'rgba(255,255,255,0.45)',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s',
+                  flexShrink: 0,
+                }}
+              >
+                {showQuestionOnPlayers ? <EyeOff size={isMobile ? 14 : 17} /> : <Eye size={isMobile ? 14 : 17} />}
+              </button>
+
               <div style={{
                 color: 'white',
                 fontSize: isMobile ? '1.1rem' : '1.5rem',
@@ -1862,7 +2421,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               }}>
                 {currentQuestion}
               </div>
-              
             </div>
           {/* 3. ✅ صندوق الإجابة (تم نقله ليصبح تحت السؤال) */}
             {currentAnswer && (
@@ -1925,7 +2483,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               </button>
             </div>
 
-            {/* صف تغيير السؤال + إظهار السؤال للاعبين */}
+            {/* صف تغيير السؤال + ريست الجرس */}
             <div style={{ display: 'flex', gap: isMobile ? '0.4rem' : '0.6rem' }}>
               <button
                 onClick={handleChangeQuestion}
@@ -1949,30 +2507,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                 تغيير السؤال
               </button>
 
-              {/* زر إظهار/إخفاء السؤال في شاشة اللاعبين */}
+              {/* زر ريست الجرس */}
               <button
-                onClick={() => {
-                  const next = !showQuestionOnPlayers;
-                  setShowQuestionOnPlayers(next);
-                  if (next) {
-                    syncManager.broadcast({
-                      type: 'SHOW_QUESTION_TO_PLAYERS',
-                      question: currentQuestion,
-                      letter: selectedCell?.letter ?? '',
-                    });
-                  } else {
-                    syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
-                  }
-                }}
+                onClick={handleResetBuzzers}
                 style={{
                   flex: 1,
                   padding: isMobile ? '0.875rem' : '1.25rem',
-                  background: showQuestionOnPlayers
-                    ? 'rgba(16, 185, 129, 0.25)'
-                    : 'rgba(20, 184, 166, 0.12)',
-                  border: `2px solid ${showQuestionOnPlayers ? 'rgba(16,185,129,0.7)' : 'rgba(20,184,166,0.35)'}`,
+                  background: 'rgba(244,63,94,0.15)',
+                  border: '2px solid rgba(244,63,94,0.45)',
                   borderRadius: '1rem',
-                  color: showQuestionOnPlayers ? '#10b981' : '#14b8a6',
+                  color: '#f43f5e',
                   fontSize: isMobile ? '0.8rem' : '0.95rem',
                   fontWeight: 900,
                   cursor: 'pointer',
@@ -1980,10 +2524,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.4rem',
-                  transition: 'all 0.2s',
                 }}
               >
-                {showQuestionOnPlayers ? '👁️ مخفي السؤال' : '📺 أظهر للاعبين'}
+                <BellOff size={isMobile ? 15 : 18} />
+                ريست الجرس
               </button>
             </div>
           </div>
@@ -2111,6 +2655,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             <button
               onClick={() => {
                 setShowStreakAnnouncement(false);
+                const { cells: c, scores: sc, teamCards: tc } = useGameStore.getState();
+                setPreselectedCard(selectSmartCard({ cells: c, scores: sc, teamCards: tc }));
                 setRouletteTriggerType('card');
                 setShowRoulette(true);
                 syncManager.broadcast({ type: 'ROULETTE_START', triggerType: 'card' });
@@ -2222,14 +2768,163 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         />
       )}
 
-      {/* شاشة التشويق قبل كشف البطاقة */}
-      {showCardTeaser && selectedCell && (
+      {/* شاشة التشويق قبل كشف البطاقة (للبطاقات المخفية العادية فقط) */}
+      {showCardTeaser && selectedCell && !selectedCell.isGolden && (
         <CardTeaserOverlay
           letter={selectedCell.letter}
-          isGolden={!!selectedCell.isGolden}
+          isGolden={false}
           isHost={true}
           onReveal={handleRevealCard}
         />
+      )}
+
+      {/* ✨ إعلان الحرف الذهبي (للمقدم فقط — لا روليت) */}
+      {showGoldenAnnouncement && selectedCell && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 2400,
+          background: 'linear-gradient(135deg,#1a0a00 0%,#3d2000 50%,#1a0a00 100%)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: isMobile ? '1.25rem' : '2rem',
+        }}>
+          {/* وهج خلفي */}
+          <div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none',
+            background: `
+              radial-gradient(circle at 30% 70%, rgba(251,191,36,0.25) 0%, transparent 45%),
+              radial-gradient(circle at 70% 30%, rgba(245,158,11,0.25) 0%, transparent 45%)
+            `,
+          }} />
+
+          {/* أيقونة */}
+          <div style={{
+            fontSize: isMobile ? '4rem' : '6rem',
+            animation: 'gaStarSpin 2s linear infinite',
+            position: 'relative', zIndex: 1,
+          }}>✨</div>
+
+          {/* الحرف */}
+          <div style={{
+            fontSize: isMobile ? '3.5rem' : '5.5rem',
+            fontWeight: 900,
+            color: '#fbbf24',
+            textShadow: '0 0 30px rgba(251,191,36,0.8), 0 4px 12px rgba(0,0,0,0.5)',
+            lineHeight: 1,
+            position: 'relative', zIndex: 1,
+          }}>{selectedCell.letter}</div>
+
+          {/* الرسالة */}
+          <div style={{
+            background: 'rgba(251,191,36,0.1)',
+            border: '2px solid rgba(251,191,36,0.4)',
+            borderRadius: '1.25rem',
+            padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
+            textAlign: 'center', maxWidth: isMobile ? '90vw' : '520px',
+            position: 'relative', zIndex: 1,
+          }}>
+            <div style={{ fontSize: isMobile ? '1.1rem' : '1.5rem', fontWeight: 900, color: '#fbbf24', marginBottom: '0.5rem' }}>
+              حرف ذهبي! ✨
+            </div>
+            <div style={{ fontSize: isMobile ? '0.95rem' : '1.15rem', color: 'rgba(255,255,255,0.85)', lineHeight: 1.6 }}>
+              من يفوز بهذا السؤال سيختار بطاقة من اختياره!
+            </div>
+          </div>
+
+          {/* زر بدء السؤال */}
+          <button
+            onClick={handleStartGoldenQuestion}
+            style={{
+              padding: isMobile ? '0.9rem 2rem' : '1.1rem 3rem',
+              background: 'linear-gradient(135deg,#fbbf24,#f59e0b)',
+              border: 'none', borderRadius: '1rem',
+              color: '#1a0800', fontSize: isMobile ? '1rem' : '1.2rem', fontWeight: 900,
+              cursor: 'pointer', position: 'relative', zIndex: 1,
+              boxShadow: '0 8px 28px rgba(251,191,36,0.5)',
+            }}
+          >
+            ⭐ ابدأ السؤال الذهبي
+          </button>
+
+          <style>{`
+            @keyframes gaStarSpin { 0%,100%{transform:rotate(-10deg) scale(1);} 50%{transform:rotate(10deg) scale(1.1);} }
+          `}</style>
+        </div>
+      )}
+
+      {/* 🏆 منتقي البطاقة للفريق الفائز بالحرف الذهبي */}
+      {goldenCardPicker && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 2400,
+          background: 'rgba(0,0,0,0.88)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: isMobile ? '1.25rem' : '2rem',
+        }}>
+          {/* العنوان */}
+          <div style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
+            <div style={{ fontSize: isMobile ? '2.5rem' : '4rem', marginBottom: '0.5rem' }}>🏆</div>
+            <h2 style={{
+              fontSize: isMobile ? '1.4rem' : '2rem', fontWeight: 900,
+              color: goldenCardPicker.team === 'green' ? '#10b981' : '#ef4444',
+              margin: 0, textShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            }}>
+              {settings.teamNames[goldenCardPicker.team]} فاز بالحرف الذهبي!
+            </h2>
+            <p style={{
+              color: 'rgba(255,255,255,0.75)', fontSize: isMobile ? '0.9rem' : '1.1rem',
+              marginTop: '0.5rem',
+            }}>
+              اختر البطاقة التي يريدها الفريق:
+            </p>
+          </div>
+
+          {/* شبكة البطاقات */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)',
+            gap: isMobile ? '0.75rem' : '1.25rem',
+            width: isMobile ? '90vw' : 'auto',
+          }}>
+            {([
+              { id: 'freeze' as CardType, name: 'التجميد',  icon: '🧊', color: '#3b82f6' },
+              { id: 'bomb'   as CardType, name: 'القنبلة',  icon: '💣', color: '#ef4444' },
+              { id: 'battle' as CardType, name: 'المعركة',  icon: '⚔️', color: '#f97316' },
+              { id: 'shield' as CardType, name: 'الدرع',    icon: '🛡️', color: '#10b981' },
+            ]).map(card => (
+              <button
+                key={card.id}
+                onClick={() => handleGoldenCardSelected(card.id)}
+                style={{
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: '0.5rem',
+                  padding: isMobile ? '1rem' : '1.5rem 1.75rem',
+                  background: `linear-gradient(145deg,${card.color}22,${card.color}11)`,
+                  border: `3px solid ${card.color}`,
+                  borderRadius: '1.25rem',
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s, box-shadow 0.15s',
+                  boxShadow: `0 4px 18px ${card.color}40`,
+                  minWidth: isMobile ? 0 : '130px',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-4px) scale(1.05)';
+                  e.currentTarget.style.boxShadow = `0 12px 32px ${card.color}70`;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.boxShadow = `0 4px 18px ${card.color}40`;
+                }}
+              >
+                <span style={{ fontSize: isMobile ? '2.5rem' : '3rem' }}>{card.icon}</span>
+                <span style={{ fontSize: isMobile ? '0.9rem' : '1rem', fontWeight: 800, color: 'white' }}>
+                  {card.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* روليت البطاقات */}
@@ -2237,6 +2932,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         <CardRoulette
           onComplete={handleRouletteComplete}
           triggerType={rouletteTriggerType}
+          preselectedCard={preselectedCard}
         />
       )}
 
@@ -2441,8 +3137,11 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           greenTeamName={settings.teamNames.green}
           redTeamName={settings.teamNames.red}
           onClose={() => {
-            const { resetGame } = useGameStore.getState();
-            resetGame();
+            const { dismissWinner } = useGameStore.getState();
+            dismissWinner();
+            setLocked(false);
+            setShowQuestion(false);
+            setSelectedCell(null);
           }}
           onNewGame={() => {
             const { resetGame, initializeGrid, nextRound, currentRound, settings: storeSettings } = useGameStore.getState();
@@ -2459,6 +3158,8 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               initializeGrid();
             }
 
+            // إعادة تعيين إحصاءات الروليت للجولة الجديدة (حد القنابل وغيرها)
+            resetRoundStats();
             // إعادة تفعيل الحرف العشوائي للجولة الجديدة
             setHasTriggeredRandomLetter(false);
             // بدء الجولة تلقائياً
@@ -2484,6 +3185,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           onNewSettings={() => {
             // الذهاب لشاشة الإعدادات
             resetMatch();
+            resetCardHistory();
             syncManager.broadcast({
               type: 'MATCH_RESET',
             });
@@ -2493,6 +3195,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           onRestartMatch={() => {
             // إعادة نفس المباراة بنفس الإعدادات
             resetMatch();
+            resetCardHistory();
             initializeGrid(settings);
             setHasTriggeredRandomLetter(false);
             setRoundStarted(false);
@@ -2505,6 +3208,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           onGoHome={() => {
             // العودة للصفحة الرئيسية (Landing Page)
             resetMatch();
+            resetCardHistory();
             syncManager.broadcast({
               type: 'MATCH_RESET',
             });
@@ -2515,20 +3219,92 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         />
       )}
 
-      {/* مودال QR Code لربط الأجهزة */}
-      {showQRCode && (
-        <QRCodeModal
-          sessionId={sessionId}
-          onClose={() => setShowQRCode(false)}
-        />
-      )}
-
       {/* مودال QR Code للأزرار */}
       {showBuzzerQRCode && (
         <BuzzerQRCodeModal
           sessionId={sessionId}
           onClose={() => setShowBuzzerQRCode(false)}
         />
+      )}
+
+      {/* ═══════════════════════════════════════════════
+           طلبات الانضمام في منتصف اللعبة
+          ═══════════════════════════════════════════════ */}
+      {joinRequests.length > 0 && (
+        <div style={{
+          position: 'fixed', bottom: '1.5rem', left: '1.5rem',
+          zIndex: 9500, display: 'flex', flexDirection: 'column', gap: '0.6rem',
+          maxWidth: '300px',
+        }}>
+          {joinRequests.map((req) => {
+            const rc = req.team === 'green' ? '#10b981' : '#ef4444';
+            return (
+              <div key={req.name} style={{
+                background: 'rgba(10,5,25,0.96)',
+                border: `2px solid ${rc}70`,
+                borderRadius: '1.1rem',
+                padding: '0.75rem 0.9rem',
+                boxShadow: `0 8px 28px rgba(0,0,0,0.7), 0 0 20px ${rc}25`,
+                display: 'flex', flexDirection: 'column', gap: '0.55rem',
+                animation: 'buzzerFadeIn 0.3s ease-out',
+              }}>
+                {/* الهيدر */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{
+                    background: `${rc}20`, border: `1px solid ${rc}50`,
+                    borderRadius: '50%', width: '36px', height: '36px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <CharacterAvatar avatar={req.avatar ?? DEFAULT_AVATAR} size={28} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 900, color: 'white' }}>{req.name}</div>
+                    <div style={{
+                      fontSize: '0.62rem', fontWeight: 700,
+                      color: rc, background: `${rc}18`,
+                      border: `1px solid ${rc}40`, borderRadius: '2rem',
+                      padding: '1px 6px', display: 'inline-block',
+                    }}>
+                      {req.team === 'green' ? '🟢 أخضر' : '🔴 أحمر'}
+                    </div>
+                  </div>
+                  <div style={{
+                    marginRight: 'auto',
+                    background: 'rgba(251,191,36,0.15)',
+                    border: '1px solid rgba(251,191,36,0.4)',
+                    borderRadius: '2rem', padding: '2px 7px',
+                    fontSize: '0.58rem', fontWeight: 800, color: '#fbbf24',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    طلب انضمام
+                  </div>
+                </div>
+
+                {/* أزرار القبول والرفض */}
+                <div style={{ display: 'flex', gap: '0.45rem' }}>
+                  <button onClick={() => approveJoinRequest(req.name)} style={{
+                    flex: 1, padding: '0.45rem', borderRadius: '0.7rem', border: 'none',
+                    background: 'linear-gradient(135deg,#10b981,#059669)',
+                    color: 'white', fontWeight: 800, fontSize: '0.78rem',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem',
+                    boxShadow: '0 2px 10px rgba(16,185,129,0.4)',
+                  }}>
+                    <UserCheck size={14} /> قبول
+                  </button>
+                  <button onClick={() => rejectJoinRequest(req.name)} style={{
+                    flex: 1, padding: '0.45rem', borderRadius: '0.7rem', border: 'none',
+                    background: 'linear-gradient(135deg,#ef4444,#dc2626)',
+                    color: 'white', fontWeight: 800, fontSize: '0.78rem',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem',
+                    boxShadow: '0 2px 10px rgba(239,68,68,0.4)',
+                  }}>
+                    <UserX size={14} /> رفض
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* إشعار ضغط الزر */}
@@ -2706,25 +3482,28 @@ const ControlButton: React.FC<{
   color: string;
   icon: React.ReactNode;
   title: string;
+  label?: string;
   disabled?: boolean;
   isMobile?: boolean;
-}> = ({ onClick, color, icon, title, disabled = false, isMobile = false }) => {
-  const size = isMobile ? 40 : 48;
+}> = ({ onClick, color, icon, title, label, disabled = false, isMobile = false }) => {
   return (
     <button
       onClick={disabled ? undefined : onClick}
       title={disabled ? '🔒 معطل أثناء المعالجة' : title}
       disabled={disabled}
       style={{
-        width: `${size}px`,
-        height: `${size}px`,
+        minWidth: isMobile ? '40px' : '52px',
+        height: isMobile ? '40px' : 'auto',
         borderRadius: '12px',
         background: disabled ? 'rgba(100, 100, 100, 0.3)' : `${color}33`,
         border: disabled ? '2px solid rgba(100, 100, 100, 0.5)' : `2px solid ${color}66`,
         color: disabled ? 'rgba(200, 200, 200, 0.5)' : color,
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        gap: '4px',
+        padding: isMobile ? '8px' : '8px 10px 7px',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
         transition: 'all 0.2s',
@@ -2743,6 +3522,11 @@ const ControlButton: React.FC<{
       }}
     >
       {icon}
+      {label && (
+        <span style={{ fontSize: isMobile ? '0.52rem' : '0.6rem', fontWeight: 700, whiteSpace: 'nowrap', lineHeight: 1 }}>
+          {label}
+        </span>
+      )}
     </button>
   );
 };

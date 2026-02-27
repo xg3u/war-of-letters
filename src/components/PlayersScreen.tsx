@@ -8,9 +8,6 @@ import { syncManager } from '../utils/SyncManager';
 import { useScreenSize } from '../hooks/useScreenSize';
 import { playBellSound, playCardSound } from '../utils/sounds';
 import { HexGrid } from './HexGrid';
-import { CardAnimation } from './CardAnimation';
-import { CardRoulette } from './CardRoulette';
-import { CardTeaserOverlay } from './CardTeaserOverlay';
 import { StreakVisualizer } from './StreakVisualizer';
 import { MatchScoreTracker } from './MatchScoreTracker';
 import { MatchWinnerOverlay } from './MatchWinnerOverlay';
@@ -19,7 +16,10 @@ import { BuzzerQRCodeModal } from './BuzzerQRCodeModal';
 import { PlayerGuide } from './PlayerGuide';
 import { getWinStats } from '../utils/winChecker';
 import { useTheme } from '../context/ThemeContext';
+import { LoadingBar } from './LoadingBar';
 import { CharacterAvatar, DEFAULT_AVATAR } from './CharacterAvatar';
+import { CardRoulette } from './CardRoulette';
+import { CardAnimation } from './CardAnimation';
 import type { AvatarConfig } from './CharacterAvatar';
 import type { GameSettingsData } from './GameSettings';
 import type { HexCell as HexCellType, CardType } from '../core/types';
@@ -53,11 +53,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   });
   const [isSyncing, setIsSyncing] = React.useState(!localSettings);
   const { cells, syncFromExternal, scores, teamCards, winStreak, currentRound } = useGameStore();
-  const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [zoom, setZoom] = React.useState(1);
-  const [showRoulette, setShowRoulette] = React.useState(false);
-  const [rouletteTriggerType, setRouletteTriggerType] = React.useState<'card' | 'golden'>('card');
-  const [syncedCard, setSyncedCard] = React.useState<CardType | null>(null);
   const [showRandomLetterAnnouncement, setShowRandomLetterAnnouncement] = React.useState(false);
   const [localStreak, setLocalStreak] = React.useState(winStreak);
   const [localScores, setLocalScores] = React.useState(scores);
@@ -92,12 +88,16 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const [localWinner, setLocalWinner] = React.useState<'green' | 'red' | null>(null); // فائز الجولة
   const [localWinMessage, setLocalWinMessage] = React.useState<string | null>(null); // رسالة الفوز
   const [isPaused, setIsPaused] = React.useState(false); // حالة الإيقاف المؤقت
-  const [showCardTeaser, setShowCardTeaser] = React.useState<{ letter: string; isGolden: boolean } | null>(null); // شاشة التشويق
   const [showBuzzerQRCode, setShowBuzzerQRCode] = React.useState(false); // إظهار QR Code للأزرار
   const [sessionEnded, setSessionEnded] = React.useState(false); // انتهت الجلسة
   const [forcedQuestion, setForcedQuestion] = React.useState<{ question: string; letter: string } | null>(null); // سؤال أظهره المقدم
   const [streakAnnouncement, setStreakAnnouncement] = React.useState<{ team: 'green' | 'red'; teamName: string } | null>(null); // إعلان السلسلة
   const [showGuide, setShowGuide] = React.useState(() => !localStorage.getItem('players-guide-done')); // إظهار دليل اللاعبين
+  // ── روليت البطاقات (viewer mode — sync من المقدم فقط) ──────────────────
+  const [showRoulette, setShowRoulette] = React.useState(false);
+  const [syncedCard, setSyncedCard] = React.useState<CardType | null>(null);
+  const [rouletteTriggerType, setRouletteTriggerType] = React.useState<'card' | 'golden'>('card');
+  const [cardAnimation, setCardAnimation] = React.useState<{ type: CardType | 'cardFound'; message?: string } | null>(null);
   // session ID من URL أو localStorage — لا يحتاج إدخال يدوي
   const [sessionId] = React.useState(() => {
     const urlSession = new URLSearchParams(window.location.search).get('session');
@@ -166,12 +166,6 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         if (data.teamCards) {
           setLocalTeamCards(data.teamCards);
         }
-      } else if (data.type === 'CARD_ANIMATION') {
-        // أنيميشن البطاقة المنفصل
-        setCardAnimation({
-          type: data.cardType,
-          message: data.message,
-        });
       } else if (data.type === 'CARD_ADDED') {
         // تحديث البطاقات عند إضافة بطاقة جديدة
         if (data.teamCards) {
@@ -187,30 +181,6 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         setSessionEnded(true);
       } else if (data.type === 'ZOOM_CHANGED' && typeof data.zoom === 'number') {
         setZoom(data.zoom);
-      } else if (data.type === 'CARD_TEASER') {
-        // شاشة التشويق قبل كشف البطاقة
-        setShowCardTeaser({ letter: data.letter, isGolden: !!data.isGolden });
-      } else if (data.type === 'ROULETTE_START') {
-        // بدء الروليت في شاشة اللاعبين
-        setShowCardTeaser(null); // إخفاء شاشة التشويق
-        setRouletteTriggerType(data.triggerType || 'card');
-        setSyncedCard(null);
-        setShowRoulette(true);
-      } else if (data.type === 'ROULETTE_END') {
-        // انتهاء الروليت - تحديث البطاقة المختارة
-        setSyncedCard(data.card);
-      } else if (data.type === 'CARD_FOUND') {
-        // رسالة ظهور البطاقة (قبل السؤال)
-        setCardAnimation({
-          type: data.cardType,
-          message: data.message,
-        });
-      } else if (data.type === 'CARD_WON') {
-        // رسالة فوز الفريق بالبطاقة (بعد الإجابة)
-        setCardAnimation({
-          type: data.cardType,
-          message: data.message,
-        });
       } else if (data.type === 'RANDOM_LETTER_ANNOUNCEMENT') {
         // إعلان الحرف العشوائي
         setShowRandomLetterAnnouncement(true);
@@ -314,6 +284,23 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         // إعادة تعيين الأزرار
         setBuzzerPress(null);
         setBuzzerActiveUntil(null);
+      } else if (data.type === 'ROULETTE_START') {
+        setSyncedCard(null);
+        setRouletteTriggerType(data.triggerType || 'card');
+        setShowRoulette(true);
+      } else if (data.type === 'ROULETTE_END') {
+        setSyncedCard(data.card);
+      } else if (
+        data.type === 'CARD_ANIMATION' ||
+        data.type === 'CARD_FOUND' ||
+        data.type === 'CARD_WON' ||
+        data.type === 'STREAK_REWARD_CARD'
+      ) {
+        setCardAnimation({ type: data.cardType, message: data.message });
+      } else if (data.type === 'MATCH_VICTORY' || data.type === 'reset-buzzers') {
+        setShowRoulette(false);
+        setSyncedCard(null);
+        setCardAnimation(null);
       } else if (data.type === 'player-registered') {
         // إضافة أو تحديث لاعب (يُحدَّث الفريق والأفاتار إذا تغيّرا)
         setRegisteredPlayers(prev => {
@@ -462,35 +449,39 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         justifyContent: 'center',
         gap: '2rem',
       }}>
-        {/* Spinner */}
+        {/* أيقونة */}
         <div style={{
-          width: isMobile ? '60px' : '76px',
-          height: isMobile ? '60px' : '76px',
-          border: `5px solid ${theme.cardBorder}`,
-          borderTopColor: theme.accent,
-          borderRadius: '50%',
-          animation: 'spin 0.9s linear infinite',
-        }} />
+          fontSize: isMobile ? '2.8rem' : '3.5rem',
+          animation: 'psIconPulse 2s ease-in-out infinite',
+        }}>🎮</div>
 
-        <div style={{ textAlign: 'center', padding: '0 1.5rem' }}>
+        <div style={{ textAlign: 'center', padding: '0 1.5rem', width: '100%', maxWidth: '320px' }}>
           <div style={{
             color: theme.textPrimary,
-            fontSize: isMobile ? '1.3rem' : '1.6rem',
+            fontSize: isMobile ? '1.2rem' : '1.5rem',
             fontWeight: 800,
-            marginBottom: '0.6rem',
+            marginBottom: '1rem',
           }}>
-            🎮 جاري الاتصال بشاشة المقدم...
+            جاري الاتصال بشاشة المقدم...
           </div>
+
+          {/* شريط التحميل */}
+          <LoadingBar color={theme.accent} height={5} />
+
           <div style={{
             color: theme.textSecondary,
-            fontSize: isMobile ? '0.9rem' : '1rem',
+            fontSize: isMobile ? '0.85rem' : '0.95rem',
+            marginTop: '0.75rem',
           }}>
             انتظر حتى يبدأ المقدم الجلسة
           </div>
         </div>
 
         <style>{`
-          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes psIconPulse {
+            0%,100% { transform: scale(1);    }
+            50%      { transform: scale(1.1); }
+          }
         `}</style>
       </div>
     );
@@ -498,6 +489,10 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
 
   // الإعدادات متاحة - عرض الشاشة الكاملة
   const settings = localSettings;
+
+  // حروف كل فريق من الشبكة الحالية
+  const greenLetters = cells.filter(c => c.status === 'green').map(c => c.letter);
+  const redLetters   = cells.filter(c => c.status === 'red').map(c => c.letter);
 
   return (
     <div style={{
@@ -544,7 +539,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           e.currentTarget.style.transform = 'scale(1)';
           e.currentTarget.style.boxShadow = '0 8px 24px rgba(168, 85, 247, 0.4)';
         }}
-        title="دليل اللاعبين"
+        title="دليل اللاعبين — شرح شاشة العرض والألوان"
       >
         <HelpCircle size={isMobile ? 24 : 28} color="white" />
       </button>
@@ -577,7 +572,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
           e.currentTarget.style.transform = 'scale(1)';
           e.currentTarget.style.boxShadow = '0 8px 24px rgba(245, 158, 11, 0.4)';
         }}
-        title="Answer Buzzers - افتح شاشة الأزرار"
+        title="انضم للجرس — افتح شاشة الإجابة على هاتفك"
       >
         <Zap size={isMobile ? 24 : 28} color="white" />
       </button>
@@ -615,11 +610,21 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               <Users size={isMobile ? 18 : 22} color="white" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700, color: '#10b981', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
                 {settings.teamNames.green}
               </div>
-              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#10b981', lineHeight: 1 }}>
-                {localScores.green}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                {greenLetters.length > 0 ? greenLetters.map((l, i) => (
+                  <span key={i} style={{
+                    minWidth: isMobile ? '18px' : '22px', height: isMobile ? '18px' : '22px',
+                    background: 'rgba(16, 185, 129, 0.25)', border: '1px solid rgba(16, 185, 129, 0.5)',
+                    borderRadius: '4px', fontSize: isMobile ? '0.6rem' : '0.7rem', fontWeight: 900,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981',
+                    padding: '0 2px',
+                  }}>{l}</span>
+                )) : (
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.65rem' }}>لا توجد حروف</span>
+                )}
               </div>
             </div>
             {localTeamCards.green.length > 0 && (
@@ -656,11 +661,21 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
               <Users size={isMobile ? 18 : 22} color="white" />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.75rem' : '0.875rem', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700, color: '#ef4444', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
                 {settings.teamNames.red}
               </div>
-              <div style={{ fontSize: isMobile ? '1.75rem' : '2.25rem', fontWeight: 900, color: '#ef4444', lineHeight: 1 }}>
-                {localScores.red}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                {redLetters.length > 0 ? redLetters.map((l, i) => (
+                  <span key={i} style={{
+                    minWidth: isMobile ? '18px' : '22px', height: isMobile ? '18px' : '22px',
+                    background: 'rgba(239, 68, 68, 0.25)', border: '1px solid rgba(239, 68, 68, 0.5)',
+                    borderRadius: '4px', fontSize: isMobile ? '0.6rem' : '0.7rem', fontWeight: 900,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
+                    padding: '0 2px',
+                  }}>{l}</span>
+                )) : (
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.65rem' }}>لا توجد حروف</span>
+                )}
               </div>
             </div>
             {localTeamCards.red.length > 0 && (
@@ -724,16 +739,29 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             {settings.teamNames.green}
           </div>
 
-          {/* Score */}
+          {/* الحروف المجابة */}
           <div style={{
-            fontSize: '4rem',
-            fontWeight: 900,
-            color: '#10b981',
-            textShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
-            lineHeight: 1,
-            textAlign: 'center',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '0.75rem',
           }}>
-            {scores.green}
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', marginBottom: '0.5rem', textAlign: 'center' }}>
+              الحروف المجابة ({greenLetters.length})
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
+              {greenLetters.length > 0 ? greenLetters.map((l, i) => (
+                <span key={i} style={{
+                  width: '28px', height: '28px',
+                  background: 'rgba(16, 185, 129, 0.22)', border: '1.5px solid rgba(16, 185, 129, 0.55)',
+                  borderRadius: '7px', fontSize: '0.8rem', fontWeight: 900,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981',
+                }}>{l}</span>
+              )) : (
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', width: '100%', padding: '0.3rem 0' }}>
+                  لا توجد حروف بعد
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Card Inventory */}
@@ -934,16 +962,29 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
             {settings.teamNames.red}
           </div>
 
-          {/* Score */}
+          {/* الحروف المجابة */}
           <div style={{
-            fontSize: '4rem',
-            fontWeight: 900,
-            color: '#ef4444',
-            textShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
-            lineHeight: 1,
-            textAlign: 'center',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderRadius: '1rem',
+            padding: '0.75rem',
           }}>
-            {scores.red}
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', marginBottom: '0.5rem', textAlign: 'center' }}>
+              الحروف المجابة ({redLetters.length})
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'center' }}>
+              {redLetters.length > 0 ? redLetters.map((l, i) => (
+                <span key={i} style={{
+                  width: '28px', height: '28px',
+                  background: 'rgba(239, 68, 68, 0.22)', border: '1.5px solid rgba(239, 68, 68, 0.55)',
+                  borderRadius: '7px', fontSize: '0.8rem', fontWeight: 900,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
+                }}>{l}</span>
+              )) : (
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', width: '100%', padding: '0.3rem 0' }}>
+                  لا توجد حروف بعد
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Card Inventory */}
@@ -1146,17 +1187,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         </div>
       )}
 
-      {/* أنيميشن البطاقة */}
-      {cardAnimation && (
-        <CardAnimation
-          type={cardAnimation.type}
-          message={cardAnimation.message}
-          onComplete={() => setCardAnimation(null)}
-        />
-      )}
-
       {/* 🟡 بانر الخلية المختارة من المقدم */}
-      {selectedCellInfo && !showRoulette && !showRandomLetterAnnouncement && (
+      {selectedCellInfo && !showRandomLetterAnnouncement && (
         <div style={{
           position: 'fixed',
           top: isMobile ? '118px' : isTablet ? '122px' : '80px',
@@ -1577,25 +1609,6 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         </div>
       )}
 
-      {/* شاشة التشويق - للمشاهدين */}
-      {showCardTeaser && (
-        <CardTeaserOverlay
-          letter={showCardTeaser.letter}
-          isGolden={showCardTeaser.isGolden}
-          isHost={false}
-        />
-      )}
-
-      {/* روليت البطاقات - متزامن مع شاشة المقدم */}
-      {showRoulette && (
-        <CardRoulette
-          onComplete={() => setShowRoulette(false)}
-          syncedCard={syncedCard}
-          isViewerMode={true}
-          triggerType={rouletteTriggerType}
-        />
-      )}
-
       {/* نافذة الفوز بالجولة - تظهر فقط إذا لم يكن هناك فائز بالمباراة */}
       {localWinner && localWinMessage && !localMatchWinner && (
         <ResultsOverlay
@@ -1797,7 +1810,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
                 justifyContent: 'center',
                 zIndex: 1,
               }}
-              title="إخفاء"
+              title="إخفاء هذا الإشعار"
             >
               ×
             </button>
@@ -1818,6 +1831,25 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         <PlayerGuide
           onClose={() => setShowGuide(false)}
           onDontShowAgain={() => localStorage.setItem('players-guide-done', '1')}
+        />
+      )}
+
+      {/* ── روليت البطاقة (viewer mode — ينتظر ROULETTE_END من المقدم) ── */}
+      {showRoulette && (
+        <CardRoulette
+          onComplete={() => setShowRoulette(false)}
+          syncedCard={syncedCard}
+          isViewerMode={true}
+          triggerType={rouletteTriggerType}
+        />
+      )}
+
+      {/* ── أنيميشن البطاقة (CARD_FOUND / CARD_WON / STREAK_REWARD_CARD) ── */}
+      {cardAnimation && (
+        <CardAnimation
+          type={cardAnimation.type}
+          message={cardAnimation.message}
+          onComplete={() => setCardAnimation(null)}
         />
       )}
 

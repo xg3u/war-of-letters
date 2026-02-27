@@ -242,16 +242,25 @@ export interface BuzzerWinner {
 
 type AttemptCallback = (attempt: BuzzerAttempt) => void;
 type WinnerCallback  = (winner: BuzzerWinner) => void;
+export type BuzzerStatus = 'connecting' | 'ready' | 'error';
+type StatusCallback  = (status: BuzzerStatus) => void;
 
 export class BuzzerChannel {
   private channel: any = null;
   private sessionId: string;
   private attemptListeners: Set<AttemptCallback> = new Set();
   private winnerListeners:  Set<WinnerCallback>  = new Set();
+  private statusListeners:  Set<StatusCallback>  = new Set();
+  private _currentStatus: BuzzerStatus = 'connecting';
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
     if (sessionId) this.setup();
+  }
+
+  private _emitStatus(s: BuzzerStatus) {
+    this._currentStatus = s;
+    this.statusListeners.forEach(cb => cb(s));
   }
 
   private setup() {
@@ -259,6 +268,7 @@ export class BuzzerChannel {
       supabase.removeChannel(this.channel);
       this.channel = null;
     }
+    this._emitStatus('connecting');
 
     // self: true → نستقبل رسائلنا أيضاً
     this.channel = supabase.channel(`buzzer-v2-${this.sessionId}`, {
@@ -277,9 +287,11 @@ export class BuzzerChannel {
     this.channel.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
         console.log(`🔔 BuzzerChannel ready: buzzer-v2-${this.sessionId}`);
+        this._emitStatus('ready');
       }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.warn(`⚠️ BuzzerChannel ${status} — reconnecting...`);
+        this._emitStatus('error');
         setTimeout(() => this.setup(), 2000);
       }
     });
@@ -314,6 +326,13 @@ export class BuzzerChannel {
     return () => this.winnerListeners.delete(cb);
   }
 
+  /** الاشتراك بحالة الاتصال — يُستدعى فوراً بالحالة الحالية */
+  onStatus(cb: StatusCallback): () => void {
+    this.statusListeners.add(cb);
+    cb(this._currentStatus); // إرسال الحالة الحالية فوراً
+    return () => this.statusListeners.delete(cb);
+  }
+
   close() {
     if (this.channel) {
       supabase.removeChannel(this.channel);
@@ -321,5 +340,6 @@ export class BuzzerChannel {
     }
     this.attemptListeners.clear();
     this.winnerListeners.clear();
+    this.statusListeners.clear();
   }
 }

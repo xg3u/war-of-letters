@@ -326,19 +326,19 @@ export const CharacterAvatar: React.FC<CharacterAvatarProps> = ({ avatar, size =
       <rect x="33" y="63" width="6.5" height="3" rx="1.5" fill={jDk} opacity="0.75" style={FT}/>
       <rect x="41" y="63" width="6.5" height="3" rx="1.5" fill={jDk} opacity="0.75" style={FT}/>
 
-      {/* زر B (يمين-أسفل) */}
-      <circle cx="57" cy="67" r="5.5" fill={dk('#d04040', 20)}/>
-      <circle cx="57" cy="67" r="4.5" fill="#d04040"/>
-      <circle cx="55.8" cy="65.5" r="1.6" fill="rgba(255,255,255,0.4)"/>
+      {/* زر B (يمين-أسفل) — لون مشتق من لون الجاكيت */}
+      <circle cx="57" cy="67" r="5.5" fill={dk(jDk, 25)}/>
+      <circle cx="57" cy="67" r="4.5" fill={jDk}/>
+      <circle cx="55.8" cy="65.5" r="1.6" fill="rgba(255,255,255,0.45)"/>
       <text x="57" y="68.8" textAnchor="middle" fontSize="5" fontWeight="bold"
         fill="white" fontFamily="Arial" style={{ userSelect: 'none', pointerEvents: 'none' }}>B</text>
 
-      {/* زر A (يمين-أعلى) */}
-      <circle cx="66" cy="61" r="5.5" fill={dk('#4040d0', 20)}/>
-      <circle cx="66" cy="61" r="4.5" fill="#4040d0"/>
-      <circle cx="64.8" cy="59.5" r="1.6" fill="rgba(255,255,255,0.4)"/>
+      {/* زر A (يمين-أعلى) — لون مشتق من لون الجاكيت */}
+      <circle cx="66" cy="61" r="5.5" fill={dk(jLt, 20)}/>
+      <circle cx="66" cy="61" r="4.5" fill={jLt}/>
+      <circle cx="64.8" cy="59.5" r="1.6" fill="rgba(255,255,255,0.45)"/>
       <text x="66" y="62.8" textAnchor="middle" fontSize="5" fontWeight="bold"
-        fill="white" fontFamily="Arial" style={{ userSelect: 'none', pointerEvents: 'none' }}>A</text>
+        fill="rgba(0,0,0,0.7)" fontFamily="Arial" style={{ userSelect: 'none', pointerEvents: 'none' }}>A</text>
 
       {/* LED الحالة */}
       <circle cx="65" cy="74.5" r="2.2" fill="#50ff80" opacity="0.88"/>

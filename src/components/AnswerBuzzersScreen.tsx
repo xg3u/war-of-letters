@@ -19,21 +19,22 @@ import { syncManager } from '../utils/SyncManager';
 import { BuzzerGuide } from './BuzzerGuide';
 import { HexGrid } from './HexGrid';
 import { useGameStore } from '../store/useGameStore';
+import { ResultsOverlay } from './ResultsOverlay';
+import { MatchWinnerOverlay } from './MatchWinnerOverlay';
 import { CardAnimation } from './CardAnimation';
 import { CardRoulette } from './CardRoulette';
 import { CardTeaserOverlay } from './CardTeaserOverlay';
-import { ResultsOverlay } from './ResultsOverlay';
-import { MatchWinnerOverlay } from './MatchWinnerOverlay';
 import {
   BuzzerChannel,
   INITIAL_BUZZER_STATE,
+  PHASE1_DURATION,
   applyActiveExpiry,
   applyOpponentExpiry,
   canTeamPress,
   getActiveSecondsLeft,
   getOpponentSecondsLeft,
 } from '../utils/BuzzerEngine';
-import type { BuzzerAttempt, BuzzerState } from '../utils/BuzzerEngine';
+import type { BuzzerAttempt, BuzzerState, BuzzerStatus } from '../utils/BuzzerEngine';
 import type { CardType } from '../core/types';
 import type { GameSettingsData } from './GameSettings';
 
@@ -44,7 +45,7 @@ interface SelectedCellInfo {
   isGolden: boolean;
 }
 
-// ─── WaitingPlayerCard — خارج الـ component لتجنب re-mount كل render ───────
+// ─── WaitingPlayerCard — أفقي، mobile-first ────────────────────────────────
 interface WaitingPlayerCardProps {
   p: { name: string; team: 'green' | 'red'; avatar: AvatarConfig };
   isMe: boolean;
@@ -53,38 +54,38 @@ const WaitingPlayerCard: React.FC<WaitingPlayerCardProps> = ({ p, isMe }) => {
   const c = p.team === 'green' ? '#10b981' : '#ef4444';
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.72, y: 18 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.7 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+      initial={{ opacity: 0, x: 18, scale: 0.92 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: -12, scale: 0.88 }}
+      transition={{ type: 'spring', stiffness: 340, damping: 26 }}
       style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem',
-        padding: '0.6rem 0.4rem 0.5rem', borderRadius: '1rem',
-        background: isMe ? `${c}22` : 'rgba(255,255,255,0.04)',
-        border: `1.5px solid ${isMe ? c : `${c}40`}`,
-        boxShadow: isMe ? `0 0 18px ${c}30` : 'none',
-        position: 'relative',
+        display: 'flex', alignItems: 'center', gap: '0.55rem',
+        padding: '0.5rem 0.65rem', borderRadius: '0.85rem',
+        background: isMe ? `${c}18` : 'rgba(255,255,255,0.04)',
+        border: `1.5px solid ${isMe ? c + '70' : c + '28'}`,
+        boxShadow: isMe ? `0 2px 12px ${c}22` : 'none',
       }}
     >
-      {isMe && (
-        <div style={{
-          position: 'absolute', top: '-8px', left: '50%', transform: 'translateX(-50%)',
-          background: c, color: 'white', fontSize: '0.52rem', fontWeight: 900,
-          padding: '1px 6px', borderRadius: '2rem', whiteSpace: 'nowrap',
-        }}>أنت</div>
-      )}
+      {/* أفاتار */}
       <div style={{
-        width: '52px', height: '52px', borderRadius: '50%',
-        background: `${c}18`, border: `2px solid ${c}55`,
+        width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0,
+        background: `${c}18`, border: `1.5px solid ${c}50`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <CharacterAvatar avatar={p.avatar} size={44} />
+        <CharacterAvatar avatar={p.avatar} size={28} />
       </div>
+      {/* الاسم */}
       <div style={{
-        fontSize: '0.72rem', fontWeight: 800, color: 'white',
-        textAlign: 'center', maxWidth: '72px',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        fontSize: '0.8rem', fontWeight: 800, color: isMe ? 'white' : 'rgba(255,255,255,0.82)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
       }}>{p.name}</div>
+      {/* شارة "أنت" */}
+      {isMe && (
+        <div style={{
+          background: c, color: 'white', fontSize: '0.55rem', fontWeight: 900,
+          padding: '2px 7px', borderRadius: '2rem', flexShrink: 0,
+        }}>أنت</div>
+      )}
     </motion.div>
   );
 };
@@ -92,7 +93,7 @@ const WaitingPlayerCard: React.FC<WaitingPlayerCardProps> = ({ p, isMe }) => {
 // (لا يوجد timer محلي للتزامن — HostScreen هو المحكّم الوحيد)
 
 export const AnswerBuzzersScreen: React.FC = () => {
-  useScreenSize();
+  const { isMobile } = useScreenSize();
   const { theme } = useTheme();
   const { cells, syncFromExternal } = useGameStore();
 
@@ -102,7 +103,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
   const [selectedTeam, setSelectedTeam] = useState<'green' | 'red'>('green');
   const playerNameRef = useRef(playerName);
   const selectedTeamRef = useRef(selectedTeam);
-  playerNameRef.current = playerName;
+  playerNameRef.current = playerName.trim();
   selectedTeamRef.current = selectedTeam;
 
   // ── أفاتار الشخصية ──
@@ -114,6 +115,10 @@ export const AnswerBuzzersScreen: React.FC = () => {
   const [isWaitingRoom, setIsWaitingRoom] = useState(false);
   const isWaitingRoomRef = useRef(false);
   const isRegisteredRef  = useRef(false);
+  const [isAwaitingApproval, setIsAwaitingApproval] = useState(false);
+  const isAwaitingApprovalRef = useRef(false);
+  const registrationTimeRef = useRef<number>(0); // لتمييز SESSION_ENDED الحقيقي من الوهمي
+  const [rejectedMessage, setRejectedMessage] = useState<string | null>(null);
   const [waitingPlayers, setWaitingPlayers] = useState<Array<{
     name: string;
     team: 'green' | 'red';
@@ -127,6 +132,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
   buzzerStateRef.current = buzzerState;
   const [buzzerChannel, setBuzzerChannel] = useState<BuzzerChannel | null>(null);
   const [isSending, setIsSending] = useState(false); // Optimistic: ضغطنا وننتظر تأكيد
+  const [buzzerStatus, setBuzzerStatus] = useState<BuzzerStatus>('connecting');
 
   // ── Tick لتحديث العدادات ──
   const [, setTick] = useState(0);
@@ -152,14 +158,16 @@ export const AnswerBuzzersScreen: React.FC = () => {
   const [localWinner, setLocalWinner] = useState<'green' | 'red' | null>(null);
   const [localWinMessage, setLocalWinMessage] = useState<string | null>(null);
   const [localMatchWinner, setLocalMatchWinner] = useState<'green' | 'red' | null>(null);
+  const [showRandomLetterAnn, setShowRandomLetterAnn] = useState(false);
+  const [streakAnnouncement, setStreakAnnouncement] = useState<{ team: 'green' | 'red'; teamName: string } | null>(null);
+  const [forcedQuestion, setForcedQuestion] = useState<{ question: string; letter: string } | null>(null);
+  // ─── Card overlays (viewer mode — sync only, no interaction) ──────────────
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound'; message?: string } | null>(null);
   const [showRoulette, setShowRoulette] = useState(false);
   const [rouletteTriggerType, setRouletteTriggerType] = useState<'card' | 'golden'>('card');
   const [syncedCard, setSyncedCard] = useState<CardType | null>(null);
   const [showCardTeaser, setShowCardTeaser] = useState<{ letter: string; isGolden: boolean } | null>(null);
-  const [showRandomLetterAnn, setShowRandomLetterAnn] = useState(false);
-  const [streakAnnouncement, setStreakAnnouncement] = useState<{ team: 'green' | 'red'; teamName: string } | null>(null);
-  const [forcedQuestion, setForcedQuestion] = useState<{ question: string; letter: string } | null>(null);
+  const [goldenLetter, setGoldenLetter] = useState<string | null>(null); // إعلان الحرف الذهبي
 
   const sessionId = new URLSearchParams(window.location.search).get('session') || '';
 
@@ -184,13 +192,26 @@ export const AnswerBuzzersScreen: React.FC = () => {
     const channel = new BuzzerChannel(sessionId);
     setBuzzerChannel(channel);
 
+    // تتبع حالة الاتصال — 'connecting' | 'ready' | 'error'
+    const offStatus = channel.onStatus(setBuzzerStatus);
+
     // استقبال الفائز المعلَن من HostScreen
     const offWinner = channel.onWinner((winner) => {
-      setBuzzerState(winner.newState);
+      // أعد ضبط activeUntil من الوقت المحلي الحالي حتى يبدأ العداد
+      // من اللحظة التي يظهر فيها الاسم على شاشة الجرس (لا من وقت المقدم)
+      const state = winner.newState;
+      const freshState: BuzzerState = {
+        ...state,
+        ...(state.activeTeam && state.activeUntil
+          ? { activeUntil: Date.now() + PHASE1_DURATION }
+          : {}),
+      };
+      setBuzzerState(freshState);
       setIsSending(false);
     });
 
     return () => {
+      offStatus();
       offWinner();
       channel.close();
     };
@@ -248,10 +269,10 @@ export const AnswerBuzzersScreen: React.FC = () => {
         if (data.winner) setLocalWinner(data.winner); else setLocalWinner(null);
         if (data.winMessage) setLocalWinMessage(data.winMessage); else setLocalWinMessage(null);
         if (data.matchWinner) setLocalMatchWinner(data.matchWinner); else setLocalMatchWinner(null);
-        // انضمام في منتصف اللعبة → تخطي غرفة الانتظار (فقط إذا بدأت الجولة فعلاً)
-        if (data.roundStarted === true && isWaitingRoomRef.current) {
-          setIsWaitingRoom(false);
-          isWaitingRoomRef.current = false;
+        // انضمام في منتصف اللعبة → انتظر موافقة المقدم
+        if (data.roundStarted === true && isWaitingRoomRef.current && isRegisteredRef.current) {
+          setIsAwaitingApproval(true);
+          isAwaitingApprovalRef.current = true;
         }
       } else if (data.type === 'GRID_INITIALIZED') {
         if (data.cells) syncFromExternal(data.cells);
@@ -267,11 +288,20 @@ export const AnswerBuzzersScreen: React.FC = () => {
       } else if (data.type === 'COUNTERS_UPDATED' || data.type === 'CARD_USED') {
         if (data.cells) syncFromExternal(data.cells);
       } else if (data.type === 'player-registered') {
-        // لاعب جديد انضم — أضفه لغرفة الانتظار
+        // لاعب انضم أو غيّر فريقه — حدّث إن وُجد، أضف إن لم يوجد
         if (data.player) {
           setWaitingPlayers(prev => {
-            const exists = prev.some(p => p.name === data.player.name && p.team === data.player.team);
-            if (exists) return prev;
+            const idx = prev.findIndex(p => p.name === data.player.name);
+            if (idx >= 0) {
+              // تحديث الفريق أو الأفاتار (يحدث عند تغيير الفريق)
+              const updated = [...prev];
+              updated[idx] = {
+                name: data.player.name,
+                team: data.player.team,
+                avatar: data.player.avatar || DEFAULT_AVATAR,
+              };
+              return updated;
+            }
             return [...prev, {
               name: data.player.name,
               team: data.player.team,
@@ -294,19 +324,35 @@ export const AnswerBuzzersScreen: React.FC = () => {
           }
         }
       } else if (data.type === 'ROUND_STARTED') {
+        // الجولة بدأت → جميع اللاعبين في غرفة الانتظار يدخلون الآن بدون قيود
         setIsWaitingRoom(false);
         isWaitingRoomRef.current = false;
+        setIsAwaitingApproval(false);
+        isAwaitingApprovalRef.current = false;
         setSelectedCellId(null); setActiveCell(null);
       } else if (data.type === 'SETTINGS_UPDATED') {
         if (data.colorsSwapped !== undefined) setColorsSwapped(data.colorsSwapped);
-      } else if (data.type === 'CARD_ANIMATION' || data.type === 'CARD_FOUND' || data.type === 'CARD_WON') {
-        setCardAnimation({ type: data.cardType, message: data.message });
+      // ─── Card overlays (viewer) ───────────────────────────────────────────
+      } else if (data.type === 'GOLDEN_ANNOUNCEMENT') {
+        setGoldenLetter(data.letter as string);
+      } else if (data.type === 'GOLDEN_DISMISSED') {
+        setGoldenLetter(null);
       } else if (data.type === 'CARD_TEASER') {
         setShowCardTeaser({ letter: data.letter, isGolden: !!data.isGolden });
       } else if (data.type === 'ROULETTE_START') {
-        setShowCardTeaser(null); setRouletteTriggerType(data.triggerType || 'card'); setSyncedCard(null); setShowRoulette(true);
+        setShowCardTeaser(null);
+        setRouletteTriggerType(data.triggerType || 'card');
+        setSyncedCard(null);
+        setShowRoulette(true);
       } else if (data.type === 'ROULETTE_END') {
         setSyncedCard(data.card);
+      } else if (
+        data.type === 'CARD_ANIMATION' ||
+        data.type === 'CARD_FOUND' ||
+        data.type === 'CARD_WON' ||
+        data.type === 'STREAK_REWARD_CARD'
+      ) {
+        setCardAnimation({ type: data.cardType, message: data.message });
       } else if (data.type === 'CARD_ADDED' || data.type === 'CARDS_CLEARED') {
         if (data.teamCards) setLocalTeamCards(data.teamCards);
       } else if (data.type === 'GAME_WON') {
@@ -314,11 +360,33 @@ export const AnswerBuzzersScreen: React.FC = () => {
         if (data.winner) setLocalWinner(data.winner);
         if (data.winMessage) setLocalWinMessage(data.winMessage);
         if (data.matchWinner) setLocalMatchWinner(data.matchWinner);
+      } else if (data.type === 'SESSION_ENDED') {
+        // المقدم أنهى الجلسة — أعد اللاعب لشاشة التسجيل
+        // حارس: تجاهل SESSION_ENDED الوهمي (يصل < 2 ثانية من التسجيل — React StrictMode bounce)
+        const msSinceReg = registrationTimeRef.current > 0
+          ? Date.now() - registrationTimeRef.current
+          : Infinity;
+        if (msSinceReg >= 2000) {
+          setIsRegistered(false);
+          isRegisteredRef.current = false;
+          setIsWaitingRoom(false);
+          isWaitingRoomRef.current = false;
+          setIsAwaitingApproval(false);
+          isAwaitingApprovalRef.current = false;
+          setPlayerName('');
+          setWaitingPlayers([]);
+          setRejectedMessage('انتهت الجلسة. يمكنك الانضمام لجلسة جديدة.');
+        }
       } else if (data.type === 'MATCH_RESET') {
         setLocalScores({ green: 0, red: 0 });
         setLocalMatchWinner(null);
         setLocalTeamCards({ green: [], red: [] });
         setLocalWinner(null); setLocalWinMessage(null);
+        // إعادة تعيين حالة الانتظار — المباراة بدأت من جديد
+        if (isWaitingRoomRef.current) {
+          setIsAwaitingApproval(false);
+          isAwaitingApprovalRef.current = false;
+        }
       } else if (data.type === 'STREAK_UPDATED') {
         // (no-op for this screen)
       } else if (data.type === 'RANDOM_LETTER_ANNOUNCEMENT') {
@@ -333,9 +401,19 @@ export const AnswerBuzzersScreen: React.FC = () => {
           setStreakAnnouncement({ team: data.team, teamName: data.teamName ?? data.team });
           setTimeout(() => setStreakAnnouncement(null), 4000);
         }
+      } else if (data.type === 'host-ping') {
+        // رد فوري على PING لقياس زمن الاستجابة
+        if (isRegisteredRef.current && playerNameRef.current) {
+          syncManager.broadcast({
+            type: 'player-pong',
+            name: playerNameRef.current,
+            ts: data.ts,
+          });
+        }
       } else if (data.type === 'REQUEST_PLAYER_LIST') {
-        // لاعب جديد يطلب قائمة الحاضرين → رد بمعلوماتي إذا كنت في غرفة الانتظار
-        if (isRegisteredRef.current && isWaitingRoomRef.current && playerNameRef.current) {
+        // المقدم يطلب قائمة اللاعبين (دوري أو عند انضمام لاعب جديد)
+        // يرد جميع اللاعبين المسجلين — سواء في غرفة الانتظار أو يلعبون بالفعل
+        if (isRegisteredRef.current && playerNameRef.current) {
           setTimeout(() => {
             syncManager.broadcast({
               type: 'player-registered',
@@ -346,10 +424,47 @@ export const AnswerBuzzersScreen: React.FC = () => {
                 avatar: avatarRef.current,
               },
             });
-          }, Math.random() * 200);
+          }, Math.random() * 300);
         }
+      } else if (data.type === 'SEND_TO_BUZZERS') {
+        // المقدم انتقل من الإعدادات للعبة — اللاعبون قبل البداية يدخلون الآن
+        // اللاعبون في منتصف الجولة (isAwaitingApproval=true) ينتظرون موافقة المقدم الصريحة
+        if (isWaitingRoomRef.current && !isAwaitingApprovalRef.current) {
+          setIsWaitingRoom(false);
+          isWaitingRoomRef.current = false;
+        }
+      } else if (data.type === 'player-join-approved') {
+        if (data.name === playerNameRef.current) {
+          // أزل حالة انتظار الموافقة دائماً
+          setIsAwaitingApproval(false);
+          isAwaitingApprovalRef.current = false;
+          // اخرج من غرفة الانتظار دائماً عند موافقة المقدم
+          setIsWaitingRoom(false);
+          isWaitingRoomRef.current = false;
+          // اطلب حالة اللعبة الكاملة لضمان أن اللاعب يرى أحدث نسخة
+          syncManager.broadcast({ type: 'REQUEST_FULL_STATE', timestamp: Date.now() });
+        }
+      } else if (data.type === 'player-join-rejected') {
+        // المقدم رفض طلب انضمامي
+        if (data.name === playerNameRef.current) {
+          setIsRegistered(false);
+          isRegisteredRef.current = false;
+          setIsWaitingRoom(false);
+          isWaitingRoomRef.current = false;
+          setIsAwaitingApproval(false);
+          isAwaitingApprovalRef.current = false;
+          setPlayerName('');
+          setWaitingPlayers([]);
+          setRejectedMessage('رفض المقدم انضمامك. يمكنك تغيير الاسم والمحاولة مجدداً.');
+        }
+      } else if (data.type === 'player-left') {
+        // لاعب غادر — احذفه من قائمة غرفة الانتظار عند الجميع
+        setWaitingPlayers(prev => prev.filter(p => p.name !== data.name));
       } else if (data.type === 'player-kicked') {
-        // المقدم طرد هذا اللاعب → أعِد التسجيل
+        // المقدم طرد لاعباً
+        // حذفه من قائمة الانتظار عند الجميع
+        setWaitingPlayers(prev => prev.filter(p => p.name !== data.name));
+        // إذا كنت أنا المطرود → إعادة التسجيل
         if (data.name === playerNameRef.current) {
           setIsRegistered(false);
           isRegisteredRef.current = false;
@@ -362,6 +477,15 @@ export const AnswerBuzzersScreen: React.FC = () => {
     });
 
     return unsubscribe;
+  }, [sessionId]);
+
+  // طلب قائمة اللاعبين فور تحميل الشاشة (للكشف عن أسماء مكررة قبل التسجيل)
+  useEffect(() => {
+    if (!sessionId) return;
+    const t = setTimeout(() => {
+      syncManager.broadcast({ type: 'REQUEST_PLAYER_LIST' });
+    }, 500);
+    return () => clearTimeout(t);
   }, [sessionId]);
 
   // ═══════════════════════════════════════════════════════════════
@@ -394,26 +518,39 @@ export const AnswerBuzzersScreen: React.FC = () => {
     buzzerChannel.sendAttempt(attempt);
   };
 
-  const handleRegistration = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (playerName.trim().length < 2) { alert('الرجاء إدخال اسم صحيح (حرفين على الأقل)'); return; }
+  const [nameError, setNameError] = useState('');
+
+  const doRegister = () => {
+    const nameTrimmed = playerName.trim();
+    if (nameTrimmed.length < 2) { setNameError('ممكن اسم أطول شوي؟ (حرفين على الأقل)'); return; }
+    const isDuplicate = waitingPlayers.some(p => p.name.trim() === nameTrimmed);
+    if (isDuplicate) { setNameError('هذا الاسم موجود! ممكن اسم ثاني؟'); return; }
+    setNameError('');
     const av = avatarRef.current;
-    // بث تسجيل اللاعب مع بيانات الأفاتار
     syncManager.broadcast({
       type: 'player-registered',
-      player: { name: playerName.trim(), team: selectedTeam, timestamp: Date.now(), avatar: av },
+      player: { name: nameTrimmed, team: selectedTeam, timestamp: Date.now(), avatar: av },
     });
-    // إضافة اللاعب لقائمة الانتظار محلياً (لن نستقبل بثّنا الخاص)
-    setWaitingPlayers([{ name: playerName.trim(), team: selectedTeam, avatar: av }]);
+    setWaitingPlayers([{ name: nameTrimmed, team: selectedTeam, avatar: av }]);
+    registrationTimeRef.current = Date.now();
     setIsRegistered(true);
     isRegisteredRef.current = true;
     setIsWaitingRoom(true);
     isWaitingRoomRef.current = true;
-    // طلب حالة اللعبة (لكشف الانضمام المتأخر) + طلب قائمة اللاعبين
+    // لا نعرف بعد إذا كانت اللعبة جارية — FULL_STATE_SYNC هو من يحدد isAwaitingApproval
+    // إذا roundStarted=true في الاستجابة → انضمام في منتصف اللعبة → ينتظر موافقة المقدم
+    // إذا roundStarted=false → لاعب قبل البداية → يدخل تلقائياً عند SEND_TO_BUZZERS أو ROUND_STARTED
+    setIsAwaitingApproval(false);
+    isAwaitingApprovalRef.current = false;
     syncManager.broadcast({ type: 'REQUEST_FULL_STATE' });
     setTimeout(() => {
       syncManager.broadcast({ type: 'REQUEST_PLAYER_LIST' });
     }, 400);
+  };
+
+  const handleRegistration = (e: React.FormEvent) => {
+    e.preventDefault();
+    doRegister();
   };
 
   // ─── حسابات الحالة ────────────────────────────────────────────
@@ -428,7 +565,8 @@ export const AnswerBuzzersScreen: React.FC = () => {
   const activeSecsLeft = getActiveSecondsLeft(buzzerState, now);
   const opponentSecsLeft = getOpponentSecondsLeft(buzzerState, now);
 
-  const canPress = canTeamPress(buzzerState, myTeam, now) && !isSending;
+  // الجرس يعمل فقط إذا كان الاتصال جاهزاً
+  const canPress = canTeamPress(buzzerState, myTeam, now) && !isSending && buzzerStatus === 'ready';
 
   const teamColor = myTeam === 'green' ? '#10b981' : '#ef4444';
   const teamGrad = myTeam === 'green'
@@ -537,7 +675,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
       { exp: 'happy' as const,     emoji: '😊', label: 'مبتسم'   },
       { exp: 'wink' as const,      emoji: '😉', label: 'يغمز'    },
       { exp: 'surprised' as const, emoji: '😮', label: 'متفاجئ'  },
-      { exp: 'smug' as const,      emoji: '😏', label: 'خايس'    },
+      { exp: 'smug' as const,      emoji: '😏', label: 'واثق'    },
     ];
     const expIdx = Math.max(0, EXPRESSIONS.findIndex(e => e.exp === avatar.expression));
     const cycleExp = (dir: 1 | -1) => {
@@ -563,7 +701,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
         padding: '1rem 1rem 2rem', background: theme.bgGradient, direction: 'rtl', overflowY: 'auto',
       }}>
         <div style={{
-          maxWidth: '400px', width: '100%', marginTop: '0.5rem',
+          maxWidth: isMobile ? '100%' : '400px', width: '100%', marginTop: isMobile ? '0' : '0.5rem',
           borderRadius: '2rem',
           background: 'linear-gradient(145deg, rgba(15,6,38,0.99), rgba(28,11,56,0.99))',
           border: `2px solid ${teamColor}40`,
@@ -577,9 +715,25 @@ export const AnswerBuzzersScreen: React.FC = () => {
 
           {/* عنوان */}
           <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'rgba(255,255,255,0.95)', letterSpacing: '0.02em' }}>تخصيص شخصيتك</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 400, color: 'rgba(255,255,255,0.95)', fontFamily: "'Lalezar', sans-serif" }}>شخصيتك في اللعبة؟</div>
             <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.2rem' }}>صمّم مظهرك وانضم للمباراة</div>
           </div>
+
+          {/* رسالة الرفض */}
+          {rejectedMessage && (
+            <div style={{
+              background: 'rgba(239,68,68,0.12)', border: '1.5px solid rgba(239,68,68,0.5)',
+              borderRadius: '0.85rem', padding: '0.65rem 0.9rem', marginBottom: '1rem',
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+            }}>
+              <span style={{ fontSize: '1.1rem' }}>🚫</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#fca5a5', lineHeight: 1.4 }}>{rejectedMessage}</span>
+              <button onClick={() => setRejectedMessage(null)} style={{
+                marginRight: 'auto', background: 'none', border: 'none',
+                color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.9rem', padding: '0',
+              }}>✕</button>
+            </div>
+          )}
 
           {/* معاينة الشخصية العائمة */}
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
@@ -611,6 +765,32 @@ export const AnswerBuzzersScreen: React.FC = () => {
             </div>
           </div>
 
+          {/* حقل اسم اللاعب — تحت معاينة الشخصية مباشرة */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: '1.05rem', fontWeight: 400, marginBottom: '0.5rem', textAlign: 'center', fontFamily: "'Lalezar', sans-serif", letterSpacing: '0.01em' }}>
+              ممكن اسمك؟
+            </label>
+            <input
+              type="text" value={playerName}
+              onChange={e => { setPlayerName(e.target.value); setNameError(''); }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); doRegister(); } }}
+              placeholder="اسمك هنا..." maxLength={20}
+              style={{
+                width: '100%', padding: '0.78rem 1rem', borderRadius: '0.85rem',
+                background: 'rgba(255,255,255,0.06)', border: `2px solid ${nameError ? '#ef4444' : `${teamColor}30`}`,
+                color: 'white', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
+                transition: 'border-color 0.2s, box-shadow 0.2s', textAlign: 'center',
+              }}
+              onFocus={e => { e.target.style.borderColor = nameError ? '#ef4444' : teamColor; e.target.style.boxShadow = `0 0 15px ${nameError ? 'rgba(239,68,68,0.25)' : `${teamColor}22`}`; }}
+              onBlur={e => { e.target.style.borderColor = nameError ? '#ef4444' : `${teamColor}30`; e.target.style.boxShadow = 'none'; }}
+            />
+            {nameError && (
+              <div style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: 700, marginTop: '0.4rem', textAlign: 'center' }}>
+                ⚠️ {nameError}
+              </div>
+            )}
+          </div>
+
           {/* نوع الكونسول */}
           <div style={{ marginBottom: '1rem' }}>
             <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.38)', fontWeight: 700, marginBottom: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -637,136 +817,219 @@ export const AnswerBuzzersScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* ─── محددات السهم ─── */}
-          {arrowOpts.map(({ label, key, colors, names, count }) => {
-            const idx = avatar[key];
+          {/* ─── محددات A و B (الألوان) ─── */}
+          {arrowOpts.map(({ label, key, colors, names, count }, optIdx) => {
+            const idx = avatar[key] as number;
             const c = colors[idx];
+            const badge = optIdx === 0 ? 'A' : 'B';
+            const filterId = `glow-arr-${key}`;
             return (
-              <div key={key} style={{ marginBottom: '0.9rem' }}>
-                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.38)', fontWeight: 700, marginBottom: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ width: '20px', height: '2px', background: `linear-gradient(90deg, ${teamColor}80, transparent)`, borderRadius: '1px' }} />
+              <div key={key} style={{ marginBottom: '1rem' }}>
+                {/* رأس القسم — شارة A / B + label */}
+                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontWeight: 700, marginBottom: '0.55rem', display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                  <motion.div
+                    animate={{ boxShadow: [`0 0 6px ${c}55`, `0 0 18px ${c}99`, `0 0 6px ${c}55`] }}
+                    transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{
+                      width: '22px', height: '22px', borderRadius: '7px',
+                      background: `linear-gradient(135deg, ${c}ee, ${c}88)`,
+                      border: `1.5px solid ${c}cc`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.72rem', fontWeight: 900, color: '#fff',
+                      flexShrink: 0,
+                      textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                    }}
+                  >
+                    {badge}
+                  </motion.div>
                   {label}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  {/* زر سابق */}
-                  <motion.button type="button" onClick={() => cycleOption(key, count, -1)}
-                    whileTap={{ scale: 0.7, x: -3 }} whileHover={{ scale: 1.12 }}
-                    style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.22)', background: 'linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)' }}>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
-                      <polygon points="8,0.5 1,5 8,9.5" fill="white" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))"/>
+
+                {/* الحاوية الرئيسية */}
+                <motion.div
+                  animate={{ borderColor: [`${c}33`, `${c}66`, `${c}33`] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.55rem',
+                    background: `linear-gradient(135deg, ${c}10, ${c}05, rgba(255,255,255,0.02))`,
+                    border: `2px solid ${c}44`,
+                    borderRadius: '1.1rem',
+                    padding: '0.55rem 0.65rem',
+                    boxShadow: `0 4px 24px ${c}18, 0 2px 8px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)`,
+                  }}
+                >
+                  {/* ── سهم سابق ── */}
+                  <motion.button
+                    type="button"
+                    onClick={() => cycleOption(key, count, -1)}
+                    whileTap={{ scale: 0.72, x: -5 }}
+                    whileHover={{ scale: 1.15 }}
+                    style={{
+                      width: '46px', height: '46px', borderRadius: '50%', flexShrink: 0,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: `2px solid ${c}80`,
+                      background: `radial-gradient(circle at 35% 35%, ${c}50, ${c}22)`,
+                      boxShadow: `0 0 14px ${c}55, 0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.2)`,
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 10 10" fill="none">
+                      <defs>
+                        <filter id={`${filterId}-prev`} x="-80%" y="-80%" width="260%" height="260%">
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="b"/>
+                          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                      </defs>
+                      <polygon points="7.5,1 1.5,5 7.5,9" fill="white" filter={`url(#${filterId}-prev)`}/>
                     </svg>
                   </motion.button>
 
-                  {/* العرض المركزي */}
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', minHeight: '64px', justifyContent: 'center' }}>
+                  {/* ── العرض المركزي ── */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.28rem', minHeight: '62px', justifyContent: 'center' }}>
                     <AnimatePresence mode="wait">
-                      <motion.div key={idx}
-                        initial={{ opacity: 0, scale: 0.72, y: 8 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.72, y: -8 }}
-                        transition={{ duration: 0.16, ease: 'easeOut' }}
-                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
-                        <div style={{
-                          width: '42px', height: '42px', borderRadius: '10px',
-                          background: c,
-                          boxShadow: `0 0 18px ${c}AA, 0 3px 10px rgba(0,0,0,0.45)`,
-                          border: '2.5px solid rgba(255,255,255,0.4)',
-                          transform: 'rotate(3deg)',
-                        }} />
-                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{names[idx]}</div>
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, scale: 0.6, y: 12, rotateY: -70 }}
+                        animate={{ opacity: 1, scale: 1, y: 0, rotateY: 0 }}
+                        exit={{ opacity: 0, scale: 0.6, y: -12, rotateY: 70 }}
+                        transition={{ duration: 0.22, ease: [0.34, 1.56, 0.64, 1] }}
+                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.28rem' }}
+                      >
+                        <motion.div
+                          animate={{
+                            boxShadow: [`0 0 10px ${c}88, 0 3px 10px rgba(0,0,0,0.5)`, `0 0 26px ${c}dd, 0 3px 10px rgba(0,0,0,0.5)`, `0 0 10px ${c}88, 0 3px 10px rgba(0,0,0,0.5)`],
+                            rotate: [3, -2, 3],
+                          }}
+                          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                          style={{
+                            width: '44px', height: '44px', borderRadius: '12px',
+                            background: `linear-gradient(135deg, ${c}, ${c}bb)`,
+                            border: '3px solid rgba(255,255,255,0.55)',
+                            position: 'relative', overflow: 'hidden',
+                          }}
+                        >
+                          {/* بريق داخلي */}
+                          <div style={{ position: 'absolute', top: '4px', left: '6px', width: '14px', height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.45)', transform: 'rotate(-20deg)' }} />
+                        </motion.div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'rgba(255,255,255,0.95)', letterSpacing: '0.02em' }}>{names[idx]}</div>
                       </motion.div>
                     </AnimatePresence>
                   </div>
 
-                  {/* زر تالي */}
-                  <motion.button type="button" onClick={() => cycleOption(key, count, 1)}
-                    whileTap={{ scale: 0.7, x: 3 }} whileHover={{ scale: 1.12 }}
-                    style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.22)', background: 'linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)' }}>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
-                      <polygon points="2,0.5 9,5 2,9.5" fill="white" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))"/>
+                  {/* ── سهم تالي ── */}
+                  <motion.button
+                    type="button"
+                    onClick={() => cycleOption(key, count, 1)}
+                    whileTap={{ scale: 0.72, x: 5 }}
+                    whileHover={{ scale: 1.15 }}
+                    style={{
+                      width: '46px', height: '46px', borderRadius: '50%', flexShrink: 0,
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: `2px solid ${c}80`,
+                      background: `radial-gradient(circle at 65% 35%, ${c}50, ${c}22)`,
+                      boxShadow: `0 0 14px ${c}55, 0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.2)`,
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 10 10" fill="none">
+                      <defs>
+                        <filter id={`${filterId}-next`} x="-80%" y="-80%" width="260%" height="260%">
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="b"/>
+                          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                      </defs>
+                      <polygon points="2.5,1 8.5,5 2.5,9" fill="white" filter={`url(#${filterId}-next)`}/>
                     </svg>
                   </motion.button>
-                </div>
+                </motion.div>
 
-                {/* نقاط المؤشر */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '0.4rem' }}>
+                {/* ── نقاط المؤشر المتحركة ── */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '0.5rem' }}>
                   {Array.from({ length: count }).map((_, i) => (
-                    <div key={i} onClick={() => setAvatar(a => ({ ...a, [key]: i }))}
-                      style={{
-                        width: i === idx ? '18px' : '6px', height: '6px',
-                        borderRadius: '3px', cursor: 'pointer',
-                        background: i === idx ? c : 'rgba(255,255,255,0.22)',
-                        boxShadow: i === idx ? `0 0 6px ${c}` : 'none',
-                        transition: 'all 0.25s ease',
-                      }} />
+                    <motion.div
+                      key={i}
+                      onClick={() => setAvatar(a => ({ ...a, [key]: i }))}
+                      whileTap={{ scale: 0.75 }}
+                      animate={{
+                        width: i === idx ? 20 : 7,
+                        background: i === idx ? c : 'rgba(255,255,255,0.2)',
+                        boxShadow: i === idx ? `0 0 8px ${c}cc` : 'none',
+                      }}
+                      transition={{ duration: 0.28, ease: 'easeOut' }}
+                      style={{ height: '7px', borderRadius: '4px', cursor: 'pointer' }}
+                    />
                   ))}
                 </div>
               </div>
             );
           })}
 
-          {/* تعبير الوجه — سهام */}
+          {/* ─── تعبير الوجه ─── */}
           <div style={{ marginBottom: '0.9rem' }}>
-            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.38)', fontWeight: 700, marginBottom: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '20px', height: '2px', background: `linear-gradient(90deg, ${teamColor}80, transparent)`, borderRadius: '1px' }} />
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontWeight: 700, marginBottom: '0.55rem', display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+              <div style={{ width: '22px', height: '22px', borderRadius: '7px', background: 'linear-gradient(135deg,rgba(251,191,36,0.8),rgba(245,158,11,0.6))', border: '1.5px solid rgba(251,191,36,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0 }}>😊</div>
               تعبير الوجه
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <motion.button type="button" onClick={() => cycleExp(-1)} whileTap={{ scale: 0.7, x: -3 }} whileHover={{ scale: 1.12 }}
-                style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.22)', background: 'linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)' }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><polygon points="8,0.5 1,5 8,9.5" fill="white" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))"/></svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', background: 'rgba(255,255,255,0.03)', border: '2px solid rgba(255,255,255,0.1)', borderRadius: '1.1rem', padding: '0.55rem 0.65rem', boxShadow: '0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)' }}>
+              <motion.button type="button" onClick={() => cycleExp(-1)} whileTap={{ scale: 0.72, x: -5 }} whileHover={{ scale: 1.15 }}
+                style={{ width: '46px', height: '46px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.28)', background: 'radial-gradient(circle at 35% 35%,rgba(255,255,255,0.22),rgba(255,255,255,0.06))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 14px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.28)', WebkitTapHighlightColor: 'transparent' }}>
+                <svg width="14" height="14" viewBox="0 0 10 10" fill="none"><defs><filter id="glow-exp-prev" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><polygon points="7.5,1 1.5,5 7.5,9" fill="white" filter="url(#glow-exp-prev)"/></svg>
               </motion.button>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', minHeight: '64px', justifyContent: 'center' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.28rem', minHeight: '62px', justifyContent: 'center' }}>
                 <AnimatePresence mode="wait">
-                  <motion.div key={expIdx} initial={{ opacity: 0, scale: 0.72, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.72, y: -8 }} transition={{ duration: 0.16, ease: 'easeOut' }}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                    <div style={{ fontSize: '2rem', lineHeight: 1 }}>{EXPRESSIONS[expIdx].emoji}</div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{EXPRESSIONS[expIdx].label}</div>
+                  <motion.div key={expIdx} initial={{ opacity: 0, scale: 0.6, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.6, y: -12 }} transition={{ duration: 0.22, ease: [0.34, 1.56, 0.64, 1] }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.22rem' }}>
+                    <motion.div animate={{ rotate: [0, -5, 5, 0], scale: [1, 1.12, 1] }} transition={{ duration: 0.5, delay: 0.1 }} style={{ fontSize: '2.1rem', lineHeight: 1, filter: 'drop-shadow(0 2px 8px rgba(251,191,36,0.5))' }}>{EXPRESSIONS[expIdx].emoji}</motion.div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'rgba(255,255,255,0.92)' }}>{EXPRESSIONS[expIdx].label}</div>
                   </motion.div>
                 </AnimatePresence>
               </div>
-              <motion.button type="button" onClick={() => cycleExp(1)} whileTap={{ scale: 0.7, x: 3 }} whileHover={{ scale: 1.12 }}
-                style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.22)', background: 'linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)' }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><polygon points="2,0.5 9,5 2,9.5" fill="white" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))"/></svg>
+              <motion.button type="button" onClick={() => cycleExp(1)} whileTap={{ scale: 0.72, x: 5 }} whileHover={{ scale: 1.15 }}
+                style={{ width: '46px', height: '46px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.28)', background: 'radial-gradient(circle at 65% 35%,rgba(255,255,255,0.22),rgba(255,255,255,0.06))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 14px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.28)', WebkitTapHighlightColor: 'transparent' }}>
+                <svg width="14" height="14" viewBox="0 0 10 10" fill="none"><defs><filter id="glow-exp-next" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><polygon points="2.5,1 8.5,5 2.5,9" fill="white" filter="url(#glow-exp-next)"/></svg>
               </motion.button>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '0.4rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '0.5rem' }}>
               {EXPRESSIONS.map((_, i) => (
-                <div key={i} onClick={() => setAvatar(a => ({ ...a, expression: EXPRESSIONS[i].exp }))}
-                  style={{ width: i === expIdx ? '18px' : '6px', height: '6px', borderRadius: '3px', cursor: 'pointer', background: i === expIdx ? teamColor : 'rgba(255,255,255,0.22)', boxShadow: i === expIdx ? `0 0 6px ${teamColor}` : 'none', transition: 'all 0.25s ease' }} />
+                <motion.div key={i} onClick={() => setAvatar(a => ({ ...a, expression: EXPRESSIONS[i].exp }))} whileTap={{ scale: 0.75 }}
+                  animate={{ width: i === expIdx ? 20 : 7, background: i === expIdx ? teamColor : 'rgba(255,255,255,0.2)', boxShadow: i === expIdx ? `0 0 8px ${teamColor}cc` : 'none' }}
+                  transition={{ duration: 0.28, ease: 'easeOut' }}
+                  style={{ height: '7px', borderRadius: '4px', cursor: 'pointer' }} />
               ))}
             </div>
           </div>
 
-          {/* إكسسوار — سهام */}
+          {/* ─── إكسسوار ─── */}
           <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.38)', fontWeight: 700, marginBottom: '0.45rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '20px', height: '2px', background: `linear-gradient(90deg, ${teamColor}80, transparent)`, borderRadius: '1px' }} />
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)', fontWeight: 700, marginBottom: '0.55rem', display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+              <div style={{ width: '22px', height: '22px', borderRadius: '7px', background: 'linear-gradient(135deg,rgba(168,85,247,0.8),rgba(139,92,246,0.6))', border: '1.5px solid rgba(168,85,247,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', flexShrink: 0 }}>{ACCESSORIES[accIdx].emoji}</div>
               إكسسوار
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <motion.button type="button" onClick={() => cycleAcc(-1)} whileTap={{ scale: 0.7, x: -3 }} whileHover={{ scale: 1.12 }}
-                style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.22)', background: 'linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)' }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><polygon points="8,0.5 1,5 8,9.5" fill="white" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))"/></svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', background: `linear-gradient(135deg,${ACCESSORIES[accIdx].color}0e,rgba(255,255,255,0.02))`, border: `2px solid ${ACCESSORIES[accIdx].color}35`, borderRadius: '1.1rem', padding: '0.55rem 0.65rem', boxShadow: `0 4px 20px ${ACCESSORIES[accIdx].color}15, 0 2px 8px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)` }}>
+              <motion.button type="button" onClick={() => cycleAcc(-1)} whileTap={{ scale: 0.72, x: -5 }} whileHover={{ scale: 1.15 }}
+                style={{ width: '46px', height: '46px', borderRadius: '50%', border: `2px solid ${ACCESSORIES[accIdx].color}65`, background: `radial-gradient(circle at 35% 35%,${ACCESSORIES[accIdx].color}40,${ACCESSORIES[accIdx].color}16)`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 0 12px ${ACCESSORIES[accIdx].color}44, 0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25)`, WebkitTapHighlightColor: 'transparent' }}>
+                <svg width="14" height="14" viewBox="0 0 10 10" fill="none"><defs><filter id="glow-acc-prev" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><polygon points="7.5,1 1.5,5 7.5,9" fill="white" filter="url(#glow-acc-prev)"/></svg>
               </motion.button>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', minHeight: '64px', justifyContent: 'center' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.28rem', minHeight: '62px', justifyContent: 'center' }}>
                 <AnimatePresence mode="wait">
-                  <motion.div key={accIdx} initial={{ opacity: 0, scale: 0.72, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.72, y: -8 }} transition={{ duration: 0.16, ease: 'easeOut' }}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                    <div style={{ fontSize: '2rem', lineHeight: 1 }}>{ACCESSORIES[accIdx].emoji}</div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{ACCESSORIES[accIdx].label}</div>
+                  <motion.div key={accIdx} initial={{ opacity: 0, scale: 0.6, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.6, y: -12 }} transition={{ duration: 0.22, ease: [0.34, 1.56, 0.64, 1] }}
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.22rem' }}>
+                    <motion.div animate={{ rotate: [0, -8, 8, 0], scale: [1, 1.15, 1] }} transition={{ duration: 0.55, delay: 0.08 }} style={{ fontSize: '2.1rem', lineHeight: 1, filter: `drop-shadow(0 2px 8px ${ACCESSORIES[accIdx].color}80)` }}>{ACCESSORIES[accIdx].emoji}</motion.div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'rgba(255,255,255,0.92)' }}>{ACCESSORIES[accIdx].label}</div>
                   </motion.div>
                 </AnimatePresence>
               </div>
-              <motion.button type="button" onClick={() => cycleAcc(1)} whileTap={{ scale: 0.7, x: 3 }} whileHover={{ scale: 1.12 }}
-                style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.22)', background: 'linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 2px 10px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18)' }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><polygon points="2,0.5 9,5 2,9.5" fill="white" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.5))"/></svg>
+              <motion.button type="button" onClick={() => cycleAcc(1)} whileTap={{ scale: 0.72, x: 5 }} whileHover={{ scale: 1.15 }}
+                style={{ width: '46px', height: '46px', borderRadius: '50%', border: `2px solid ${ACCESSORIES[accIdx].color}65`, background: `radial-gradient(circle at 65% 35%,${ACCESSORIES[accIdx].color}40,${ACCESSORIES[accIdx].color}16)`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 0 12px ${ACCESSORIES[accIdx].color}44, 0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.25)`, WebkitTapHighlightColor: 'transparent' }}>
+                <svg width="14" height="14" viewBox="0 0 10 10" fill="none"><defs><filter id="glow-acc-next" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><polygon points="2.5,1 8.5,5 2.5,9" fill="white" filter="url(#glow-acc-next)"/></svg>
               </motion.button>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '0.4rem' }}>
-              {ACCESSORIES.map((_, i) => (
-                <div key={i} onClick={() => setAvatar(a => ({ ...a, accessory: ACCESSORIES[i].acc }))}
-                  style={{ width: i === accIdx ? '18px' : '6px', height: '6px', borderRadius: '3px', cursor: 'pointer', background: i === accIdx ? teamColor : 'rgba(255,255,255,0.22)', boxShadow: i === accIdx ? `0 0 6px ${teamColor}` : 'none', transition: 'all 0.25s ease' }} />
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '5px', marginTop: '0.5rem' }}>
+              {ACCESSORIES.map(({ color }, i) => (
+                <motion.div key={i} onClick={() => setAvatar(a => ({ ...a, accessory: ACCESSORIES[i].acc }))} whileTap={{ scale: 0.75 }}
+                  animate={{ width: i === accIdx ? 20 : 7, background: i === accIdx ? color : 'rgba(255,255,255,0.2)', boxShadow: i === accIdx ? `0 0 8px ${color}cc` : 'none' }}
+                  transition={{ duration: 0.28, ease: 'easeOut' }}
+                  style={{ height: '7px', borderRadius: '4px', cursor: 'pointer' }} />
               ))}
             </div>
           </div>
@@ -776,25 +1039,8 @@ export const AnswerBuzzersScreen: React.FC = () => {
 
           {/* نموذج التسجيل */}
           <form onSubmit={handleRegistration}>
-            <div style={{ marginBottom: '0.85rem' }}>
-              <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.4rem' }}>اسمك</label>
-              <input
-                type="text" value={playerName}
-                onChange={e => setPlayerName(e.target.value)}
-                placeholder="أدخل اسمك..." maxLength={20}
-                style={{
-                  width: '100%', padding: '0.78rem 1rem', borderRadius: '0.85rem',
-                  background: 'rgba(255,255,255,0.06)', border: `2px solid ${teamColor}30`,
-                  color: 'white', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
-                  transition: 'border-color 0.2s, box-shadow 0.2s',
-                }}
-                onFocus={e => { e.target.style.borderColor = teamColor; e.target.style.boxShadow = `0 0 15px ${teamColor}22`; }}
-                onBlur={e => { e.target.style.borderColor = `${teamColor}30`; e.target.style.boxShadow = 'none'; }}
-              />
-            </div>
-
             <div style={{ marginBottom: '1.1rem' }}>
-              <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.45rem' }}>فريقك</label>
+              <label style={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: '1rem', fontWeight: 400, marginBottom: '0.55rem', fontFamily: "'Lalezar', sans-serif" }}>ممكن فريقك؟</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 {[
                   { id: 'green' as const, label: '🟢 الأخضر', grad: 'linear-gradient(135deg,#10b981,#059669)', border: '#10b981', glow: 'rgba(16,185,129,0.35)' },
@@ -818,7 +1064,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
 
             <motion.button type="submit" whileTap={{ scale: 0.97 }} whileHover={{ scale: 1.015 }}
               style={{ width: '100%', padding: '1rem', borderRadius: '1rem', background: 'linear-gradient(135deg,#f59e0b,#f97316,#ef4444)', border: 'none', color: 'white', fontSize: '1.05rem', fontWeight: 900, cursor: 'pointer', boxShadow: '0 6px 28px rgba(245,158,11,0.45)', letterSpacing: '0.03em' }}>
-              ✨ ادخل الآن
+              ✨ انضم الآن
             </motion.button>
           </form>
         </div>
@@ -829,7 +1075,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // غرفة الانتظار (Lobby) — تصميم عصري
+  // غرفة الانتظار (Lobby) — تصميم mobile-first
   // ═══════════════════════════════════════════════════════════════
   if (isWaitingRoom) {
     const greenPlayers = waitingPlayers.filter(p => p.team === 'green');
@@ -838,7 +1084,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
     const tc2 = selectedTeam === 'green' ? '#14b8a6' : '#dc2626';
     const oppTeam: 'green' | 'red' = selectedTeam === 'green' ? 'red' : 'green';
     const oppLabel = oppTeam === 'green' ? 'الأخضر' : 'الأحمر';
-    const myLabel  = selectedTeam === 'green' ? '🟢 أخضر' : '🔴 أحمر';
+    const myLabel  = selectedTeam === 'green' ? '🟢 الفريق الأخضر' : '🔴 الفريق الأحمر';
 
     const handleSwitchTeam = () => {
       const newTeam: 'green' | 'red' = selectedTeam === 'green' ? 'red' : 'green';
@@ -870,204 +1116,323 @@ export const AnswerBuzzersScreen: React.FC = () => {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
-        background: theme.bgGradient, direction: 'rtl', overflowX: 'hidden',
-        fontFamily: "'Tajawal', sans-serif",
+        background: 'linear-gradient(180deg, #080014 0%, #130826 55%, #1e0f38 100%)',
+        direction: 'rtl', overflowX: 'hidden', fontFamily: "'Tajawal', sans-serif",
       }}>
 
-        {/* ─── هيدر ─── */}
+        {/* ══ هيدر ثابت ══ */}
         <div style={{
-          background: 'linear-gradient(135deg,rgba(26,11,46,0.98),rgba(45,17,84,0.98))',
-          borderBottom: '1.5px solid rgba(168,85,247,0.2)',
-          padding: '1rem 1.25rem 0.9rem',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem',
+          background: 'rgba(12,4,28,0.95)',
+          backdropFilter: 'blur(12px)',
+          borderBottom: '1px solid rgba(168,85,247,0.18)',
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
+          paddingBottom: '0.75rem',
+          paddingRight: '1rem',
+          paddingLeft: '1rem',
+          position: 'sticky', top: 0, zIndex: 50,
         }}>
+          {/* شريط لوني علوي */}
           <div style={{
-            width: '50px', height: '3px', borderRadius: '2rem',
-            background: `linear-gradient(90deg, ${tc}, #a855f7, ${tc})`,
-            marginBottom: '0.4rem',
+            position: 'absolute', top: 0, left: 0, right: 0, height: '2.5px',
+            background: `linear-gradient(90deg, transparent, ${tc}, #a855f7, #6366f1, transparent)`,
           }} />
-          <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'white', letterSpacing: '0.05em' }}>
-            حرب الحروف
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>غرفة الانتظار</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            {/* أيقونة اللعبة */}
             <div style={{
-              background: 'rgba(168,85,247,0.2)', border: '1px solid rgba(168,85,247,0.35)',
-              borderRadius: '2rem', padding: '1px 8px',
-              fontSize: '0.62rem', color: '#c4b5fd', fontWeight: 700,
-            }}>{waitingPlayers.length} لاعب</div>
+              width: '38px', height: '38px', borderRadius: '0.75rem', flexShrink: 0,
+              background: `linear-gradient(135deg, ${tc}30, ${tc}12)`,
+              border: `1.5px solid ${tc}45`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.2rem',
+            }}>⚔️</div>
+
+            {/* العنوان */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 900, color: 'white', letterSpacing: '0.03em' }}>
+                حرب الحروف
+              </div>
+              <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.38)', fontWeight: 600, marginTop: '1px' }}>
+                {isAwaitingApproval ? 'انتظار موافقة المقدم' : 'غرفة الانتظار'}
+              </div>
+            </div>
+
+            {/* شارة الحالة */}
+            {isAwaitingApproval ? (
+              <div style={{
+                background: 'rgba(251,191,36,0.18)', border: '1px solid rgba(251,191,36,0.45)',
+                borderRadius: '2rem', padding: '4px 10px',
+                fontSize: '0.65rem', color: '#fbbf24', fontWeight: 800,
+                display: 'flex', alignItems: 'center', gap: '0.3rem',
+                animation: 'lobbyPulse 1.8s ease-in-out infinite',
+              }}>
+                <span>⏳</span> قيد المراجعة
+              </div>
+            ) : (
+              <div style={{
+                background: 'rgba(168,85,247,0.18)', border: '1px solid rgba(168,85,247,0.4)',
+                borderRadius: '2rem', padding: '4px 12px',
+                fontSize: '0.65rem', color: '#c4b5fd', fontWeight: 800,
+                display: 'flex', alignItems: 'center', gap: '0.35rem',
+              }}>
+                <div style={{
+                  width: '6px', height: '6px', borderRadius: '50%',
+                  background: '#10b981', boxShadow: '0 0 5px #10b981',
+                  animation: 'lobbyPulse 2s ease-in-out infinite',
+                }} />
+                {waitingPlayers.length} منضم
+              </div>
+            )}
           </div>
         </div>
 
-        {/* ─── بطاقتي ─── */}
-        <div style={{ padding: '1rem 1rem 0', display: 'flex', justifyContent: 'center' }}>
+        {/* ══ المحتوى القابل للتمرير ══ */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 12px))' }}>
+
+          {/* ── بطاقة انتظار الموافقة (إذا كانت اللعبة جارية) ── */}
+          {isAwaitingApproval && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+              style={{
+                background: 'linear-gradient(135deg, rgba(251,191,36,0.1), rgba(251,191,36,0.05))',
+                border: '1.5px solid rgba(251,191,36,0.4)',
+                borderRadius: '1rem', padding: '0.85rem 1rem',
+                display: 'flex', alignItems: 'center', gap: '0.75rem',
+                boxShadow: '0 4px 20px rgba(251,191,36,0.12)',
+              }}
+            >
+              <div style={{ fontSize: '1.5rem', lineHeight: 1, flexShrink: 0 }}>⏳</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#fbbf24' }}>
+                  اللعبة جارية — انتظار موافقة المقدم
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.45)', lineHeight: 1.5, marginTop: '0.2rem' }}>
+                  طلبك قيد المراجعة، سيتم إدخالك فور الموافقة
+                </div>
+                {/* زر إعادة إرسال الطلب — يُشعر المقدم أن هناك لاعباً ينتظر */}
+                <button
+                  onClick={() => {
+                    const av = avatarRef.current;
+                    syncManager.broadcast({
+                      type: 'player-registered',
+                      player: { name: playerName.trim(), team: selectedTeam, timestamp: Date.now(), avatar: av },
+                    });
+                  }}
+                  style={{
+                    marginTop: '0.55rem',
+                    padding: '0.3rem 0.8rem',
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    color: '#fbbf24',
+                    background: 'rgba(251,191,36,0.12)',
+                    border: '1.5px solid rgba(251,191,36,0.45)',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    fontFamily: 'Tajawal, sans-serif',
+                  }}
+                >
+                  🔔 إعادة إرسال طلب الانضمام
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── بطاقتي (Hero) ── */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 22 }}
             style={{
-              width: '100%', maxWidth: '360px',
-              background: `linear-gradient(145deg, ${tc}18, rgba(15,6,38,0.92))`,
-              border: `2px solid ${tc}50`,
-              borderRadius: '1.4rem',
+              background: `linear-gradient(145deg, ${tc}16, rgba(12,4,28,0.95))`,
+              border: `2px solid ${tc}55`,
+              borderRadius: '1.35rem',
               padding: '1rem 1.1rem',
-              boxShadow: `0 0 28px ${tc}22, 0 8px 28px rgba(0,0,0,0.5)`,
-              display: 'flex', alignItems: 'center', gap: '0.9rem',
-              position: 'relative',
+              boxShadow: `0 4px 28px ${tc}1a, 0 0 0 1px ${tc}15`,
+              display: 'flex', alignItems: 'center', gap: '1rem',
+              position: 'relative', overflow: 'hidden',
             }}
           >
+            {/* وهج خلفي */}
             <div style={{
-              position: 'absolute', top: '-9px', right: '1rem',
-              background: `linear-gradient(135deg, ${tc}, ${tc2})`,
-              color: 'white', fontSize: '0.58rem', fontWeight: 900,
-              padding: '2px 9px', borderRadius: '2rem',
-            }}>أنت</div>
+              position: 'absolute', top: '-30px', right: '-20px',
+              width: '120px', height: '120px', borderRadius: '50%',
+              background: `radial-gradient(circle, ${tc}18, transparent 70%)`,
+              pointerEvents: 'none',
+            }} />
 
             {/* الأفاتار */}
             <div style={{
-              width: '66px', height: '66px', borderRadius: '50%', flexShrink: 0,
-              background: `radial-gradient(circle, ${tc}22, transparent 70%)`,
-              border: `2.5px solid ${tc}55`,
+              width: '72px', height: '72px', borderRadius: '50%', flexShrink: 0,
+              background: `radial-gradient(circle at 35% 35%, ${tc}25, transparent 65%)`,
+              border: `2.5px solid ${tc}60`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: `0 0 20px ${tc}25`,
             }}>
-              <CharacterAvatar avatar={avatar} size={54} />
+              <CharacterAvatar avatar={avatar} size={58} />
             </div>
 
             {/* المعلومات */}
             <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                <div style={{
+                  fontSize: '1.05rem', fontWeight: 900, color: 'white',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                }}>{playerName}</div>
+                <div style={{
+                  background: '#10b981', width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
+                  boxShadow: '0 0 6px #10b981',
+                  animation: 'lobbyPulse 2s ease-in-out infinite',
+                }} />
+              </div>
               <div style={{
-                fontSize: '1rem', fontWeight: 900, color: 'white',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{playerName}</div>
-              <div style={{
-                display: 'inline-block', marginTop: '0.28rem',
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
                 background: `${tc}22`, border: `1px solid ${tc}50`,
-                color: tc, fontSize: '0.68rem', fontWeight: 800,
-                padding: '2px 9px', borderRadius: '2rem',
+                color: tc, fontSize: '0.72rem', fontWeight: 800,
+                padding: '3px 10px', borderRadius: '2rem',
               }}>{myLabel}</div>
             </div>
 
-            {/* نبضة الاتصال */}
+            {/* شارة "أنت" */}
             <div style={{
-              width: '9px', height: '9px', borderRadius: '50%', flexShrink: 0,
-              background: '#10b981', boxShadow: '0 0 8px #10b981',
-              animation: 'lobbyPulse 2s ease-in-out infinite',
-            }} />
+              position: 'absolute', top: '0.6rem', left: '0.85rem',
+              background: `linear-gradient(135deg, ${tc}, ${tc2})`,
+              color: 'white', fontSize: '0.55rem', fontWeight: 900,
+              padding: '2px 8px', borderRadius: '2rem',
+            }}>أنت</div>
           </motion.div>
-        </div>
 
-        {/* ─── الفريقان ─── */}
-        <div style={{ padding: '0.85rem 1rem 0', display: 'flex', gap: '0.55rem' }}>
-
-          {/* الفريق الأخضر */}
-          {(['green', 'red'] as const).map(team => {
-            const players = team === 'green' ? greenPlayers : redPlayers;
-            const col  = team === 'green' ? '#10b981' : '#ef4444';
-            const lbl  = team === 'green' ? 'الفريق الأخضر' : 'الفريق الأحمر';
-            return (
-              <div key={team} style={{ flex: 1, minWidth: 0 }}>
-                {/* رأس العمود */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.45rem',
-                }}>
+          {/* ── قائمة الفريقين ── */}
+          <div style={{ display: 'flex', gap: '0.65rem' }}>
+            {(['green', 'red'] as const).map(team => {
+              const players = team === 'green' ? greenPlayers : redPlayers;
+              const col  = team === 'green' ? '#10b981' : '#ef4444';
+              const lbl  = team === 'green' ? 'الأخضر' : 'الأحمر';
+              const isMyTeam = team === selectedTeam;
+              return (
+                <div key={team} style={{ flex: 1, minWidth: 0 }}>
+                  {/* رأس الفريق */}
                   <div style={{
-                    width: '8px', height: '8px', borderRadius: '50%', background: col,
-                    boxShadow: `0 0 5px ${col}`, flexShrink: 0,
-                  }} />
-                  <div style={{ fontSize: '0.68rem', fontWeight: 800, color: col, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lbl}</div>
-                  <div style={{
-                    background: `${col}20`, border: `1px solid ${col}35`,
-                    borderRadius: '2rem', padding: '0 5px',
-                    fontSize: '0.58rem', color: col, fontWeight: 700,
-                  }}>{players.length}</div>
-                </div>
-
-                {/* قائمة اللاعبين */}
-                <div style={{
-                  background: `${col}07`, border: `1.5px solid ${col}22`,
-                  borderRadius: '0.9rem', padding: '0.4rem',
-                  minHeight: '64px', display: 'flex', flexDirection: 'column', gap: '0.3rem',
-                }}>
-                  <AnimatePresence>
-                    {players.map(p => (
-                      <WaitingPlayerCard
-                        key={`${team}-${p.name}`}
-                        p={p}
-                        isMe={p.name === playerName && p.team === selectedTeam}
-                      />
-                    ))}
-                  </AnimatePresence>
-                  {players.length === 0 && (
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    marginBottom: '0.5rem', padding: '0 0.25rem',
+                  }}>
                     <div style={{
-                      fontSize: '0.6rem', color: 'rgba(255,255,255,0.18)', textAlign: 'center',
-                      padding: '0.8rem 0', fontStyle: 'italic',
-                    }}>لا أحد بعد...</div>
-                  )}
+                      width: '10px', height: '10px', borderRadius: '50%',
+                      background: col, boxShadow: `0 0 6px ${col}`,
+                      flexShrink: 0,
+                    }} />
+                    <div style={{
+                      fontSize: '0.72rem', fontWeight: 900, color: col,
+                      flex: 1, letterSpacing: '0.02em',
+                    }}>الفريق {lbl}</div>
+                    <div style={{
+                      background: `${col}20`, border: `1px solid ${col}40`,
+                      borderRadius: '2rem', padding: '1px 7px',
+                      fontSize: '0.6rem', color: col, fontWeight: 800,
+                    }}>{players.length}</div>
+                  </div>
+
+                  {/* حاوية اللاعبين */}
+                  <div style={{
+                    background: isMyTeam ? `${col}0a` : 'rgba(255,255,255,0.02)',
+                    border: `1.5px solid ${col}${isMyTeam ? '30' : '18'}`,
+                    borderRadius: '1rem',
+                    padding: '0.45rem',
+                    minHeight: '80px',
+                    display: 'flex', flexDirection: 'column', gap: '0.35rem',
+                    transition: 'border-color 0.3s',
+                  }}>
+                    <AnimatePresence>
+                      {players.map(p => (
+                        <WaitingPlayerCard
+                          key={`${team}-${p.name}`}
+                          p={p}
+                          isMe={p.name === playerName && p.team === selectedTeam}
+                        />
+                      ))}
+                    </AnimatePresence>
+                    {players.length === 0 && (
+                      <div style={{
+                        fontSize: '0.62rem', color: 'rgba(255,255,255,0.2)',
+                        textAlign: 'center', padding: '1rem 0',
+                        fontStyle: 'italic', lineHeight: 1,
+                      }}>
+                        لا أحد بعد
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
 
-        {/* ─── مؤشر الانتظار ─── */}
-        <div style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center',
-          gap: '0.45rem', padding: '0.9rem 0 0.25rem',
-        }}>
-          <div style={{ display: 'flex', gap: '0.38rem', alignItems: 'center' }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{
-                width: '7px', height: '7px', borderRadius: '50%', background: '#a855f7',
-                animation: 'lobbyDot 1.4s ease-in-out infinite',
-                animationDelay: `${i * 0.22}s`, opacity: 0.7,
+          {/* ── مؤشر الانتظار ── */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            gap: '0.55rem', paddingTop: '0.35rem',
+          }}>
+            {/* شريط تحميل متحرك */}
+            <div style={{
+              width: '100%', height: '3px', borderRadius: '2rem',
+              background: 'rgba(168,85,247,0.12)', overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%', width: '40%', borderRadius: '2rem',
+                background: 'linear-gradient(90deg, transparent, #a855f7, #6366f1, transparent)',
+                animation: 'lobbySlide 1.8s ease-in-out infinite',
               }} />
-            ))}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>
+              في انتظار المقدم للبدء...
+            </div>
           </div>
-          <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.28)', fontWeight: 600 }}>
-            في انتظار المقدم للبدء...
-          </div>
+
         </div>
 
-        {/* ─── فضاء للأزرار الثابتة ─── */}
-        <div style={{ flex: 1, minHeight: '1rem' }} />
-        <div style={{ height: '78px' }} />
-
-        {/* ─── أزرار الإجراءات (ثابتة في الأسفل) ─── */}
+        {/* ══ شريط الإجراءات (ثابت في الأسفل) ══ */}
         <div style={{
           position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-          background: 'linear-gradient(0deg,rgba(8,0,20,1) 0%,rgba(8,0,20,0.9) 100%)',
-          borderTop: '1.5px solid rgba(255,255,255,0.07)',
-          padding: '0.65rem 0.85rem 0.75rem',
-          display: 'flex', gap: '0.55rem',
+          background: 'rgba(8,0,20,0.97)',
+          backdropFilter: 'blur(12px)',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          padding: '0.65rem 0.9rem',
+          paddingBottom: 'calc(0.65rem + env(safe-area-inset-bottom, 0px))',
+          display: 'flex', gap: '0.6rem',
         }}>
           {/* تعديل الشخصية */}
           <button
             onClick={() => setShowLobbyEdit(true)}
             style={{
-              flex: 1, padding: '0.72rem 0.5rem', borderRadius: '0.9rem',
+              flex: 1, minHeight: '48px', borderRadius: '1rem',
               background: 'rgba(168,85,247,0.14)',
               border: '1.5px solid rgba(168,85,247,0.38)',
-              color: '#c4b5fd', fontSize: '0.8rem', fontWeight: 800,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
+              color: '#c4b5fd', fontSize: '0.82rem', fontWeight: 800,
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '0.4rem',
               transition: 'background 0.2s',
+              WebkitTapHighlightColor: 'transparent',
             }}
           >
-            ✏️ تعديل الشخصية
+            <span style={{ fontSize: '1rem' }}>✏️</span>
+            تعديل الشخصية
           </button>
 
           {/* تغيير الفريق */}
           <button
             onClick={handleSwitchTeam}
             style={{
-              flex: 1, padding: '0.72rem 0.5rem', borderRadius: '0.9rem',
+              flex: 1, minHeight: '48px', borderRadius: '1rem',
               background: oppTeam === 'green' ? 'rgba(16,185,129,0.14)' : 'rgba(239,68,68,0.14)',
-              border: `1.5px solid ${oppTeam === 'green' ? 'rgba(16,185,129,0.38)' : 'rgba(239,68,68,0.38)'}`,
-              color: oppTeam === 'green' ? '#4ade80' : '#f87171',
-              fontSize: '0.8rem', fontWeight: 800,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
+              border: `1.5px solid ${oppTeam === 'green' ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'}`,
+              color: oppTeam === 'green' ? '#34d399' : '#f87171',
+              fontSize: '0.82rem', fontWeight: 800,
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '0.4rem',
               transition: 'background 0.2s',
+              WebkitTapHighlightColor: 'transparent',
             }}
           >
-            🔄 انتقل لـ{oppLabel}
+            <span style={{ fontSize: '1rem' }}>🔄</span>
+            انتقل لـ{oppLabel}
           </button>
         </div>
 
@@ -1268,6 +1633,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
         <style>{`
           @keyframes lobbyDot   { 0%,100%{transform:scale(1);opacity:0.4;} 50%{transform:scale(1.5);opacity:1;} }
           @keyframes lobbyPulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+          @keyframes lobbySlide { 0%{transform:translateX(-140%);} 100%{transform:translateX(340%);} }
         `}</style>
       </div>
     );
@@ -1280,7 +1646,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: theme.bgGradient, overflowX: 'hidden' }}>
 
       {/* ─── شريط الهيدر ─── */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(135deg,#1a0b2e,#2d1154)', borderBottom: '2px solid rgba(168,85,247,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(135deg,#1a0b2e,#2d1154)', borderBottom: '2px solid rgba(168,85,247,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)', paddingTop: 'env(safe-area-inset-top)' }}>
         {/* صف 1: اسم + نتيجة + فريق */}
         <div style={{ padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
           <div style={{ fontWeight: 900, fontSize: '0.92rem', background: 'linear-gradient(135deg,#f97316,#ec4899,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px', flexShrink: 1 }}>
@@ -1369,7 +1735,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
       </div>
 
       {/* ─── منطقة الشبكة ─── */}
-      <div style={{ flex: 1, width: '100%', padding: '0.5rem 0.5rem 90px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ flex: 1, width: '100%', padding: `0.5rem 0.5rem calc(90px + env(safe-area-inset-bottom))`, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {cells.length > 0 ? (
           <>
             <div style={{ width: '100%', borderRadius: '1.25rem', overflow: 'hidden', border: `2px solid ${activeCell ? (activeCell.isGolden ? 'rgba(251,191,36,0.5)' : 'rgba(168,85,247,0.45)') : 'rgba(139,92,246,0.2)'}`, boxShadow: activeCell ? `0 0 24px ${activeCell.isGolden ? 'rgba(251,191,36,0.2)' : 'rgba(168,85,247,0.2)'}` : '0 4px 20px rgba(0,0,0,0.4)', background: 'linear-gradient(145deg,rgba(15,10,35,0.98),rgba(30,20,60,0.95))' }}>
@@ -1377,9 +1743,9 @@ export const AnswerBuzzersScreen: React.FC = () => {
             </div>
 
             <div style={{ width: '100%', padding: '0.5rem 0.75rem 0.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <button onClick={() => setGridScale(s => Math.max(0.42, +(s - 0.06).toFixed(2)))} style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.15)', color: 'white', fontSize: '1.1rem', fontWeight: 900, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+              <button onClick={() => setGridScale(s => Math.max(0.42, +(s - 0.06).toFixed(2)))} style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.15)', color: 'white', fontSize: '1.2rem', fontWeight: 900, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent' }}>−</button>
               <input type="range" min={0.42} max={0.95} step={0.03} value={gridScale} onChange={e => setGridScale(+e.target.value)} style={{ flex: 1, height: '6px', accentColor: '#a855f7', cursor: 'pointer' }} />
-              <button onClick={() => setGridScale(s => Math.min(0.95, +(s + 0.06).toFixed(2)))} style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.15)', color: 'white', fontSize: '1.1rem', fontWeight: 900, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+              <button onClick={() => setGridScale(s => Math.min(0.95, +(s + 0.06).toFixed(2)))} style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: '1.5px solid rgba(255,255,255,0.15)', color: 'white', fontSize: '1.2rem', fontWeight: 900, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent' }}>+</button>
               <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600, minWidth: '32px', textAlign: 'center' }}>{Math.round(gridScale * 100)}%</span>
             </div>
           </>
@@ -1394,11 +1760,31 @@ export const AnswerBuzzersScreen: React.FC = () => {
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
         background: 'linear-gradient(0deg,rgba(8,0,20,1) 0%,rgba(8,0,20,0.92) 100%)',
-        borderTop: `2px solid ${buttonsDisabled ? 'rgba(239,68,68,0.3)' : canPress ? 'rgba(168,85,247,0.4)' : 'rgba(239,68,68,0.3)'}`,
-        padding: '0.55rem 0.75rem',
-        display: 'flex', gap: '0.6rem', alignItems: 'stretch',
+        borderTop: `2px solid ${buzzerStatus === 'error' ? 'rgba(239,68,68,0.5)' : buttonsDisabled ? 'rgba(239,68,68,0.3)' : canPress ? 'rgba(168,85,247,0.4)' : 'rgba(239,68,68,0.3)'}`,
+        padding: `0.55rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom))`,
+        display: 'flex', flexDirection: 'column', gap: '0.4rem',
         transition: 'border-top-color 0.3s',
       }}>
+
+        {/* ── مؤشر حالة الاتصال ── */}
+        {buzzerStatus !== 'ready' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+            padding: '0.25rem 0.75rem',
+            background: buzzerStatus === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(251,191,36,0.12)',
+            border: `1px solid ${buzzerStatus === 'error' ? 'rgba(239,68,68,0.35)' : 'rgba(251,191,36,0.3)'}`,
+            borderRadius: '0.6rem', fontSize: '0.72rem', fontWeight: 700,
+            color: buzzerStatus === 'error' ? '#ef4444' : '#fbbf24',
+          }}>
+            <span style={{ fontSize: '0.65rem' }}>
+              {buzzerStatus === 'connecting' ? '⟳' : '✕'}
+            </span>
+            {buzzerStatus === 'connecting' ? 'جاري الاتصال بالجرس...' : 'انقطع الاتصال — يُعاد الاتصال تلقائياً'}
+          </div>
+        )}
+
+        {/* ── صف الأزرار ── */}
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'stretch' }}>
 
         {/* ── زر الإجابة ── */}
         <button
@@ -1419,6 +1805,8 @@ export const AnswerBuzzersScreen: React.FC = () => {
             boxShadow: buttonsDisabled ? 'none' : isSending ? '0 0 20px rgba(245,158,11,0.3)' : '0 0 24px rgba(245,158,11,0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
             transition: 'all 0.18s', position: 'relative', overflow: 'hidden',
             animation: canPress && !buttonsDisabled ? 'bzGlow 2s ease-in-out infinite' : 'none',
+            WebkitTapHighlightColor: 'transparent',
+            userSelect: 'none',
           }}
           onTouchStart={e => { if (!buttonsDisabled) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.95)'; }}
           onTouchEnd={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
@@ -1455,6 +1843,8 @@ export const AnswerBuzzersScreen: React.FC = () => {
             boxShadow: buttonsDisabled ? 'none' : isSending ? '0 0 20px rgba(168,85,247,0.3)' : '0 0 24px rgba(168,85,247,0.5), inset 0 1px 0 rgba(255,255,255,0.2)',
             transition: 'all 0.18s', position: 'relative', overflow: 'hidden',
             animation: canPress && !buttonsDisabled ? 'bzGlow 2s ease-in-out infinite 0.5s' : 'none',
+            WebkitTapHighlightColor: 'transparent',
+            userSelect: 'none',
           }}
           onTouchStart={e => { if (!buttonsDisabled) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.95)'; }}
           onTouchEnd={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
@@ -1474,9 +1864,10 @@ export const AnswerBuzzersScreen: React.FC = () => {
 
         {/* ── زر الدليل ── */}
         <button onClick={() => setShowGuide(true)}
-          style={{ width: '52px', borderRadius: '1.1rem', background: 'rgba(168,85,247,0.12)', border: '2px solid rgba(168,85,247,0.3)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          style={{ width: '52px', borderRadius: '1.1rem', background: 'rgba(168,85,247,0.12)', border: '2px solid rgba(168,85,247,0.3)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, minHeight: '48px', WebkitTapHighlightColor: 'transparent' }}>
           <HelpCircle size={22} />
         </button>
+        </div> {/* إغلاق صف الأزرار */}
       </div>
 
       {/* ─── بانر "أنا فزت بالجرس" ─── */}
@@ -1489,7 +1880,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
             ? 'linear-gradient(145deg,#059669,#10b981,#34d399)'
             : 'linear-gradient(145deg,#b91c1c,#ef4444,#f87171)',
           borderRadius: '2rem',
-          padding: '1.5rem 2rem',
+          padding: isMobile ? '1.25rem 1.5rem' : '1.5rem 2rem',
           textAlign: 'center',
           boxShadow: myTeam === 'green'
             ? '0 0 80px rgba(16,185,129,0.7), 0 20px 60px rgba(0,0,0,0.5)'
@@ -1497,33 +1888,33 @@ export const AnswerBuzzersScreen: React.FC = () => {
           animation: 'bzBounceIn 0.4s cubic-bezier(0.34,1.56,0.64,1)',
           pointerEvents: 'none',
           border: '3px solid rgba(255,255,255,0.4)',
-          minWidth: '200px',
+          width: isMobile ? 'min(300px, 85vw)' : '260px',
         }}>
           {/* الأفاتار */}
           <div style={{
-            width: '90px', height: '90px', borderRadius: '50%',
+            width: isMobile ? '78px' : '90px', height: isMobile ? '78px' : '90px', borderRadius: '50%',
             background: 'rgba(255,255,255,0.2)',
             border: '3px solid rgba(255,255,255,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 0.6rem',
+            margin: '0 auto 0.5rem',
             animation: 'bzPulse 1.5s ease-in-out infinite',
           }}>
-            <CharacterAvatar avatar={avatar} size={70} />
+            <CharacterAvatar avatar={avatar} size={isMobile ? 58 : 70} />
           </div>
 
-          <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'white', marginBottom: '0.2rem' }}>
+          <div style={{ fontSize: isMobile ? '1rem' : '1.1rem', fontWeight: 900, color: 'white', marginBottom: '0.15rem' }}>
             {playerName}
           </div>
-          <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.85)', fontWeight: 700, marginBottom: '0.65rem' }}>
+          <div style={{ fontSize: isMobile ? '0.82rem' : '0.78rem', color: 'rgba(255,255,255,0.9)', fontWeight: 800, marginBottom: '0.6rem' }}>
             {buzzerState.pressType === 'answer' ? '📣 أجب الآن!' : '🎴 طلبت بطاقة!'}
           </div>
 
           {/* عداد تنازلي */}
           <div style={{
-            width: '60px', height: '60px', borderRadius: '50%',
+            width: isMobile ? '64px' : '60px', height: isMobile ? '64px' : '60px', borderRadius: '50%',
             background: 'rgba(0,0,0,0.2)', border: '4px solid rgba(255,255,255,0.7)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.8rem', fontWeight: 900, color: 'white',
+            fontSize: isMobile ? '2rem' : '1.8rem', fontWeight: 900, color: 'white',
             margin: '0 auto',
             animation: activeSecsLeft <= 2 ? 'bzPulse 0.4s ease-in-out infinite' : 'none',
           }}>
@@ -1535,7 +1926,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
       {/* ─── بانر "الخصم يجيب" ─── */}
       {opponentActive && (
         <div style={{
-          position: 'fixed', bottom: '88px', left: '50%',
+          position: 'fixed', bottom: 'calc(88px + env(safe-area-inset-bottom))', left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 300,
           background: opponentTeam === 'green'
@@ -1567,9 +1958,101 @@ export const AnswerBuzzersScreen: React.FC = () => {
       )}
 
       {/* ═══ طبقة الأوفرلي ═══ */}
-      {showCardTeaser && <CardTeaserOverlay letter={showCardTeaser.letter} isGolden={showCardTeaser.isGolden} isHost={false} />}
-      {showRoulette && <CardRoulette onComplete={() => setShowRoulette(false)} syncedCard={syncedCard} isViewerMode={true} triggerType={rouletteTriggerType} />}
-      {cardAnimation && <CardAnimation type={cardAnimation.type} message={cardAnimation.message} onComplete={() => setCardAnimation(null)} />}
+
+      {/* ✨ إعلان الحرف الذهبي — متزامن مع المقدم */}
+      {goldenLetter && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 2400,
+          background: 'linear-gradient(135deg,#1a0a00 0%,#3d2000 50%,#1a0a00 100%)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: isMobile ? '1.25rem' : '2rem',
+          animation: 'gaFadeIn 0.4s ease-out',
+        }}>
+          {/* وهج خلفي */}
+          <div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none',
+            background: `
+              radial-gradient(circle at 30% 70%, rgba(251,191,36,0.25) 0%, transparent 45%),
+              radial-gradient(circle at 70% 30%, rgba(245,158,11,0.25) 0%, transparent 45%)
+            `,
+          }} />
+
+          {/* أيقونة */}
+          <div style={{
+            fontSize: isMobile ? '3.5rem' : '5rem',
+            animation: 'gaStarPulse 1.5s ease-in-out infinite',
+            position: 'relative', zIndex: 1,
+          }}>✨</div>
+
+          {/* الحرف */}
+          <div style={{
+            fontSize: isMobile ? '4rem' : '6rem',
+            fontWeight: 900,
+            color: '#fbbf24',
+            textShadow: '0 0 30px rgba(251,191,36,0.8), 0 4px 12px rgba(0,0,0,0.5)',
+            lineHeight: 1,
+            position: 'relative', zIndex: 1,
+          }}>{goldenLetter}</div>
+
+          {/* الرسالة */}
+          <div style={{
+            background: 'rgba(251,191,36,0.1)',
+            border: '2px solid rgba(251,191,36,0.4)',
+            borderRadius: '1.25rem',
+            padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
+            textAlign: 'center',
+            maxWidth: isMobile ? '85vw' : '480px',
+            position: 'relative', zIndex: 1,
+          }}>
+            <div style={{
+              fontSize: isMobile ? '1.1rem' : '1.4rem',
+              fontWeight: 900, color: '#fbbf24', marginBottom: '0.5rem',
+            }}>
+              حرف ذهبي! ✨
+            </div>
+            <div style={{
+              fontSize: isMobile ? '0.9rem' : '1.05rem',
+              color: 'rgba(255,255,255,0.85)', lineHeight: 1.65,
+            }}>
+              من يفوز بهذا السؤال سيختار بطاقة من اختياره!
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes gaFadeIn    { from{opacity:0;transform:scale(0.95);} to{opacity:1;transform:scale(1);} }
+            @keyframes gaStarPulse { 0%,100%{transform:scale(1) rotate(-8deg);} 50%{transform:scale(1.15) rotate(8deg);} }
+          `}</style>
+        </div>
+      )}
+
+      {/* شاشة التشويق — viewer فقط، بلا زر كشف */}
+      {showCardTeaser && (
+        <CardTeaserOverlay
+          letter={showCardTeaser.letter}
+          isGolden={showCardTeaser.isGolden}
+          isHost={false}
+        />
+      )}
+
+      {/* روليت البطاقات — متزامن مع المقدم */}
+      {showRoulette && (
+        <CardRoulette
+          onComplete={() => setShowRoulette(false)}
+          syncedCard={syncedCard}
+          isViewerMode={true}
+          triggerType={rouletteTriggerType}
+        />
+      )}
+
+      {/* أنيميشن البطاقة */}
+      {cardAnimation && (
+        <CardAnimation
+          type={cardAnimation.type}
+          message={cardAnimation.message}
+          onComplete={() => setCardAnimation(null)}
+        />
+      )}
 
       {localWinner && localWinMessage && !localMatchWinner && localSettings && (
         <ResultsOverlay winner={localWinner}
@@ -1609,7 +2092,7 @@ export const AnswerBuzzersScreen: React.FC = () => {
       )}
 
       {forcedQuestion && (
-        <div style={{ position: 'fixed', bottom: '92px', left: '0.75rem', right: '0.75rem', zIndex: 300, background: 'linear-gradient(135deg,rgba(99,102,241,0.97),rgba(168,85,247,0.97))', border: '2px solid rgba(168,85,247,0.7)', borderRadius: '1.1rem', padding: '0.75rem 1rem', boxShadow: '0 0 30px rgba(168,85,247,0.4)', animation: 'bzSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1)' }}>
+        <div style={{ position: 'fixed', bottom: 'calc(92px + env(safe-area-inset-bottom))', left: '0.75rem', right: '0.75rem', zIndex: 300, background: 'linear-gradient(135deg,rgba(99,102,241,0.97),rgba(168,85,247,0.97))', border: '2px solid rgba(168,85,247,0.7)', borderRadius: '1.1rem', padding: '0.75rem 1rem', boxShadow: '0 0 30px rgba(168,85,247,0.4)', animation: 'bzSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
             {forcedQuestion.letter && (
               <div style={{ width: '40px', height: '40px', borderRadius: '0.6rem', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', fontWeight: 900, color: 'white', flexShrink: 0 }}>{forcedQuestion.letter}</div>

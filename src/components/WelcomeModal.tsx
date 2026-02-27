@@ -128,7 +128,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}>
-            ⚔️ أهلاً بكم في معركة "حرب الحروف"! ⚔️
+            ⚔️ أهلاً في حرب الحروف!
           </h2>
 
           <p style={{
@@ -138,9 +138,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
             lineHeight: '1.8',
             marginBottom: isMobile ? '1.25rem' : '1.5rem',
           }}>
-            فكرة اللعبة مألوفة لكم من اللعبة الشهيرة <strong style={{ color: '#f59e0b' }}>"حروف مع عزيز"</strong>..
-            <br />
-            بس زدنا عليها حماس ومقالب! 🤩
+            مستوحاة من <strong style={{ color: '#f59e0b' }}>"حروف مع عزيز"</strong> — مع مقالب وحماس أكثر! 🤩
           </p>
 
           {/* الطورين */}
@@ -158,7 +156,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               marginBottom: '1rem',
               textAlign: 'center',
             }}>
-              ✌️ اللعبة فيها طورين:
+              ✌️ طوران:
             </h3>
 
             <div style={{
@@ -186,7 +184,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
                   margin: 0,
                   lineHeight: '1.6',
                 }}>
-                  ثقافة وسرعة بديهة.. اللي يسبق يجاوب صح، ياخذ الحرف!
+                  سبق وجاوب صح — الحرف لك!
                 </p>
               </div>
 
@@ -210,7 +208,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
                   margin: 0,
                   lineHeight: '1.6',
                 }}>
-                  مو شرط تكون مثقف عشان تفوز! استخدم بطاقات الأكشن في الوقت المناسب عشان تخرب خطة الفريق الثاني أو تنقذ فريقك.
+                  استخدم البطاقات في الوقت الصح — خرّب خطة الخصم أو أنقذ فريقك!
                 </p>
               </div>
             </div>
@@ -243,7 +241,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
             }}>
               الأولوية دائماً للي يسبق!<br />
               <span style={{ fontSize: isMobile ? '0.75rem' : '0.85rem', color: '#e9d5ff' }}>
-                (سواء للإجابة أو لطلب استخدام بطاقة)
+                (للإجابة ولطلب البطاقة)
               </span>
             </p>
           </div>
@@ -259,7 +257,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
             borderRadius: '0.5rem',
             border: '1px dashed rgba(168, 85, 247, 0.3)',
           }}>
-            💡 للتعمق في اللعبة أكثر ومعرفة تفاصيل البطاقات، اطلب من المقدم شرح القوانين
+            💡 اطلب من المقدم شرح القوانين
           </div>
 
           {/* Checkbox: لا تظهر مرة أخرى */}
@@ -302,7 +300,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
               cursor: 'pointer',
               userSelect: 'none',
             }}>
-              لا تظهر هذه الرسالة مرة أخرى
+              لا تظهر مجدداً
             </label>
           </div>
 

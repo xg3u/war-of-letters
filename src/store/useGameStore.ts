@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import type { HexCell, Team, GameSettings, CardType } from '../core/types';
 import { syncManager } from '../utils/SyncManager';
 import { applyCardEffect, updateCardCounters } from '../utils/cardPermissions';
+import { pickSmartLetters, recordGridLetters } from '../utils/smartLetterPicker';
 
 // لقطة حالة اللعبة لنظام التراجع/الإعادة
 interface GameStateSnapshot {
@@ -51,6 +52,7 @@ interface GameStore {
   clearCards: () => void; // حذف جميع البطاقات من الفريقين
   resetMatch: () => void; // إعادة تعيين المباراة كاملة
   forceRoundWin: (team: 'green' | 'red', winMsg?: string) => void; // إعلان الفوز يدوياً من المقدم
+  dismissWinner: () => void; // إخفاء نافذة الفوز دون مسح الخلايا
   decrementCounters: () => void; // تحديث عدادات التجميد والدرع بعد كل سؤال
   saveSnapshot: () => void; // حفظ لقطة قبل كل إجراء مهم
   undoLastAction: () => boolean; // تراجع خطوة
@@ -101,10 +103,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const currentSettings = newSettings || get().settings;
 
     const newCells: HexCell[] = [];
-    const alphabet = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
 
-    // توزيع عشوائي بدون تكرار (25 حرف فريد)
-    const shuffledAlphabet = alphabet.split('').sort(() => Math.random() - 0.5);
+    // اختيار ذكي — مرجّح بعدد الأسئلة ومكافأة الغياب
+    const selectedLetters = pickSmartLetters(25);
     const gridLayout = [[5], [5], [5], [5], [5]];
 
     let letterIndex = 0;
@@ -118,7 +119,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           id: `c-${r}-${q}`,
           q,
           r,
-          letter: shuffledAlphabet[letterIndex % shuffledAlphabet.length],
+          letter: selectedLetters[letterIndex],
           status: 'unanswered',
           isGolden: false,
           hasCard: false,
@@ -134,6 +135,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         letterIndex++;
       }
     }
+
+    // تسجيل الحروف المستخدمة لتحديث نظام الأوزان
+    recordGridLetters(selectedLetters);
     
     // إضافة الكروت المخفية (حسب الإعدادات)
     if (currentSettings.enableHiddenCards && currentSettings.hiddenCardsCount > 0) {
@@ -147,10 +151,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     }
     
-    // إضافة الحرف الذهبي (حسب الإعدادات)
+    // إضافة الحرف الذهبي (حسب الإعدادات) — الحرف الذهبي لا يملك بطاقة مخفية
     if (currentSettings.enableGoldenLetter) {
       const randomIndex = Math.floor(Math.random() * 25);
       newCells[randomIndex].isGolden = true;
+      newCells[randomIndex].hasCard  = false; // الفريق الفائز يختار بطاقته بنفسه
     }
     
     set({
@@ -190,6 +195,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   // إعادة تعيين اللعبة (جولة جديدة)
   resetGame: () => {
     set({ cells: [], winner: null, winMessage: null, winStreak: { green: 0, red: 0 }, history: [], future: [] });
+  },
+
+  // إخفاء نافذة الفوز دون مسح الخلايا
+  dismissWinner: () => {
+    set({ winner: null, winMessage: null });
   },
 
   // الجولة التالية

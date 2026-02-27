@@ -1,110 +1,61 @@
 // src/App.tsx
-import { useState, useEffect, useCallback } from 'react';
-import { LandingPage } from './components/LandingPage';
-import { GameSettings } from './components/GameSettings';
-import { HostScreen } from './components/HostScreen';
-import { PlayersScreen } from './components/PlayersScreen';
-import { AnswerBuzzersScreen } from './components/AnswerBuzzersScreen';
-import { JoinScreen } from './components/JoinScreen';
-import { WelcomeModal } from './components/WelcomeModal';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { AnimatedBackground } from './components/AnimatedBackground';
-import { AuthGate } from './components/AuthGate';
-import { supabase } from './lib/supabase';
-import type { GameSettingsData } from './components/GameSettings';
+import { AuthGate } from './components/AuthGate';          // sync — يظهر فوراً
+import { FullPageLoading } from './components/LoadingBar'; // sync — loading state
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuthContext } from './context/AuthContext';
+import type { GameSettingsData } from './components/GameSettings';
 
-type Screen = 'landing' | 'settings' | 'host' | 'players' | 'buzzers' | 'join';
+// ── Lazy-loaded screens (كل شاشة = chunk منفصل) ──────────────────────────
+// المستخدم يحمّل الشاشة فقط عند الحاجة إليها
+const LandingPage        = lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
+const GameSettings       = lazy(() => import('./components/GameSettings').then(m => ({ default: m.GameSettings })));
+const HostScreen         = lazy(() => import('./components/HostScreen').then(m => ({ default: m.HostScreen })));
+const PlayersScreen      = lazy(() => import('./components/PlayersScreen').then(m => ({ default: m.PlayersScreen })));
+const AnswerBuzzersScreen = lazy(() => import('./components/AnswerBuzzersScreen').then(m => ({ default: m.AnswerBuzzersScreen })));
+const JoinScreen         = lazy(() => import('./components/JoinScreen').then(m => ({ default: m.JoinScreen })));
+const WelcomeModal       = lazy(() => import('./components/WelcomeModal').then(m => ({ default: m.WelcomeModal })));
 
-function App() {
-  // فحص إذا كان المستخدم يدخل عبر QR Code
-  const params = new URLSearchParams(window.location.search);
-  const sessionParam = params.get('session');
-  const screenParam = params.get('screen');
-  const isQRCodeEntry = sessionParam && (screenParam === 'players' || screenParam === 'buzzers' || screenParam === 'join');
+type Screen = 'landing' | 'auth' | 'settings' | 'host' | 'players' | 'buzzers' | 'join';
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(isQRCodeEntry ? true : null); // null = loading
+
+// ── AppContent (يستخدم AuthContext) ───────────────────────────────────────
+function AppContent() {
+  const { isAuthenticated, user, planDisplay, isLoadingSubscription, subscription } = useAuthContext();
+
+  // تحديد الشاشة الأولية بناءً على URL params (للـ QR Code)
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
-    return (screenParam as Screen) || 'landing';
+    const params = new URLSearchParams(window.location.search);
+    const screenParam = params.get('screen') as Screen | null;
+    const validQRScreens: Screen[] = ['players', 'buzzers', 'join'];
+    if (screenParam && validQRScreens.includes(screenParam)) return screenParam;
+    return 'landing';
   });
 
+  // العودة لشاشة تسجيل الدخول تلقائياً عند تسجيل الخروج
+  const prevAuthRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (prevAuthRef.current === true && isAuthenticated === false) {
+      setCurrentScreen('auth');
+    }
+    prevAuthRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
   const [gameSettings, setGameSettings] = useState<GameSettingsData | null>(() => {
-    // تحميل الإعدادات من localStorage
     const stored = localStorage.getItem('current-game-settings');
     return stored ? JSON.parse(stored) : null;
   });
 
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // التحقق من حالة المصادقة عند بدء التطبيق
+  // إظهار Welcome Modal عند أول تسجيل دخول
   useEffect(() => {
-    // إذا كان دخول عبر QR Code، تجاوز المصادقة
-    if (isQRCodeEntry) {
-      console.log('📱 QR Code entry detected - skipping authentication');
-      return;
-    }
-
-    const checkAuth = async () => {
-      try {
-        // فحص الجلسة الحالية
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('Auth error:', error);
-          setIsAuthenticated(false);
-          return;
-        }
-
-        // التحقق من صلاحية الجلسة
-        if (session?.user) {
-          console.log('✅ User authenticated:', session.user.email);
-          setIsAuthenticated(true);
-
-          // حفظ معرف المستخدم — يُستخدم في questionEngine عبر getUserId()
-          const userId = session.user.id;
-          setCurrentUserId(userId);
-          localStorage.setItem('game_user_id', userId); // ← ربط getUserId() بالمستخدم المصادق
-
-          // فحص إذا كان المستخدم شاهد الرسالة من قبل
-          const hideModalKey = `hideWelcomeModal_${userId}`;
-          const hideModal = localStorage.getItem(hideModalKey);
-          setShowWelcomeModal(hideModal !== 'true');
-        } else {
-          console.log('❌ No active session - showing AuthGate');
-          setIsAuthenticated(false);
-        }
-      } catch (err) {
-        console.error('Auth check failed:', err);
-        setIsAuthenticated(false);
-      }
-    };
-
-    checkAuth();
-
-    // الاستماع لتغييرات حالة المصادقة
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        console.log('✅ Auth state changed - authenticated');
-        setIsAuthenticated(true);
-
-        // حفظ معرف المستخدم
-        const userId = session.user.id;
-        setCurrentUserId(userId);
-
-        // فحص إذا كان المستخدم شاهد الرسالة من قبل
-        const hideModalKey = `hideWelcomeModal_${userId}`;
-        const hideModal = localStorage.getItem(hideModalKey);
-        setShowWelcomeModal(hideModal !== 'true');
-      } else {
-        console.log('❌ Auth state changed - not authenticated');
-        setIsAuthenticated(false);
-        setCurrentUserId(null);
-        setShowWelcomeModal(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+    if (!user) return;
+    const hideModalKey = `hideWelcomeModal_${user.id}`;
+    const hideModal = localStorage.getItem(hideModalKey);
+    setShowWelcomeModal(hideModal !== 'true');
+  }, [user?.id]);
 
   const handleCloseWelcome = useCallback(() => setShowWelcomeModal(false), []);
 
@@ -114,106 +65,94 @@ function App() {
     setCurrentScreen('host');
   }, []);
 
-  // دوال التنقل ثابتة المرجع — ضروري لمنع إعادة تشغيل useEffect في HostScreen
   const handleBackToSettings = useCallback(() => setCurrentScreen('settings'), []);
-  const handleBackToLanding = useCallback(() => setCurrentScreen('landing'), []);
+  const handleBackToLanding  = useCallback(() => setCurrentScreen('landing'), []);
 
-  // حالة التحميل - انتظار فحص المصادقة
-  if (isAuthenticated === null) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0a0118 0%, #1a0b2e 50%, #2d1154 100%)',
-      }}>
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '1.5rem',
-        }}>
-          <div style={{
-            width: '60px',
-            height: '60px',
-            border: '4px solid rgba(168, 85, 247, 0.2)',
-            borderTopColor: '#a855f7',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-          }} />
-          <div style={{
-            color: '#e9d5ff',
-            fontSize: '1.25rem',
-            fontWeight: 700,
-          }}>
-            جاري التحميل...
-          </div>
-        </div>
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
-  }
+  // حماية: إذا كان المستخدم في شاشة الإعدادات وباقته مجانية → أعده للصفحة الرئيسية
+  useEffect(() => {
+    if (
+      currentScreen === 'settings' &&
+      isAuthenticated === true &&
+      !isLoadingSubscription &&
+      subscription !== null &&
+      planDisplay === 'free'
+    ) {
+      setCurrentScreen('landing');
+    }
+  }, [currentScreen, isAuthenticated, isLoadingSubscription, subscription, planDisplay]);
 
-  // إذا لم يكن مسجل الدخول - عرض شاشة المصادقة
-  if (!isAuthenticated) {
-    return <AuthGate onVerified={() => setIsAuthenticated(true)} />;
-  }
+  // حالة التحميل
+  if (isAuthenticated === null) return <FullPageLoading />;
 
-  // المستخدم مسجل الدخول - عرض التطبيق
   return (
-    <ThemeProvider>
     <div style={{ position: 'relative', minHeight: '100vh' }}>
-      {/* الخلفية المتحركة */}
       <AnimatedBackground />
 
-      {/* شاشة الهبوط */}
-      {currentScreen === 'landing' && (
-        <>
-          <LandingPage onOpenSettings={() => setCurrentScreen('settings')} />
-          {showWelcomeModal && <WelcomeModal onClose={handleCloseWelcome} />}
-        </>
-      )}
+      <Suspense fallback={<FullPageLoading />}>
+        {/* شاشة الهبوط — تظهر للجميع (مسجل أو لا) */}
+        {currentScreen === 'landing' && (
+          <>
+            <LandingPage
+              onOpenSettings={() => setCurrentScreen('settings')}
+              onNavigateToLogin={() => setCurrentScreen('auth')}
+            />
+            {showWelcomeModal && <WelcomeModal onClose={handleCloseWelcome} />}
+          </>
+        )}
 
-      {/* شاشة الإعدادات */}
-      {currentScreen === 'settings' && (
-        <GameSettings
-          onBack={handleBackToLanding}
-          onStartGame={handleStartGame}
-        />
-      )}
+        {/* شاشة تسجيل الدخول / إعادة تعيين كلمة المرور */}
+        {currentScreen === 'auth' && (
+          <AuthGate onVerified={() => setCurrentScreen('landing')} />
+        )}
 
-      {/* شاشة المقدم */}
-      {currentScreen === 'host' && gameSettings && (
-        <HostScreen
-          settings={gameSettings}
-          onBack={handleBackToSettings}
-        />
-      )}
+        {/* شاشة الإعدادات */}
+        {currentScreen === 'settings' && (
+          <GameSettings
+            onBack={handleBackToLanding}
+            onStartGame={handleStartGame}
+          />
+        )}
 
-      {/* شاشة اللاعبين */}
-      {currentScreen === 'players' && (
-        <PlayersScreen
-          settings={gameSettings}
-          currentQuestion={null}
-          selectedCell={null}
-        />
-      )}
+        {/* شاشة المقدم */}
+        {currentScreen === 'host' && gameSettings && (
+          <HostScreen
+            settings={gameSettings}
+            onBack={handleBackToSettings}
+          />
+        )}
 
-      {/* شاشة Answer Buzzers */}
-      {currentScreen === 'buzzers' && (
-        <AnswerBuzzersScreen />
-      )}
+        {/* شاشة اللاعبين */}
+        {currentScreen === 'players' && (
+          <PlayersScreen
+            settings={gameSettings}
+            currentQuestion={null}
+            selectedCell={null}
+          />
+        )}
 
-      {/* شاشة اختيار الدور (QR Code entry) */}
-      {currentScreen === 'join' && (
-        <JoinScreen onSelect={(screen) => setCurrentScreen(screen)} />
-      )}
+        {/* شاشة Answer Buzzers */}
+        {currentScreen === 'buzzers' && (
+          <AnswerBuzzersScreen />
+        )}
+
+        {/* شاشة اختيار الدور (QR Code entry) */}
+        {currentScreen === 'join' && (
+          <JoinScreen
+            onSelect={(screen) => setCurrentScreen(screen)}
+          />
+        )}
+      </Suspense>
     </div>
+  );
+}
+
+// ── App Root (providers فقط) ───────────────────────────────────────────────
+function App() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

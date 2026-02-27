@@ -1,33 +1,59 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
-    <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#a855f7"/>
-      <stop offset="50%" style="stop-color:#ec4899"/>
-      <stop offset="100%" style="stop-color:#f97316"/>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a0b2e"/>
+      <stop offset="100%" stop-color="#2d1154"/>
     </linearGradient>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a0b2e"/>
-      <stop offset="100%" style="stop-color:#2d1154"/>
+    <linearGradient id="strokeG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="50%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#f97316"/>
     </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+    <linearGradient id="greenL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="redL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f87171"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000" flood-opacity="0.5"/>
     </filter>
   </defs>
-  <!-- خلفية سداسية -->
-  <polygon points="50,4 93,27 93,73 50,96 7,73 7,27"
-           fill="url(#bgGrad)"
-           stroke="url(#hexGrad)"
-           stroke-width="3"/>
-  <!-- حرف ح بالعربي -->
-  <text x="50" y="70"
+
+  <!-- الخلفية السداسية -->
+  <polygon points="50,3 95,26.5 95,73.5 50,97 5,73.5 5,26.5"
+           fill="url(#bg)" stroke="url(#strokeG)" stroke-width="3.5"/>
+
+  <!-- خط فاصل بالوسط - ميدان المعركة -->
+  <line x1="50" y1="18" x2="50" y2="82" stroke="rgba(168,85,247,0.35)" stroke-width="1.2" stroke-dasharray="3,3"/>
+
+  <!-- حرف ح أخضر (الفريق الأخضر - يسار) -->
+  <text x="30" y="63"
         text-anchor="middle"
-        font-size="54"
+        font-size="38"
         font-weight="900"
-        fill="url(#hexGrad)"
+        fill="url(#greenL)"
         font-family="Tajawal, Arial, sans-serif"
         filter="url(#glow)">ح</text>
+
+  <!-- حرف ح أحمر (الفريق الأحمر - يمين) مقلوب أفقياً -->
+  <g transform="translate(100,0) scale(-1,1)">
+    <text x="30" y="63"
+          text-anchor="middle"
+          font-size="38"
+          font-weight="900"
+          fill="url(#redL)"
+          font-family="Tajawal, Arial, sans-serif"
+          filter="url(#glow)">ح</text>
+  </g>
+
+  <!-- نجمة التصادم بالوسط -->
+  <circle cx="50" cy="50" r="5.5" fill="url(#strokeG)" filter="url(#shadow)" opacity="0.9"/>
+  <text x="50" y="54" text-anchor="middle" font-size="7" fill="white" font-weight="900">⚔</text>
 </svg>

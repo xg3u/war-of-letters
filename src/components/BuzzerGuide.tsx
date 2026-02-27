@@ -28,14 +28,13 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
 
   const steps: GuideStep[] = [
     {
-      title: 'كيف تشتغل الأزرار؟',
+      title: 'أزرارك',
       icon: '📣',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <div style={{ textAlign: 'center', fontSize: '3rem', lineHeight: 1 }}>⚡</div>
           <p style={{ color: 'white', fontSize: '1.1rem', lineHeight: '2', margin: 0, fontWeight: 600, textAlign: 'center' }}>
-            هذي شاشتك الخاصة عشان
-            <br /><span style={{ color: '#fbbf24', fontWeight: 900 }}>تنافس على الإجابة!</span>
+            شاشتك <span style={{ color: '#fbbf24', fontWeight: 900 }}>للمنافسة على الإجابة</span>
           </p>
 
           <div style={{
@@ -49,7 +48,7 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
               <span style={{ color: '#fbbf24', fontWeight: 800, fontSize: '1.1rem' }}>زر "إجابة"</span>
             </div>
             <p style={{ color: '#d4bfff', fontSize: '1rem', margin: 0, lineHeight: '1.7' }}>
-              لما تعرف الإجابة، اضغط بسرعة! أول واحد يضغط اسمه يطلع على الشاشة الكبيرة ويجاوب
+              اضغط أولاً — اسمك يظهر على الشاشة ويُعطى حق الإجابة
             </p>
           </div>
 
@@ -64,34 +63,23 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
               <span style={{ color: '#c084fc', fontWeight: 800, fontSize: '1.1rem' }}>زر "طلب بطاقة"</span>
             </div>
             <p style={{ color: '#d4bfff', fontSize: '1rem', margin: 0, lineHeight: '1.7' }}>
-              لما تبي تستخدم بطاقة من بطاقاتك، اضغط هنا عشان المقدم يعرف
+              اضغط لإشعار المقدم باستخدام بطاقتك
             </p>
           </div>
 
-          <div style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            borderRadius: '0.75rem',
-            padding: '0.85rem',
-            border: '1.5px solid rgba(239, 68, 68, 0.25)',
-            textAlign: 'center',
-          }}>
-            <p style={{ color: '#fca5a5', fontSize: '0.95rem', margin: 0, fontWeight: 600 }}>
-              ⚡ السرعة هي المفتاح! أول من يضغط هو من يظهر اسمه
-            </p>
-          </div>
         </div>
       ),
     },
     {
-      title: 'سير اللعبة',
+      title: 'كيف تلعب',
       icon: '🎯',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {[
-            { num: '1', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', emoji: '🎲', title: 'الحرف العشوائي', desc: 'بداية كل جولة، يُختار حرف عشوائي - اللي يجاوب عليه صح ياخذ بطاقة مكافأة!' },
-            { num: '2', color: '#c084fc', bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.3)', emoji: '🔤', title: 'المقدم يختار حرف', desc: 'المقدم يختار حرف من الشبكة ويقرأ السؤال - جاوب بأسرع وقت!' },
-            { num: '3', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.3)', emoji: '📣', title: 'اضغط الزر!', desc: 'لما تعرف الإجابة اضغط زر "إجابة" بسرعة - أول واحد يضغط يجاوب' },
-            { num: '4', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', emoji: '✅', title: 'الفريق الفائز', desc: 'اللي يجاوب صح ياخذ الحرف لفريقه - والهدف تسيطر على الشبكة!' },
+            { num: '1', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', emoji: '🎲', title: 'الحرف العشوائي', desc: 'الرابح عليه يأخذ بطاقة مكافأة' },
+            { num: '2', color: '#c084fc', bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.3)', emoji: '🔤', title: 'المقدم يختار حرف', desc: 'جاوب بأسرع ما تقدر' },
+            { num: '3', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.3)', emoji: '📣', title: 'اضغط الزر!', desc: 'أول ضغطة = حق الإجابة' },
+            { num: '4', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', emoji: '✅', title: 'الفريق الفائز', desc: 'الهدف: السيطرة على الشبكة' },
           ].map((item, i) => (
             <div key={i} style={{
               background: item.bg,
@@ -116,13 +104,10 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
       ),
     },
     {
-      title: 'بطاقات الأكشن',
+      title: 'البطاقات',
       icon: '🃏',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          <p style={{ color: '#d4bfff', fontSize: '1rem', margin: 0, lineHeight: '1.7', textAlign: 'center' }}>
-            كل بطاقة لها تأثير خاص على اللعبة
-          </p>
           {[
             { emoji: '🧊', color: '#60a5fa', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)', name: 'تجميد', desc: 'جمّد خلية فارغة لدورتين' },
             { emoji: '💣', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'قنبلة', desc: 'دمّر حرف الخصم - يرجع فارغ!' },
@@ -145,13 +130,13 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
       ),
     },
     {
-      title: 'طرق الحصول على بطاقات',
+      title: 'مصادر البطاقات',
       icon: '🎁',
       content: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {[
             { emoji: '🎲', color: '#34d399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', name: 'الحرف العشوائي', desc: 'بداية كل جولة يُختار حرف عشوائي - اللي يجاوب صح ياخذ بطاقة!' },
-            { emoji: '🃏', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', name: 'بطاقات مخفية', desc: 'بعض الخلايا فيها بطاقات مخفية - الفريق اللي يجاوب صح ياخذها!' },
+            { emoji: '🃏', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.12)', border: 'rgba(251, 191, 36, 0.3)', name: 'بطاقات مخفية', desc: 'خلايا تفتح روليت — الرابح يأخذها' },
             { emoji: '✨', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)', name: 'الحرف الذهبي', desc: 'حرف واحد ذهبي في كل جولة يعطي بطاقة إضافية!' },
             { emoji: '🔥', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', name: 'مكافأة السلسلة', desc: '3 إجابات صحيحة متتالية = بطاقة مجانية!' },
           ].map((item, i) => (
@@ -373,7 +358,7 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
                 onChange={(e) => setDontShow(e.target.checked)}
                 style={{ cursor: 'pointer', width: '16px', height: '16px' }}
               />
-              لا تظهر هذا الشرح مرة أخرى
+              لا تظهر مجدداً
             </label>
           )}
         </div>

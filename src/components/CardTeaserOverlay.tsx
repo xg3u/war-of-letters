@@ -2,6 +2,7 @@
 // شاشة التشويق قبل كشف البطاقة
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useScreenSize } from '../hooks/useScreenSize';
 
 interface CardTeaserOverlayProps {
@@ -48,7 +49,7 @@ export const CardTeaserOverlay: React.FC<CardTeaserOverlayProps> = ({
     ? 'linear-gradient(160deg, #0f0800 0%, #2a1800 40%, #1c1000 100%)'
     : 'linear-gradient(160deg, #0d0118 0%, #280a4a 40%, #1a0533 100%)';
 
-  return (
+  return createPortal(
     <div style={{
       position: 'fixed',
       inset: 0,
@@ -318,6 +319,7 @@ export const CardTeaserOverlay: React.FC<CardTeaserOverlayProps> = ({
           100% { width: 0%; margin-left: 100%; }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 };
