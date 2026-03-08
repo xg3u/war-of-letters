@@ -5,53 +5,49 @@ export default defineConfig({
   plugins: [react()],
 
   build: {
-    // حجم التحذير: 600KB بدلاً من 500KB (framer-motion كبير)
+    // ES2020 target: أصغر bundle + أسرع parse على الجوال
+    target: 'es2020',
     chunkSizeWarningLimit: 600,
 
     rollupOptions: {
       output: {
-        // تقسيم الـ vendor bundles لتحسين caching
         manualChunks: {
-          // React core — يتغير نادراً، cache طويل
+          // React core — يتغير نادراً، cache طويل جداً
           'vendor-react': ['react', 'react-dom'],
-
-          // framer-motion — مكتبة كبيرة (1.2MB) منفصلة
+          // framer-motion — مكتبة ضخمة، منفصلة تماماً
           'vendor-motion': ['framer-motion'],
-
-          // lucide-react — أيقونات
-          'vendor-icons': ['lucide-react'],
-
           // Supabase — لا يتغير مع كل build
           'vendor-supabase': ['@supabase/supabase-js'],
-
           // Zustand — state management
           'vendor-zustand': ['zustand'],
+          // lucide-react — أيقونات (منفصلة لأنها كبيرة)
+          'vendor-icons': ['lucide-react'],
         },
+        // تسمية الملفات بـ hash لـ cache busting مثالي
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
       },
     },
 
-    // تفعيل source maps فقط في dev
     sourcemap: false,
+    cssMinify: true,
 
-    // ضغط أفضل
     minify: 'terser',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     terserOptions: {
       compress: {
-        // حذف console.log في production
         drop_console: true,
         drop_debugger: true,
-        // تحسينات إضافية
-        passes: 2,
+        passes: 3,           // تمريرات أكثر = ضغط أفضل
+        pure_funcs: ['console.log', 'console.warn', 'console.info'],
+        dead_code: true,
       },
-      format: {
-        // إزالة التعليقات
-        comments: false,
-      },
+      mangle: { toplevel: true },
+      format: { comments: false },
     } as any,
   },
 
-  // تحسين سرعة الـ dev server
   optimizeDeps: {
     include: [
       'react',

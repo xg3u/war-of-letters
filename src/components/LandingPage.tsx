@@ -32,20 +32,35 @@ const DB_CATEGORY_MAP: Record<number, string> = {
 interface LandingPageProps {
   onOpenSettings: () => void;
   onNavigateToLogin: () => void;
+  onOpenAdmin?: () => void;
+  onOpenPartner?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavigateToLogin }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavigateToLogin, onOpenAdmin, onOpenPartner }) => {
   const { isMobile, isTablet } = useScreenSize();
   const { theme, themeId, setTheme } = useTheme();
-  const { isAuthenticated, user, planDisplay, hoursRemaining, signOut, isLoadingSubscription } = useAuthContext();
+  const { isAuthenticated, user, planDisplay, hoursRemaining, signOut, isLoadingSubscription, role } = useAuthContext();
 
   const [showPayment, setShowPayment] = useState(false);
   const [paymentDefaultPlan, setPaymentDefaultPlan] = useState<'single' | 'lifetime' | undefined>(undefined);
+  const [paymentDefaultTab, setPaymentDefaultTab] = useState<'payment' | 'redeem' | undefined>(undefined);
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [statsCount, setStatsCount] = useState<number | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+
+  // ── إشعار الطرد بسبب الخمول (kicked=true في URL) ──────────────────────────
+  const [showKickedBanner, setShowKickedBanner] = useState(
+    () => window.location.search.includes('kicked=true'),
+  );
+  useEffect(() => {
+    if (!showKickedBanner) return;
+    // نظّف الـ URL حتى لا تظهر الرسالة مجدداً عند التحديث
+    window.history.replaceState({}, document.title, window.location.pathname);
+    const t = setTimeout(() => setShowKickedBanner(false), 6000);
+    return () => clearTimeout(t);
+  }, [showKickedBanner]);
 
   // عدد الأسئلة لكل كاتيجوري من DB
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
@@ -149,13 +164,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
       return;
     }
     if (isLoadingSubscription) return; // انتظر تحميل بيانات الباقة
+    // الأدمن والشريك يدخلون مباشرة بدون قيد الباقة
+    if (role === 'admin' || role === 'partner') {
+      onOpenSettings();
+      return;
+    }
     if (planDisplay === 'free') {
       setPaymentDefaultPlan(undefined);
       setShowPayment(true);
       return;
     }
     onOpenSettings();
-  }, [isAuthenticated, isLoadingSubscription, planDisplay, onNavigateToLogin, onOpenSettings]);
+  }, [isAuthenticated, isLoadingSubscription, planDisplay, role, onNavigateToLogin, onOpenSettings]);
 
   // الحروف المتساقطة
   const fallingLetters = useMemo(() =>
@@ -178,11 +198,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
     }
   };
 
-  // تسجيل الخروج — التوجيه لشاشة الدخول يتم تلقائياً عبر useEffect في App.tsx
+  // تسجيل الخروج — ننتقل صراحةً لشاشة الدخول بدل الاعتماد على useEffect في App.tsx
   const handleLogout = useCallback(async () => {
     setShowDropdown(false);
     await signOut();
-  }, [signOut]);
+    onNavigateToLogin();
+  }, [signOut, onNavigateToLogin]);
+
 
   // جميع الثيمات داكنة - isDarkMode دائماً true للحفاظ على التوافق مع الكود الموجود
   const isDarkMode = true;
@@ -196,24 +218,58 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
+    <div className="screen-scroll" style={{
       background: colors.bgGradient,
       color: colors.text,
       transition: 'background 0.5s ease, color 0.3s ease',
       position: 'relative',
-      overflowX: 'hidden',
       direction: 'rtl',
     }}>
 
+      {/* ── بانر الطرد بسبب الخمول ───────────────────────────────────── */}
+      {showKickedBanner && (
+        <div style={{
+          position:       'fixed',
+          top:            0,
+          left:           0,
+          right:          0,
+          zIndex:         99999,
+          background:     'linear-gradient(90deg,#d97706,#f59e0b)',
+          color:          '#fff',
+          padding:        '0.75rem 1.25rem',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'space-between',
+          gap:            '1rem',
+          fontFamily:     'Tajawal,sans-serif',
+          fontSize:       '0.95rem',
+          fontWeight:     700,
+          direction:      'rtl',
+          boxShadow:      '0 4px 20px rgba(0,0,0,0.35)',
+        }}>
+          <span>⏰ تم تسجيل خروجك تلقائياً بسبب عدم التفاعل لفترة طويلة</span>
+          <button
+            onClick={() => setShowKickedBanner(false)}
+            style={{
+              background:   'rgba(255,255,255,0.2)',
+              border:       '1px solid rgba(255,255,255,0.4)',
+              borderRadius: '0.5rem',
+              color:        '#fff',
+              padding:      '0.2rem 0.75rem',
+              cursor:       'pointer',
+              fontSize:     '0.9rem',
+              fontFamily:   'inherit',
+            }}
+          >✕</button>
+        </div>
+      )}
+
       {showPayment && (
         <PaymentModal
-          onClose={() => setShowPayment(false)}
-          onSuccess={() => {
-            setShowPayment(false);
-            onOpenSettings();
-          }}
+          onClose={() => { setShowPayment(false); setPaymentDefaultTab(undefined); }}
           defaultPlan={paymentDefaultPlan}
+          defaultTab={paymentDefaultTab}
+          onPaidPlanDetected={() => { setShowPayment(false); setPaymentDefaultTab(undefined); onOpenSettings(); }}
         />
       )}
 
@@ -358,9 +414,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
             />
           </div>
 
-          {/* قائمة التنقل المركزية */}
+          {/* قائمة التنقل المركزية — مخفية على الجوال (تُستبدل بـ Bottom Nav) */}
           <nav style={{
-            display: 'flex',
+            display: isMobile ? 'none' : 'flex',
             gap: '0.25rem',
             alignItems: 'center',
             background: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
@@ -671,6 +727,42 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                       <BarChart2 size={16} color="#a855f7" /> إحصائياتي
                     </button>
 
+                    {/* لوحة الإدارة — للمدير فقط */}
+                    {role === 'admin' && (
+                      <button
+                        onClick={() => { setShowDropdown(false); onOpenAdmin?.(); }}
+                        style={{
+                          background: 'transparent', border: 'none', borderRadius: '0.6rem',
+                          padding: '0.6rem 0.5rem', cursor: 'pointer', width: '100%',
+                          display: 'flex', alignItems: 'center', gap: '0.6rem',
+                          color: '#a855f7', fontWeight: 700, fontSize: '0.9rem',
+                          textAlign: 'right', transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(168,85,247,0.1)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <span style={{ fontSize: '1rem' }}>⚙️</span> لوحة الإدارة
+                      </button>
+                    )}
+
+                    {/* بوابة الشريك — للشركاء فقط */}
+                    {role === 'partner' && (
+                      <button
+                        onClick={() => { setShowDropdown(false); onOpenPartner?.(); }}
+                        style={{
+                          background: 'transparent', border: 'none', borderRadius: '0.6rem',
+                          padding: '0.6rem 0.5rem', cursor: 'pointer', width: '100%',
+                          display: 'flex', alignItems: 'center', gap: '0.6rem',
+                          color: '#10b981', fontWeight: 700, fontSize: '0.9rem',
+                          textAlign: 'right', transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.1)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <span style={{ fontSize: '1rem' }}>🤝</span> بوابة الشريك
+                      </button>
+                    )}
+
                     {/* تسجيل خروج */}
                     <button
                       onClick={handleLogout}
@@ -694,7 +786,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
         </div>
       </header>
 
-      <main style={{ paddingTop: isMobile ? 'calc(4rem + env(safe-area-inset-top))' : 'calc(5rem + env(safe-area-inset-top))', position: 'relative', zIndex: 1 }}>
+      <main style={{ paddingTop: isMobile ? 'calc(4rem + env(safe-area-inset-top))' : 'calc(5rem + env(safe-area-inset-top))', paddingBottom: isMobile ? 'calc(4.5rem + env(safe-area-inset-bottom))' : 0, position: 'relative', zIndex: 1 }}>
 
         {/* Hero Section */}
         <section id="hero" style={{ minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
@@ -1322,6 +1414,66 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
         </footer>
       </main>
 
+      {/* ── Bottom Navigation (للجوال فقط) ─────────────────────────────────── */}
+      {isMobile && (
+        <nav style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 200,
+          background: isDarkMode
+            ? 'rgba(8, 2, 20, 0.97)'
+            : 'rgba(248, 249, 250, 0.97)',
+          backdropFilter: 'blur(16px)',
+          borderTop: `1px solid ${isDarkMode ? 'rgba(168,85,247,0.25)' : 'rgba(124,58,237,0.15)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-around',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          paddingTop: '0.35rem',
+          paddingLeft: '0.5rem',
+          paddingRight: '0.5rem',
+        }}>
+          {([
+            { label: 'الرئيسية', section: 'hero',       Icon: Home       },
+            { label: 'الأسئلة',  section: 'categories', Icon: HelpCircle },
+            { label: 'البطاقات', section: 'cards',      Icon: Layers     },
+            { label: 'الدليل',   section: 'guide',      Icon: BookOpen   },
+          ] as { label: string; section: string; Icon: React.ComponentType<{ size?: number }> }[]).map((item) => (
+            <button
+              key={item.section}
+              onClick={() => scrollToSection(item.section)}
+              aria-label={item.label}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.2rem',
+                padding: '0.4rem 0.25rem',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)',
+                fontFamily: 'Tajawal, sans-serif',
+                fontWeight: 600,
+                fontSize: '0.6rem',
+                borderRadius: '0.75rem',
+                minHeight: '52px',
+                transition: 'color 0.2s',
+              }}
+              onTouchStart={(e) => { e.currentTarget.style.color = '#c084fc'; }}
+              onTouchEnd={(e) => { e.currentTarget.style.color = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)'; }}
+            >
+              <item.Icon size={22} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+
       {/* زر واتساب عائم */}
       <a
         href="https://wa.me/message/CEACUCTW6E7BB1"
@@ -1330,7 +1482,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
         aria-label="تواصل معنا عبر واتساب"
         style={{
           position: 'fixed',
-          bottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+          bottom: isMobile ? 'calc(5rem + env(safe-area-inset-bottom))' : 'calc(1.5rem + env(safe-area-inset-bottom))',
           left: '1.5rem',
           zIndex: 150,
           width: '54px',

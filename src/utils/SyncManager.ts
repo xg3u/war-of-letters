@@ -2,6 +2,7 @@
 // مدير المزامنة بين الشاشات باستخدام BroadcastChannel و Supabase Realtime
 
 import { supabase } from '../lib/supabase';
+import { heartbeatMonitor } from './HeartbeatMonitor';
 
 // رسائل لا تحتاج debounce — حرجة وتُرسل فوراً
 const INSTANT_TYPES = new Set([
@@ -14,11 +15,11 @@ const INSTANT_TYPES = new Set([
   // بداية الجولة وإرسال اللاعبين: حرجة لغرفة الانتظار — لا debounce
   'ROUND_STARTED', 'SEND_TO_BUZZERS',
   // الجرس: حرجة للتوقيت الدقيق
-  'buzzer-press', 'BUZZER_WINNER',
+  'buzzer-press', 'BUZZER_WINNER', 'BUZZER_WINNER_SYNC',
   // تلوين الخلية: حرجة — لا تُفقد خلف debounce CELL_SELECTED اللاحق
   'CELL_CLAIMED',
   // Ping/Pong: حرجة للقياس الدقيق
-  'host-ping', 'player-pong',
+  'host-ping', 'player-pong', 'PLAYER_PING_UPDATE',
 ]);
 
 export class SyncManager {
@@ -33,6 +34,24 @@ export class SyncManager {
   private pendingPresenceTrack: any = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ─── Exponential Backoff ──────────────────────────────────────────────────
+  // بدلاً من إعادة المحاولة كل 3 ثوانٍ بشكل ثابت:
+  // 1s → 2s → 4s → 8s → 16s → 30s → 60s (ثم يثبت عند 60s)
+  private reconnectAttempts = 0;
+  private readonly BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000, 60000];
+
+  // ─── Polling Fallback ─────────────────────────────────────────────────────
+  // يُشغَّل عند فشل Realtime 3 مرات متتالية — يطلب الحالة الكاملة كل 5 ثوانٍ
+  private pollingTimer: ReturnType<typeof setInterval> | null = null;
+
+  // ─── Connection Health ─────────────────────────────────────────────────────
+  // 'ok' = متصل | 'degraded' = فشل متكرر (الخادم ممتلئ أو الشبكة معطلة)
+  private _healthListeners: Set<(health: 'ok' | 'degraded') => void> = new Set();
+
+  // ─── Polling Mode Listeners ────────────────────────────────────────────────
+  // يُستدعى مرة واحدة عند الانتقال إلى وضع الاستطلاع (High Traffic Mode)
+  private _pollingListeners: Set<() => void> = new Set();
+
   // ─── Debounce: Realtime+Presence لـ saveFullState ────────────────────────
   private _fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _fsLatest: any = null;
@@ -44,6 +63,19 @@ export class SyncManager {
   // ─── Debounce: Realtime broadcast للرسائل غير الحرجة ─────────────────────
   private _rtTimer: ReturnType<typeof setTimeout> | null = null;
   private _rtLatest: any = null;
+
+  // ─── Heartbeat ────────────────────────────────────────────────────────────
+  // كل جهاز يُرسل نبضة كل 5 ث حتى يعرف الـ host أن اللاعب لا يزال متصلاً
+  readonly deviceId = `device-${Math.random().toString(36).substring(2, 9)}`;
+  private _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+  // ─── Quota Exceeded ───────────────────────────────────────────────────────
+  // يُستدعى عند اكتشاف حصة Supabase Realtime ممتلئة
+  private _quotaListeners: Set<() => void> = new Set();
+
+  // ─── Presence Count ────────────────────────────────────────────────────────
+  // عدد الأجهزة المتصلة بالغرفة — يُحدَّث عبر أحداث Presence
+  private _presenceCountListeners: Set<(count: number) => void> = new Set();
 
   constructor(channelName: string = 'war-of-letters-sync') {
     this.channel = new BroadcastChannel(channelName);
@@ -79,8 +111,91 @@ export class SyncManager {
       localStorage.setItem('game-session-id', urlSessionId);
     }
 
-    if (this.sessionId) {
-      this.setupRealtimeChannel();
+    // ❌ لا نفتح WebSocket تلقائياً — ينفتح فقط عبر initSession() أو joinSession()
+    // هذا يمنع فتح WebSocket على الصفحة الرئيسية ولوحات الإدارة للمستخدمين العائدين
+
+    // ── تنظيف WebSocket عند إغلاق/تحديث الصفحة ─────────────────────────────
+    // pagehide أفضل من beforeunload (يعمل على الجوالات حيث beforeunload لا يُستدعى دائماً)
+    const cleanup = () => this._teardown();
+    window.addEventListener('pagehide', cleanup);
+    window.addEventListener('beforeunload', cleanup);
+  }
+
+  /** قطع WebSocket فوراً بدون تنظيف listeners (يُستخدم عند pagehide/beforeunload) */
+  private _teardown() {
+    this._stopHeartbeat();
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    if (this.realtimeChannel) {
+      supabase.removeChannel(this.realtimeChannel);
+      this.realtimeChannel = null;
+    }
+    this.isSubscribed = false;
+  }
+
+  /** الاشتراك بحالة صحة الاتصال — يُستدعى بـ 'degraded' بعد 5 فشلات متتالية */
+  onHealth(cb: (health: 'ok' | 'degraded') => void): () => void {
+    this._healthListeners.add(cb);
+    return () => this._healthListeners.delete(cb);
+  }
+
+  private _emitHealth(h: 'ok' | 'degraded') {
+    this._healthListeners.forEach(cb => cb(h));
+  }
+
+  /** يُستدعى مرة واحدة عند انتقال الاتصال إلى وضع الاستطلاع (ازدحام عالٍ) */
+  onPollingMode(cb: () => void): () => void {
+    this._pollingListeners.add(cb);
+    return () => this._pollingListeners.delete(cb);
+  }
+
+  /** يُستدعى عند اكتشاف امتلاء حصة Realtime (QUOTA_EXCEEDED) */
+  onQuotaExceeded(cb: () => void): () => void {
+    this._quotaListeners.add(cb);
+    return () => this._quotaListeners.delete(cb);
+  }
+
+  private _emitQuota() {
+    this._quotaListeners.forEach(cb => cb());
+    // تلقائياً: ابدأ polling fallback عند امتلاء الحصة
+    if (!this.isHost) this.startPolling();
+    this._emitHealth('degraded');
+  }
+
+  /** يُستدعى للاشتراك بعدد الأجهزة المتصلة بالغرفة عبر Presence */
+  onPresenceCount(cb: (count: number) => void): () => void {
+    this._presenceCountListeners.add(cb);
+    return () => this._presenceCountListeners.delete(cb);
+  }
+
+  private _emitPresenceCount() {
+    if (!this.realtimeChannel) return;
+    const state = this.realtimeChannel.presenceState();
+    const count = Object.keys(state).length;
+    this._presenceCountListeners.forEach(cb => cb(count));
+  }
+
+  // ── Heartbeat ─────────────────────────────────────────────────────────────
+  // يُرسل نبضة كل 5 ث عبر Realtime ليعرف الـ host أن الجهاز لا يزال حياً
+
+  private _startHeartbeat() {
+    this._stopHeartbeat();
+    // المضيف: نبضة كل 5 ث (كشف سريع للاتصال المفقود)
+    // اللاعبون: نبضة كل 30 ث (توفير 6× في رسائل Realtime)
+    const interval = this.isHost ? 5000 : 30000;
+    this._heartbeatInterval = setInterval(() => {
+      if (!this.isSubscribed || !this.realtimeChannel) return;
+      this.realtimeChannel.send({
+        type: 'broadcast',
+        event: 'game-update',
+        payload: { type: 'heartbeat', deviceId: this.deviceId, timestamp: Date.now() },
+      }).catch(() => { /* silent */ });
+    }, interval);
+  }
+
+  private _stopHeartbeat() {
+    if (this._heartbeatInterval) {
+      clearInterval(this._heartbeatInterval);
+      this._heartbeatInterval = null;
     }
   }
 
@@ -94,6 +209,30 @@ export class SyncManager {
     this.isHost = true;
     localStorage.setItem('game-session-id', sessionId);
     this.setupRealtimeChannel();
+  }
+
+  /** للاعبين وشاشة العرض: فتح الاتصال صريحاً بدون صلاحيات المضيف */
+  joinSession(sessionId: string) {
+    if (this.sessionId === sessionId && this.realtimeChannel && this.isSubscribed) return;
+    this.sessionId = sessionId;
+    localStorage.setItem('game-session-id', sessionId);
+    this.setupRealtimeChannel();
+  }
+
+  /** قطع الاتصال بدون إعادة محاولة — عند مغادرة شاشة اللعبة للصفحة الرئيسية */
+  disconnect() {
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    if (this._fsDebounceTimer) { clearTimeout(this._fsDebounceTimer); this._fsDebounceTimer = null; }
+    if (this._rtTimer) { clearTimeout(this._rtTimer); this._rtTimer = null; }
+    this._stopHeartbeat();
+    this.stopPolling();
+    this.reconnectAttempts = 0;
+    this.isSubscribed = false;
+    this.isHost = false;
+    if (this.realtimeChannel) {
+      supabase.removeChannel(this.realtimeChannel);
+      this.realtimeChannel = null;
+    }
   }
 
   private setupRealtimeChannel() {
@@ -114,10 +253,18 @@ export class SyncManager {
     });
 
     this.realtimeChannel.on('broadcast', { event: 'game-update' }, ({ payload }: any) => {
+      // نبضة القلب: حدّث HeartbeatMonitor بدلاً من إرسالها للمستمعين العاديين
+      if (payload?.type === 'heartbeat' && payload?.deviceId) {
+        heartbeatMonitor.pulse(payload.deviceId);
+        return; // لا نُمرّر heartbeat للمستمعين (ليست رسالة لعبة)
+      }
       this.listeners.forEach(listener => listener(payload));
     });
 
     this.realtimeChannel.on('presence', { event: 'sync' }, () => {
+      // عدّ الأجهزة المتصلة (لجميع الأجهزة بما فيها الـ host)
+      this._emitPresenceCount();
+
       if (this.isHost) return;
 
       const presenceState = this.realtimeChannel.presenceState();
@@ -138,20 +285,99 @@ export class SyncManager {
       }
     });
 
-    this.realtimeChannel.subscribe((status: string) => {
+    this.realtimeChannel.on('presence', { event: 'join' }, () => {
+      this._emitPresenceCount();
+    });
+
+    this.realtimeChannel.on('presence', { event: 'leave' }, () => {
+      this._emitPresenceCount();
+    });
+
+    this.realtimeChannel.subscribe((status: string, err?: any) => {
       if (status === 'SUBSCRIBED') {
         this.isSubscribed = true;
+        // ── Reconnect success: reset state ──────────────────────────
+        const wasReconnecting = this.reconnectAttempts > 0;
+        this.reconnectAttempts = 0;
+        this.stopPolling();
+        this._emitHealth('ok');
+        // ابدأ إرسال نبضات القلب بعد نجاح الاشتراك
+        this._startHeartbeat();
 
         if (this.isHost && this.pendingPresenceTrack) {
           this.realtimeChannel.track(this.pendingPresenceTrack);
           this.pendingPresenceTrack = null;
         }
+
+        // ── إذا كنا لاعباً وكنا نعيد الاتصال → اطلب الحالة الكاملة من الـ host
+        if (wasReconnecting && !this.isHost) {
+          setTimeout(() => this.requestFullState(), 600);
+        }
       }
 
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        setTimeout(() => this.setupRealtimeChannel(), 3000);
+        this._stopHeartbeat(); // أوقف النبضات حتى يعود الاتصال
+        this.reconnectAttempts++;
+        const delay = this.BACKOFF[Math.min(this.reconnectAttempts - 1, this.BACKOFF.length - 1)];
+
+        // ── كشف امتلاء الحصة (QUOTA_EXCEEDED) ────────────────────
+        const errMsg = (err?.message ?? '').toLowerCase();
+        const isQuota = errMsg.includes('quota') || errMsg.includes('429') ||
+                        (err as any)?.code === 429;
+        if (isQuota) {
+          console.warn('🚫 Realtime QUOTA_EXCEEDED — switching to polling immediately');
+          this._emitQuota();
+        }
+
+        console.warn(
+          `⚠️ Realtime ${status} — attempt ${this.reconnectAttempts}, retry in ${delay / 1000}s`
+        );
+
+        // بعد 3 فشلات متتالية → شغّل polling fallback حتى يعود الاتصال
+        if (this.reconnectAttempts >= 3 && !this.isHost) {
+          this.startPolling();
+        }
+
+        // بعد 5 فشلات → أبلغ الـ UI بأن الاتصال معطل (خادم ممتلئ أو شبكة معطلة)
+        if (this.reconnectAttempts >= 5) {
+          this._emitHealth('degraded');
+        }
+
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.setupRealtimeChannel(), delay);
       }
     });
+  }
+
+  // ─── Polling Fallback ─────────────────────────────────────────────────────
+  // يُشغَّل عند تكرار فشل Realtime — يطلب الحالة كل 5 ثوانٍ عبر localStorage
+  private startPolling() {
+    if (this.pollingTimer) return; // منع تشغيل مزدوج
+    console.log('📡 Realtime unavailable — switching to polling fallback (5s)');
+    // إبلاغ الـ UI بوضع الازدحام العالي (مرة واحدة فقط عند الانتقال)
+    this._pollingListeners.forEach(cb => cb());
+    this.pollingTimer = setInterval(() => {
+      // اقرأ آخر حالة من localStorage (كتبها Host عبر saveFullState)
+      try {
+        const snap = localStorage.getItem(this.fullStateKey);
+        if (snap) {
+          const data = JSON.parse(snap);
+          if (data?.type === 'FULL_STATE_SYNC' && data.cells) {
+            this.listeners.forEach(l => l(data));
+          }
+        }
+      } catch { /* ignore */ }
+      // اطلب من الـ host إعادة إرسال الحالة عبر BroadcastChannel (نفس الجهاز)
+      this.channel.postMessage({ type: 'REQUEST_FULL_STATE', timestamp: Date.now() });
+    }, 5000);
+  }
+
+  private stopPolling() {
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+      this.pollingTimer = null;
+      console.log('✅ Realtime restored — polling stopped');
+    }
   }
 
   // بث تحديث لجميع الشاشات
@@ -159,6 +385,10 @@ export class SyncManager {
   // - Realtime: فوري للرسائل الحرجة، debounce 32ms لغيرها (يدمج التحديثات المتتالية السريعة)
   // - localStorage: debounce 16ms (backup فقط)
   broadcast(data: any) {
+    // إضافة deviceId تلقائياً لكل رسالة (يُستخدم بـ HeartbeatMonitor)
+    if (data && typeof data === 'object' && !data._senderDeviceId) {
+      data._senderDeviceId = this.deviceId;
+    }
     // ① BroadcastChannel — نفس الجهاز، فوري دائماً
     this.channel.postMessage(data);
 
@@ -320,6 +550,13 @@ export class SyncManager {
     if (this._fsDebounceTimer){ clearTimeout(this._fsDebounceTimer); this._fsDebounceTimer = null; }
     if (this._lsTimer)        { clearTimeout(this._lsTimer);        this._lsTimer = null; }
     if (this._rtTimer)        { clearTimeout(this._rtTimer);        this._rtTimer = null; }
+    this._stopHeartbeat();
+    this.stopPolling();
+    this.reconnectAttempts = 0;
+    this._healthListeners.clear();
+    this._pollingListeners.clear();
+    this._quotaListeners.clear();
+    this._presenceCountListeners.clear();
     this.channel.close();
     if (this.realtimeChannel) {
       supabase.removeChannel(this.realtimeChannel);

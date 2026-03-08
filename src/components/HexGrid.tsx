@@ -39,7 +39,7 @@ export const HexGrid: React.FC<HexGridProps> = ({
   colorsSwapped = false,
 }) => {
   const { isMobile, isTablet } = useScreenSize();
-  const responsiveScale = scale * (isMobile ? 0.65 : isTablet ? 0.85 : 1);
+  const responsiveScale = scale * (isMobile ? 0.75 : isTablet ? 0.88 : 1);
 
   // الخلايا الزينة: تُحسب فقط عند تغيير colorsSwapped (نادر جداً)
   const decorativeCells = useMemo(() => ({
@@ -99,10 +99,15 @@ export const HexGrid: React.FC<HexGridProps> = ({
   return (
     <div
       style={{
-        padding: isMobile ? '8px' : '15px',
-        background: 'linear-gradient(145deg, rgba(15, 10, 35, 0.95) 0%, rgba(30, 20, 60, 0.9) 50%, rgba(15, 10, 35, 0.95) 100%)',
-        borderRadius: '24px',
-        boxShadow: `
+        padding: isMobile ? '10px' : '15px',
+        background: 'linear-gradient(145deg, rgba(10, 6, 28, 0.98) 0%, rgba(25, 15, 55, 0.95) 50%, rgba(10, 6, 28, 0.98) 100%)',
+        borderRadius: isMobile ? '20px' : '24px',
+        boxShadow: isMobile ? `
+          0 20px 50px -8px rgba(0, 0, 0, 0.7),
+          0 0 60px rgba(139, 92, 246, 0.3),
+          0 0 120px rgba(139, 92, 246, 0.1),
+          inset 0 1px 0 rgba(255, 255, 255, 0.12)
+        ` : `
           0 25px 60px -12px rgba(0, 0, 0, 0.5),
           0 0 40px rgba(139, 92, 246, 0.15),
           inset 0 1px 0 rgba(255, 255, 255, 0.1)
@@ -116,7 +121,9 @@ export const HexGrid: React.FC<HexGridProps> = ({
         transform: `scale(${zoom})`,
         transition: 'transform 0.3s ease',
         backdropFilter: 'blur(10px)',
-        border: '2px solid rgba(139, 92, 246, 0.2)',
+        border: isMobile
+          ? '2px solid rgba(139, 92, 246, 0.55)'
+          : '2px solid rgba(139, 92, 246, 0.2)',
       }}
     >
       {fullLayout.map((layoutRow, idx) => (

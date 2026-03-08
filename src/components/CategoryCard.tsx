@@ -5,6 +5,8 @@ import React, { useState } from 'react';
 import type { Category } from '../core/types';
 import { X, Star } from 'lucide-react';
 
+const isMobile = () => window.innerWidth < 768;
+
 interface CategoryCardProps {
   category: Category;
 }
@@ -160,9 +162,9 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({ category }) => {
             inset: 0,
             zIndex: 9999,
             display: 'flex',
-            alignItems: 'center',
+            alignItems: isMobile() ? 'flex-end' : 'center',
             justifyContent: 'center',
-            padding: '2rem',
+            padding: isMobile() ? '0' : '2rem',
             background: 'rgba(0, 0, 0, 0.8)',
             backdropFilter: 'blur(10px)',
             animation: 'fadeIn 0.3s ease',
@@ -176,46 +178,59 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({ category }) => {
               handleFlip();
             }}
             style={{
-              maxWidth: '500px',
+              maxWidth: isMobile() ? '100%' : '500px',
               width: '100%',
-              aspectRatio: '3 / 4',
+              aspectRatio: isMobile() ? 'unset' : '3 / 4',
+              maxHeight: isMobile() ? '85dvh' : undefined,
               perspective: '1000px',
               cursor: 'pointer',
+              borderRadius: isMobile() ? '1.5rem 1.5rem 0 0' : undefined,
+              overflow: 'hidden',
             }}
           >
             <div
               style={{
                 width: '100%',
-                height: '100%',
+                height: isMobile() ? 'auto' : '100%',
                 position: 'relative',
-                transformStyle: 'preserve-3d',
-                transition: 'transform 0.6s ease',
-                transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0)',
+                transformStyle: isMobile() ? undefined : 'preserve-3d',
+                transition: isMobile() ? undefined : 'transform 0.6s ease',
+                transform: isMobile() ? undefined : (isFlipped ? 'rotateY(180deg)' : 'rotateY(0)'),
               }}
             >
               {/* الواجهة الأمامية */}
               <div
                 style={{
-                  position: 'absolute',
-                  inset: 0,
+                  position: isMobile() ? 'relative' : 'absolute',
+                  inset: isMobile() ? undefined : 0,
                   backfaceVisibility: 'hidden',
-                  borderRadius: '2rem',
+                  display: isMobile() ? (isFlipped ? 'none' : 'flex') : 'flex',
+                  borderRadius: isMobile() ? '1.5rem 1.5rem 0 0' : '2rem',
                   background: category.color,
-                  padding: '3rem',
-                  display: 'flex',
+                  padding: isMobile() ? '1.5rem 1.5rem 2rem' : '3rem',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  gap: '1rem',
                   border: '4px solid rgba(0, 0, 0, 0.2)',
                   boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
                 }}
               >
+                {/* مقبض السحب للإغلاق — جوال فقط */}
+                {isMobile() && (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                    <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.4)' }} />
+                    <button onClick={(e) => { e.stopPropagation(); handleClose(); }} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginRight: 'auto' }}>
+                      <X size={16} color="white" />
+                    </button>
+                  </div>
+                )}
                 {/* العنوان والأيقونة */}
                 <div>
-                  <div style={{ fontSize: '5rem', marginBottom: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: isMobile() ? '3rem' : '5rem', marginBottom: '0.75rem', textAlign: 'center' }}>
                     {category.icon}
                   </div>
                   <h2 style={{
-                    fontSize: '3rem',
+                    fontSize: isMobile() ? '2rem' : '3rem',
                     fontWeight: 900,
                     color: 'white',
                     textAlign: 'center',
@@ -268,19 +283,21 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({ category }) => {
               {/* الواجهة الخلفية */}
               <div
                 style={{
-                  position: 'absolute',
-                  inset: 0,
+                  position: isMobile() ? 'relative' : 'absolute',
+                  inset: isMobile() ? undefined : 0,
                   backfaceVisibility: 'hidden',
-                  transform: 'rotateY(180deg)',
-                  borderRadius: '2rem',
+                  transform: isMobile() ? undefined : 'rotateY(180deg)',
+                  display: isMobile() ? (isFlipped ? 'flex' : 'none') : 'flex',
+                  borderRadius: isMobile() ? '1.5rem 1.5rem 0 0' : '2rem',
                   background: category.color,
-                  padding: '3rem',
-                  display: 'flex',
+                  padding: isMobile() ? '1.5rem 1.5rem 2rem' : '3rem',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  gap: '1rem',
                   border: '4px solid rgba(0, 0, 0, 0.2)',
                   boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
                   overflow: 'auto',
+                  maxHeight: isMobile() ? '85dvh' : undefined,
                 }}
               >
                 {/* المحتوى */}
@@ -365,32 +382,30 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({ category }) => {
           </div>
 
           {/* زر الإغلاق */}
-          <button
-            onClick={handleClose}
-            style={{
-              position: 'absolute',
-              top: '2rem',
-              right: '2rem',
-              width: '3rem',
-              height: '3rem',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.2)',
-              border: '2px solid white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'white';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-            }}
-          >
-            <X size={24} color="white" />
-          </button>
+          {!isMobile() && (
+            <button
+              onClick={handleClose}
+              style={{
+                position: 'absolute',
+                top: '2rem',
+                right: '2rem',
+                width: '3rem',
+                height: '3rem',
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.2)',
+                border: '2px solid white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'white'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'; }}
+            >
+              <X size={24} color="white" />
+            </button>
+          )}
         </div>
       )}
 

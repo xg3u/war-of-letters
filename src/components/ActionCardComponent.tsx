@@ -5,17 +5,15 @@ import React, { useState } from 'react';
 import type { ActionCard } from '../core/types';
 import { X } from 'lucide-react';
 
+const isMobile = () => window.innerWidth < 768;
+
 interface ActionCardComponentProps {
   card: ActionCard;
 }
 
-// Rarity config متاح للاستخدام المستقبلي
-// common: #6b7280, rare: #3b82f6, epic: #8b5cf6, legendary: #f59e0b
-
 export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
-  // رارتي البطاقة متاح في card.rarity مع rarityConfig
 
   const handleCardClick = () => {
     setIsModalOpen(true);
@@ -58,15 +56,15 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
         }}
       >
         {/* الأيقونة والعنوان */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
           gap: '0.75rem',
           marginBottom: '0.75rem',
         }}>
           <span style={{ fontSize: '2rem' }}>{card.icon}</span>
-          <h3 style={{ 
-            fontSize: '1.25rem', 
+          <h3 style={{
+            fontSize: '1.25rem',
             fontWeight: 900,
             color: 'white',
             margin: 0,
@@ -77,7 +75,7 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
         </div>
 
         {/* الوصف القصير */}
-        <p style={{ 
+        <p style={{
           color: 'rgba(255, 255, 255, 0.9)',
           fontSize: '0.875rem',
           marginBottom: '1rem',
@@ -87,9 +85,7 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
           {card.description.substring(0, 50)}...
         </p>
 
-    
-
-        {/* زر Play Now */}
+        {/* زر اعرف المزيد */}
         <button style={{
           width: '100%',
           background: '#fbbf24',
@@ -135,9 +131,9 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
             inset: 0,
             zIndex: 9999,
             display: 'flex',
-            alignItems: 'center',
+            alignItems: isMobile() ? 'flex-end' : 'center',
             justifyContent: 'center',
-            padding: '2rem',
+            padding: isMobile() ? '0' : '2rem',
             background: 'rgba(0, 0, 0, 0.8)',
             backdropFilter: 'blur(10px)',
             animation: 'fadeIn 0.3s ease',
@@ -146,199 +142,166 @@ export const ActionCardComponent: React.FC<ActionCardComponentProps> = ({ card }
         >
           {/* البطاقة المركزية */}
           <div
-            onClick={(e) => {
-              e.stopPropagation();
-              handleFlip();
-            }}
+            onClick={(e) => { e.stopPropagation(); handleFlip(); }}
             style={{
-              maxWidth: '500px',
+              maxWidth: isMobile() ? '100%' : '500px',
               width: '100%',
-              aspectRatio: '3 / 4',
+              aspectRatio: isMobile() ? 'unset' : '3 / 4',
+              maxHeight: isMobile() ? '85dvh' : undefined,
               perspective: '1000px',
               cursor: 'pointer',
+              borderRadius: isMobile() ? '1.5rem 1.5rem 0 0' : undefined,
+              overflow: 'hidden',
             }}
           >
             <div
               style={{
                 width: '100%',
-                height: '100%',
+                height: isMobile() ? 'auto' : '100%',
                 position: 'relative',
-                transformStyle: 'preserve-3d',
-                transition: 'transform 0.6s ease',
-                transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0)',
+                transformStyle: isMobile() ? undefined : 'preserve-3d',
+                transition: isMobile() ? undefined : 'transform 0.6s ease',
+                transform: isMobile() ? undefined : (isFlipped ? 'rotateY(180deg)' : 'rotateY(0)'),
               }}
             >
               {/* الواجهة الأمامية */}
               <div
                 style={{
-                  position: 'absolute',
-                  inset: 0,
+                  position: isMobile() ? 'relative' : 'absolute',
+                  inset: isMobile() ? undefined : 0,
                   backfaceVisibility: 'hidden',
-                  borderRadius: '2rem',
+                  display: isMobile() ? (isFlipped ? 'none' : 'flex') : 'flex',
+                  borderRadius: isMobile() ? '1.5rem 1.5rem 0 0' : '2rem',
                   background: card.color,
-                  padding: '3rem',
-                  display: 'flex',
+                  padding: isMobile() ? '1.25rem 1.5rem 2rem' : '3rem',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  gap: '1rem',
                   border: '4px solid rgba(0, 0, 0, 0.2)',
                   boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
                 }}
               >
+                {/* مقبض السحب للإغلاق — جوال فقط */}
+                {isMobile() && (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.4)', margin: '0 auto' }} />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleClose(); }}
+                      style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    >
+                      <X size={16} color="white" />
+                    </button>
+                  </div>
+                )}
+
                 {/* العنوان والأيقونة */}
                 <div>
-                  <div style={{ fontSize: '5rem', marginBottom: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: isMobile() ? '3rem' : '5rem', marginBottom: '0.75rem', textAlign: 'center' }}>
                     {card.icon}
                   </div>
-                  <h2 style={{
-                    fontSize: '2.5rem',
-                    fontWeight: 900,
-                    color: 'white',
-                    textAlign: 'center',
-                    margin: 0,
-                  }}>
+                  <h2 style={{ fontSize: isMobile() ? '1.75rem' : '2.5rem', fontWeight: 900, color: 'white', textAlign: 'center', margin: 0 }}>
                     {card.name}
                   </h2>
                 </div>
 
-            
-                
-
                 {/* نص التلميح */}
-                <p style={{
-                  textAlign: 'center',
-                  color: 'white',
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  margin: 0,
-                }}>
+                <p style={{ textAlign: 'center', color: 'white', fontSize: '1rem', fontWeight: 600, margin: 0 }}>
                   اضغط للقلب 🔄
                 </p>
 
                 {/* تأثير اللمعان */}
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: '50%',
-                  background: 'linear-gradient(180deg, rgba(255,255,255,0.25) 0%, transparent 100%)',
-                  pointerEvents: 'none',
-                  borderRadius: '2rem 2rem 0 0',
-                }} />
+                {!isMobile() && (
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, height: '50%',
+                    background: 'linear-gradient(180deg, rgba(255,255,255,0.25) 0%, transparent 100%)',
+                    pointerEvents: 'none', borderRadius: '2rem 2rem 0 0',
+                  }} />
+                )}
               </div>
 
               {/* الواجهة الخلفية */}
               <div
                 style={{
-                  position: 'absolute',
-                  inset: 0,
+                  position: isMobile() ? 'relative' : 'absolute',
+                  inset: isMobile() ? undefined : 0,
                   backfaceVisibility: 'hidden',
-                  transform: 'rotateY(180deg)',
-                  borderRadius: '2rem',
+                  transform: isMobile() ? undefined : 'rotateY(180deg)',
+                  display: isMobile() ? (isFlipped ? 'flex' : 'none') : 'flex',
+                  borderRadius: isMobile() ? '1.5rem 1.5rem 0 0' : '2rem',
                   background: card.color,
-                  padding: '3rem',
-                  display: 'flex',
+                  padding: isMobile() ? '1.25rem 1.5rem 2rem' : '3rem',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
+                  gap: '1rem',
                   border: '4px solid rgba(0, 0, 0, 0.2)',
                   boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
                   overflow: 'auto',
+                  maxHeight: isMobile() ? '85dvh' : undefined,
                 }}
               >
+                {/* مقبض السحب للإغلاق — جوال فقط */}
+                {isMobile() && (
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.4)', margin: '0 auto' }} />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleClose(); }}
+                      style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    >
+                      <X size={16} color="white" />
+                    </button>
+                  </div>
+                )}
+
                 {/* المحتوى */}
                 <div>
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '1rem',
-                    marginBottom: '2rem',
-                    paddingBottom: '1rem',
-                    borderBottom: '2px solid rgba(255, 255, 255, 0.3)',
-                  }}>
-                    <span style={{ fontSize: '3rem' }}>{card.icon}</span>
-                    <h3 style={{
-                      fontSize: '2rem',
-                      fontWeight: 900,
-                      color: 'white',
-                      margin: 0,
-                    }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
+                    <span style={{ fontSize: isMobile() ? '2rem' : '3rem' }}>{card.icon}</span>
+                    <h3 style={{ fontSize: isMobile() ? '1.5rem' : '2rem', fontWeight: 900, color: 'white', margin: 0 }}>
                       {card.name}
                     </h3>
                   </div>
 
-                  <h4 style={{
-                    color: 'white',
-                    fontSize: '1.25rem',
-                    fontWeight: 700,
-                    marginBottom: '1rem',
-                  }}>
+                  <h4 style={{ color: 'white', fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.75rem' }}>
                     📝 التأثير:
                   </h4>
 
-                  <p style={{
-                    color: 'white',
-                    fontSize: '1.125rem',
-                    lineHeight: '1.8',
-                    marginBottom: '2rem',
-                  }}>
+                  <p style={{ color: 'white', fontSize: isMobile() ? '1rem' : '1.125rem', lineHeight: '1.8' }}>
                     {card.description}
                   </p>
-
-          
                 </div>
 
-                <p style={{
-                  textAlign: 'center',
-                  color: 'white',
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  margin: 0,
-                }}>
+                <p style={{ textAlign: 'center', color: 'white', fontSize: '1rem', fontWeight: 600, margin: 0 }}>
                   اضغط للقلب مرة أخرى 🔄
                 </p>
               </div>
             </div>
           </div>
 
-          {/* زر الإغلاق */}
-          <button
-            onClick={handleClose}
-            style={{
-              position: 'absolute',
-              top: '2rem',
-              right: '2rem',
-              width: '3rem',
-              height: '3rem',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.2)',
-              border: '2px solid white',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'white';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-            }}
-          >
-            <X size={24} color="white" />
-          </button>
+          {/* زر الإغلاق — سطح المكتب فقط */}
+          {!isMobile() && (
+            <button
+              onClick={handleClose}
+              style={{
+                position: 'absolute', top: '2rem', right: '2rem',
+                width: '3rem', height: '3rem', borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.2)', border: '2px solid white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', transition: 'all 0.2s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'white'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'; }}
+            >
+              <X size={24} color="white" />
+            </button>
+          )}
         </div>
       )}
 
       {/* CSS للأنيميشنز */}
       <style>{`
         @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
       `}</style>
     </>

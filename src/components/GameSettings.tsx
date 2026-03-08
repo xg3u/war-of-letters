@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Target, Dice5, Users, ChevronDown, ChevronUp, Copy, Check, Share2 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { syncManager } from '../utils/SyncManager';
-import { prefetchAllArabicLetters, hasPersistedCache, getLetterCountsSync } from '../utils/questionCache';
+import { bulkPrefetchAllLetters, hasPersistedCache, getLetterCountsSync } from '../utils/questionCache';
 import { updateLetterQuestionCounts } from '../utils/smartLetterPicker';
 import { warmQuestionQueue } from '../utils/questionEngine';
 import { CharacterAvatar, DEFAULT_AVATAR } from './CharacterAvatar';
@@ -53,8 +53,130 @@ export interface GameSettingsData {
 }
 
 // ── Tutorial Overlay ──────────────────────────────────────────────────────────
+const TUTORIAL_STEPS = [
+  {
+    icon: '🎮',
+    title: 'مرحباً بك في حرب الحروف!',
+    color: '#a855f7',
+    borderColor: 'rgba(168,85,247,0.5)',
+    bg: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(124,58,237,0.1))',
+    content: (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <p style={{ color: 'rgba(255,255,255,0.85)', lineHeight: 1.7, margin: 0, fontSize: '0.95rem' }}>
+          لعبة تنافسية بين فريقين — كل فريق يحاول الاستيلاء على الشبكة السداسية بالإجابة على أسئلة ثقافية
+        </p>
+        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+          {['🟢 فريق أخضر', '🔴 فريق أحمر', '🏆 أفضل من X جولات'].map(t => (
+            <span key={t} style={{
+              background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '2rem', padding: '0.3rem 0.75rem',
+              fontSize: '0.8rem', color: 'white', fontWeight: 700,
+            }}>{t}</span>
+          ))}
+        </div>
+      </div>
+    ),
+  },
+  {
+    icon: '⚙️',
+    title: 'الأطوار المتاحة',
+    color: '#3b82f6',
+    borderColor: 'rgba(59,130,246,0.5)',
+    bg: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(37,99,235,0.1))',
+    content: (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+        <div style={{
+          background: 'rgba(59,130,246,0.12)', border: '1.5px solid rgba(59,130,246,0.35)',
+          borderRadius: '1rem', padding: '0.85rem',
+        }}>
+          <div style={{ fontWeight: 900, color: '#93c5fd', marginBottom: '0.35rem', fontSize: '0.95rem' }}>
+            🏛️ حروف مع عزيز — الكلاسيكي
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', lineHeight: 1.6 }}>
+            بسيط وسريع · بدون بطاقات خاصة · يناسب الجميع
+          </div>
+        </div>
+        <div style={{
+          background: 'rgba(236,72,153,0.12)', border: '1.5px solid rgba(236,72,153,0.35)',
+          borderRadius: '1rem', padding: '0.85rem',
+        }}>
+          <div style={{ fontWeight: 900, color: '#f9a8d4', marginBottom: '0.35rem', fontSize: '0.95rem' }}>
+            ⚔️ الحرب — الطور الاستراتيجي
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', lineHeight: 1.6 }}>
+            🧊 تجميد · 💣 قنابل · ⚔️ معارك · 🛡️ دروع<br />
+            تحديات بين الجولات وبطاقات مخفية على الشبكة
+          </div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    icon: '📱',
+    title: 'كيف ينضم الجمهور؟',
+    color: '#10b981',
+    borderColor: 'rgba(16,185,129,0.5)',
+    bg: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.1))',
+    content: (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+        {[
+          { n: '1', icon: '📋', text: 'من شاشة الإعدادات، امسح الـ QR Code أو شارك الرابط' },
+          { n: '2', icon: '👤', text: 'كل لاعب يختار اسمه وفريقه وشخصيته' },
+          { n: '3', icon: '🔔', text: 'يضغطون على الزر لتسجيل إجاباتهم أثناء اللعبة (Answer Buzzer)' },
+          { n: '4', icon: '📺', text: 'يمكنهم أيضاً متابعة الشبكة الحية على شاشة Players' },
+        ].map(s => (
+          <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+            <div style={{
+              width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+              background: 'rgba(16,185,129,0.25)', border: '1.5px solid rgba(16,185,129,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.75rem', fontWeight: 900, color: '#6ee7b7',
+            }}>{s.n}</div>
+            <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', lineHeight: 1.6, paddingTop: '3px' }}>
+              {s.icon} {s.text}
+            </div>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    icon: '🚀',
+    title: 'خطوات بدء اللعبة',
+    color: '#f59e0b',
+    borderColor: 'rgba(245,158,11,0.5)',
+    bg: 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(217,119,6,0.1))',
+    content: (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+        {[
+          { icon: '⚙️', label: 'الإعدادات', desc: 'اختر الطور والفرق والجولات' },
+          { icon: '🎯', label: 'شاشة المقدم', desc: 'اضغط "ابدأ الجولة" عند جهوزية الجميع' },
+          { icon: '🔲', label: 'اختر خلية', desc: 'اضغط على حرف في الشبكة لتسمع السؤال' },
+          { icon: '✅', label: 'أعط النتيجة', desc: 'اضغط على اللون الصحيح — أخضر أو أحمر' },
+          { icon: '🏆', label: 'الفوز', desc: 'من يكوّن خطاً من طرف لطرف يفوز بالجولة!' },
+        ].map((s, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{
+              width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+              background: 'rgba(245,158,11,0.2)', border: '1.5px solid rgba(245,158,11,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem',
+            }}>{s.icon}</div>
+            <div>
+              <span style={{ color: '#fcd34d', fontWeight: 800, fontSize: '0.85rem' }}>{s.label}: </span>
+              <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.82rem' }}>{s.desc}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+];
+
 const TutorialOverlay: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { isMobile } = useScreenSize();
+  const [step, setStep] = useState(0);
+  const current = TUTORIAL_STEPS[step];
+  const isLast = step === TUTORIAL_STEPS.length - 1;
 
   return (
     <div style={{
@@ -67,99 +189,119 @@ const TutorialOverlay: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '1rem',
+      fontFamily: 'Tajawal, sans-serif',
+      direction: 'rtl',
     }}>
       <div style={{
-        maxWidth: '680px',
+        maxWidth: '520px',
         width: '100%',
-        margin: isMobile ? '0 0.5rem' : '0',
         background: 'linear-gradient(135deg, #1a0b2e, #2d1154)',
-        border: '2px solid rgba(168,85,247,0.5)',
-        borderRadius: '2rem',
-        padding: isMobile ? '1.5rem' : '2.5rem',
+        border: `2px solid ${current.borderColor}`,
+        borderRadius: '1.75rem',
+        padding: isMobile ? '1.5rem' : '2rem',
         boxShadow: '0 30px 80px rgba(0,0,0,0.7)',
+        transition: 'border-color 0.3s ease',
       }}>
-        {/* Title */}
-        <div style={{ textAlign: 'center', marginBottom: isMobile ? '1.5rem' : '2rem' }}>
-          <div style={{ fontSize: isMobile ? '2.5rem' : '3.5rem', marginBottom: '0.75rem' }}>⚙️</div>
+
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: isMobile ? '2.5rem' : '3rem', marginBottom: '0.5rem' }}>
+            {current.icon}
+          </div>
           <h2 style={{
-            fontSize: isMobile ? '1.4rem' : '1.9rem',
-            fontWeight: 900,
-            color: 'white',
-            margin: 0,
+            fontSize: isMobile ? '1.25rem' : '1.5rem',
+            fontWeight: 900, color: 'white', margin: 0,
           }}>
-            اختر طور اللعبة
+            {current.title}
           </h2>
-          <p style={{
-            color: 'rgba(255,255,255,0.6)',
-            fontSize: isMobile ? '0.85rem' : '0.95rem',
-            marginTop: '0.5rem',
-          }}>
-            كل طور يعطيك تجربة مختلفة – اختر اللي يناسبك
-          </p>
         </div>
 
-        {/* Mode Cards */}
+        {/* Content */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-          gap: '1rem',
-          marginBottom: isMobile ? '1.5rem' : '2rem',
+          background: current.bg,
+          border: `1.5px solid ${current.borderColor}`,
+          borderRadius: '1.25rem',
+          padding: '1rem',
+          marginBottom: '1.25rem',
+          minHeight: isMobile ? '170px' : '190px',
         }}>
-          {/* Classic */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(37,99,235,0.15))',
-            border: '2px solid rgba(59,130,246,0.5)',
-            borderRadius: '1.25rem',
-            padding: '1.25rem',
-          }}>
-            <div style={{ fontSize: '2.25rem', marginBottom: '0.5rem' }}>🏛️</div>
-            <div style={{ color: '#93c5fd', fontWeight: 900, fontSize: '1.1rem', marginBottom: '0.4rem' }}>
-              الكلاسيك
-            </div>
-            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', lineHeight: 1.6 }}>
-              لعبة بسيطة وسريعة<br />
-              بدون بطاقات خاصة<br />
-              التركيز على الأسئلة والإجابات
-            </div>
-          </div>
-
-          {/* War */}
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(236,72,153,0.2), rgba(168,85,247,0.15))',
-            border: '2px solid rgba(236,72,153,0.5)',
-            borderRadius: '1.25rem',
-            padding: '1.25rem',
-          }}>
-            <div style={{ fontSize: '2.25rem', marginBottom: '0.5rem' }}>⚔️</div>
-            <div style={{ color: '#f9a8d4', fontWeight: 900, fontSize: '1.1rem', marginBottom: '0.4rem' }}>
-              الحرب
-            </div>
-            <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', lineHeight: 1.6 }}>
-              تجربة استراتيجية كاملة<br />
-              بطاقات: تجميد، قنابل، معارك، دروع<br />
-              تحديات إضافية بين الجولات
-            </div>
-          </div>
+          {current.content}
         </div>
 
-        {/* Close */}
-        <button
-          onClick={onClose}
-          style={{
-            width: '100%',
-            padding: isMobile ? '0.9rem' : '1.1rem',
-            background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
-            border: 'none',
-            borderRadius: '1rem',
-            color: 'white',
-            fontSize: '1rem',
-            fontWeight: 900,
-            cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(168,85,247,0.4)',
-          }}
-        >
-          فهمت، ابدأ الإعداد 🚀
-        </button>
+        {/* Steps Dots */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginBottom: '1.1rem' }}>
+          {TUTORIAL_STEPS.map((_, i) => (
+            <div
+              key={i}
+              onClick={() => setStep(i)}
+              style={{
+                width: i === step ? '20px' : '8px',
+                height: '8px',
+                borderRadius: '4px',
+                background: i === step ? current.color : 'rgba(255,255,255,0.25)',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', gap: '0.6rem' }}>
+          {step > 0 && (
+            <button
+              onClick={() => setStep(s => s - 1)}
+              style={{
+                flex: 1,
+                padding: '0.8rem',
+                background: 'rgba(255,255,255,0.08)',
+                border: '1.5px solid rgba(255,255,255,0.15)',
+                borderRadius: '0.875rem',
+                color: 'rgba(255,255,255,0.7)',
+                fontSize: '0.9rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: 'Tajawal, sans-serif',
+              }}
+            >
+              ← السابق
+            </button>
+          )}
+          <button
+            onClick={isLast ? () => { localStorage.setItem('settingsTutorialSeen', 'true'); onClose(); } : () => setStep(s => s + 1)}
+            style={{
+              flex: 2,
+              padding: '0.85rem',
+              background: `linear-gradient(135deg, ${current.color}, ${current.color}cc)`,
+              border: 'none',
+              borderRadius: '0.875rem',
+              color: 'white',
+              fontSize: '0.95rem',
+              fontWeight: 900,
+              cursor: 'pointer',
+              boxShadow: `0 4px 16px ${current.color}44`,
+              fontFamily: 'Tajawal, sans-serif',
+              transition: 'background 0.3s ease',
+            }}
+          >
+            {isLast ? 'فهمت، ابدأ الإعداد 🚀' : 'التالي →'}
+          </button>
+        </div>
+
+        {/* Skip */}
+        {!isLast && (
+          <button
+            onClick={() => { localStorage.setItem('settingsTutorialSeen', 'true'); onClose(); }}
+            style={{
+              display: 'block', width: '100%', marginTop: '0.6rem',
+              background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.35)', fontSize: '0.78rem',
+              cursor: 'pointer', fontFamily: 'Tajawal, sans-serif',
+            }}
+          >
+            تخطي التتوريل
+          </button>
+        )}
       </div>
     </div>
   );
@@ -174,7 +316,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     localStorage.getItem('settingsTutorialSeen') !== 'true'
   );
 
-  const [selectedMode, setSelectedMode] = useState<'classic' | 'war'>('war');
+  const [selectedMode, setSelectedMode] = useState<'classic' | 'war'>('classic');
 
   const [settings, setSettings] = useState<GameSettingsData>({
     gameName: '',
@@ -182,18 +324,19 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     winCondition: 'all',
     teamColors: { green: 'horizontal', red: 'vertical' },
     rounds: 3,
-    enableCards: true,
-    enableRandomLetter: true,
-    enableStreakReward: true,
-    enableHiddenCards: true,
+    // الطور الافتراضي 'classic' = بدون بطاقات
+    enableCards: false,
+    enableRandomLetter: false,
+    enableStreakReward: false,
+    enableHiddenCards: false,
     hiddenCardsCount: 5,
-    enableGoldenLetter: true,
+    enableGoldenLetter: false,
     cardDistribution: 'random',
     showCardLocations: 'on-press',
     cardTypes: { freeze: true, bomb: true, battle: true, shield: true },
     carryCardsToNextRound: false,
     selectedCategories: [],
-    gameMode: 'normal',
+    gameMode: 'tv-show',
     showQuestionsToTeams: true,
     timePerQuestion: 30,
   });
@@ -228,7 +371,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
       });
     } else {
       // أول مرة أو انتهى الـ cache — جلب من Supabase ثم تسخين الطابور
-      prefetchAllArabicLetters().then(() => warmQuestionQueue(ARABIC)).then(() => {
+      bulkPrefetchAllLetters().then(() => warmQuestionQueue(ARABIC)).then(() => {
         updateLetterQuestionCounts(getLetterCountsSync(ARABIC));
       });
     }
@@ -295,6 +438,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     const isWar = mode === 'war';
     setSettings(prev => ({
       ...prev,
+      gameMode: isWar ? 'normal' : 'tv-show',
       enableCards: isWar,
       enableRandomLetter: isWar,
       enableStreakReward: isWar,
@@ -360,14 +504,12 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
     <>
       {showTutorial && <TutorialOverlay onClose={handleCloseTutorial} />}
 
-      <div style={{
-        minHeight: '100vh',
+      <div className="screen-scroll" style={{
         background: theme.bgGradient,
         padding: isMobile ? '1rem' : '2rem',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        overflowY: 'auto',
       }}>
 
         {/* ── Header ── */}
@@ -479,14 +621,14 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
                   fontSize: isMobile ? '1rem' : '1.15rem',
                   marginBottom: '0.3rem',
                 }}>
-                  الكلاسيك
+                  حروف مع عزيز
                 </div>
                 <div style={{
                   color: 'rgba(255,255,255,0.5)',
                   fontSize: isMobile ? '0.72rem' : '0.8rem',
                   lineHeight: 1.4,
                 }}>
-                  بدون بطاقات<br />تجربة بسيطة
+                  بدون بطاقات<br />الطور الأصلي
                 </div>
                 {selectedMode === 'classic' && (
                   <div style={{
@@ -1171,7 +1313,7 @@ export const GameSettings: React.FC<GameSettingsProps> = ({ onBack, onStartGame 
               e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
-            <span>{selectedMode === 'war' ? '⚔️ ابدأ طور الحرب' : '🏛️ ابدأ الكلاسيك'}</span>
+            <span>{selectedMode === 'war' ? '⚔️ ابدأ طور الحرب' : '🏛️ ابدأ حروف مع عزيز'}</span>
           </button>
         </div>
       </div>

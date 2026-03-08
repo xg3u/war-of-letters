@@ -37,8 +37,8 @@ import {
   applyOpponentExpiry,
 } from '../utils/BuzzerEngine';
 import type { BuzzerAttempt, BuzzerState } from '../utils/BuzzerEngine';
-import { prefetchAllGameLetters, hasPersistedCache, getLetterCountsSync } from '../utils/questionCache';
-import { updateLetterQuestionCounts } from '../utils/smartLetterPicker';
+import { bulkPrefetchAllLetters, hasPersistedCache, getLetterCountsSync } from '../utils/questionCache';
+import { updateLetterQuestionCounts, loadHistoryFromDB } from '../utils/smartLetterPicker';
 import { warmQuestionQueue } from '../utils/questionEngine';
 import { useScreenSize } from '../hooks/useScreenSize';
 import { playBellSound, playCardSound } from '../utils/sounds';
@@ -61,6 +61,10 @@ import { useTheme } from '../context/ThemeContext';
 import { CharacterAvatar, DEFAULT_AVATAR } from './CharacterAvatar';
 import { LoadingBar, InlineLoader } from './LoadingBar';
 import type { AvatarConfig } from './CharacterAvatar';
+import { supabase, deleteGameSession } from '../lib/supabase';
+import { useInactivityKick, InactivityWarningModal } from '../hooks/useInactivityKick';
+import { heartbeatMonitor } from '../utils/HeartbeatMonitor';
+import { useAuthContext } from '../context/AuthContext';
 
 interface HostScreenProps {
   settings: GameSettingsData;
@@ -76,6 +80,7 @@ const CARD_ICONS: Record<CardType, string> = {
 };
 
 export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
+  const { user } = useAuthContext();
   const {
     cells,
     claimCell,
@@ -112,6 +117,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [showQuestion, setShowQuestion] = useState(false);
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false); // Loading state for question fetch
   const [questionsReady, setQuestionsReady] = useState(false); // الأسئلة جاهزة في الذاكرة
+  const [lockedSeconds, setLockedSeconds] = useState(0); // عداد ثواني القفل لإظهار زر الفك
   const [zoom, setZoom] = useState(1);
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
@@ -154,6 +160,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     setRegisteredPlayers(prev => prev.filter(p => p.name !== name));
     setHoveredPlayer(null);
     syncManager.broadcast({ type: 'player-kicked', name });
+    // حذف من HeartbeatMonitor
+    for (const entry of heartbeatMonitor.getAll()) {
+      if (entry.name === name) { heartbeatMonitor.remove(entry.id); break; }
+    }
   };
 
   const approveJoinRequest = (name: string) => {
@@ -215,9 +225,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [showQuestionOnPlayers, setShowQuestionOnPlayers] = useState(false); // إظهار السؤال في شاشة اللاعبين
   const [excludedQuestionIds, setExcludedQuestionIds] = useState<string[]>([]); // الأسئلة المستبعدة عند تغيير السؤال
   const [showBuzzerQRCode, setShowBuzzerQRCode] = useState(false); // إظهار QR Code للأزرار
+  const [connectedCount, setConnectedCount] = useState(0); // عدد الأجهزة المتصلة عبر Presence
   // استخدام الجلسة التي هيّأتها شاشة الإعدادات (محفوظة في localStorage)
   // إذا لم توجد (دخول مباشر) تُولَّد جلسة جديدة
-  const [sessionId] = useState(() => {
+  const [sessionId, setSessionId] = useState(() => {
     const existing = localStorage.getItem('game-session-id');
     if (existing) {
       syncManager.initSession(existing);
@@ -235,23 +246,16 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const hostTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
   const buzzerChRef         = useRef<BuzzerChannel | null>(null);
 
-  // ── عداد الخمول: خروج تلقائي بعد ساعة من عدم الحركة ──────────────────────
-  const INACTIVITY_MS = 60 * 60 * 1000; // 60 دقيقة
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // حارس: يمنع إرسال SESSION_ENDED أكثر من مرة (يحمي من React Strict Mode وتغيّر الـ deps)
-  const sessionEndedRef = useRef(false);
-  // حارس Strict Mode: يُعيَّن true فقط بعد 800ms من الـ mount الفعلي
-  // في Strict Mode يُنظَّف الـ effect فوراً قبل 800ms → isEffectActive=false → لا SESSION_ENDED
-  const isEffectActiveRef = useRef(false);
+  // ── AFK System: طرد تلقائي بعد 3 دقائق من عدم النشاط ───────────────────
+  const { showWarning: showAfkWarning, countdown: afkCountdown, stayActive: afkStayActive } =
+    useInactivityKick({
+      onBeforeKick: () => {
+        syncManager.broadcast({ type: 'SESSION_ENDED' });
+        localStorage.removeItem('game-session-id');
+        syncManager.disconnect(); // تحرير WebSocket عند طرد المقدم بسبب عدم النشاط
+      },
+    });
 
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    inactivityTimer.current = setTimeout(() => {
-      syncManager.broadcast({ type: 'SESSION_ENDED' });
-      localStorage.removeItem('game-session-id');
-      onBack();
-    }, INACTIVITY_MS);
-  }, [onBack]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem('host-onboarding-done');
   });
@@ -259,32 +263,6 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
   const { isMobile, isTablet, isDesktop } = useScreenSize();
   const { theme } = useTheme();
-
-  // ── مراقبة النشاط + تنظيف الجلسة عند الخروج ──────────────────────────────
-  React.useEffect(() => {
-    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'] as const;
-    events.forEach(e => window.addEventListener(e, resetInactivityTimer, { passive: true }));
-    resetInactivityTimer(); // بدء العداد فور تحميل الصفحة
-
-    // 800ms كافية لتمييز الـ mount الحقيقي من cleanup الـ StrictMode الفوري
-    const activateTimer = setTimeout(() => { isEffectActiveRef.current = true; }, 800);
-
-    return () => {
-      clearTimeout(activateTimer);
-      events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-      // إرسال SESSION_ENDED فقط إذا كان الـ effect نشطاً فعلاً (ليس cleanup فوري من StrictMode)
-      if (isEffectActiveRef.current && !sessionEndedRef.current) {
-        sessionEndedRef.current = true;
-        isEffectActiveRef.current = false;
-        syncManager.broadcast({ type: 'SESSION_ENDED' });
-        localStorage.removeItem('game-session-id');
-        setTimeout(() => { sessionEndedRef.current = false; }, 500);
-      } else {
-        isEffectActiveRef.current = false;
-      }
-    };
-  }, [resetInactivityTimer]);
 
   // ── BuzzerChannel: HostScreen كمُحكّم وحيد للجرس ────────────────
   React.useEffect(() => {
@@ -312,6 +290,15 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               playerName: att.playerName,
               pressType: att.pressType,
               clientTimestamp: att.clientTimestamp,
+              newState,
+              avatar: att.avatar,
+            });
+            // نسخة احتياطية عبر syncManager — تضمن وصول اسم الفائز لكل شاشة
+            syncManager.broadcast({
+              type: 'BUZZER_WINNER_SYNC',
+              team: att.team,
+              playerName: att.playerName,
+              pressType: att.pressType,
               newState,
               avatar: att.avatar,
             });
@@ -373,11 +360,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     return () => clearInterval(id);
   }, []);
 
-  // تهيئة الشبكة عند التحميل
+  // جلب تاريخ الحروف من DB (مرة واحدة) ثم تهيئة الشبكة
   React.useEffect(() => {
-    initializeGrid(settings);
-    // Reset random letter trigger for new round
-    setHasTriggeredRandomLetter(false);
+    loadHistoryFromDB().finally(() => {
+      initializeGrid(settings);
+      // Reset random letter trigger for new round
+      setHasTriggeredRandomLetter(false);
+    });
   }, [initializeGrid, settings]);
 
   // Pre-fetch + warm queue: تحميل الأسئلة ثم تجهيز سؤال جاهز لكل حرف
@@ -392,7 +381,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
         });
       } else {
         setQuestionsReady(false);
-        prefetchAllGameLetters(cells)
+        bulkPrefetchAllLetters()
           .then(() => warmQuestionQueue(letters))
           .then(() => {
             updateLetterQuestionCounts(getLetterCountsSync(letters));
@@ -445,6 +434,10 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       if (data.type === 'CELL_CLAIMED') {
         syncFromExternal(data.cells);
       } else if (data.type === 'player-registered') {
+        // تسجيل اللاعب في HeartbeatMonitor لتتبع حضوره
+        const devId = data._senderDeviceId || `name-${data.player.name}`;
+        heartbeatMonitor.register(devId, data.player.name, data.player.team);
+
         // هل اللاعب معتمد مسبقاً؟ (استجابة لـ REQUEST_PLAYER_LIST أو إعادة اتصال)
         const alreadyApproved = registeredPlayersRef.current.some(p => p.name === data.player.name);
         if (alreadyApproved) {
@@ -469,8 +462,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           });
         }
       } else if (data.type === 'player-left') {
-        // لاعب غادر — احذفه من القائمة
+        // لاعب غادر — احذفه من القائمة + HeartbeatMonitor
         setRegisteredPlayers(prev => prev.filter(p => p.name !== data.name));
+        // حذف من HeartbeatMonitor بالبحث عن الاسم
+        for (const entry of heartbeatMonitor.getAll()) {
+          if (entry.name === data.name) { heartbeatMonitor.remove(entry.id); break; }
+        }
       } else if (data.type === 'REQUEST_FULL_STATE') {
         // جهاز بعيد يطلب الحالة الكاملة - نرسلها مباشرة
         console.log('📡 Remote device requested full state - sending...');
@@ -495,6 +492,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       } else if (data.type === 'player-pong') {
         const rtt = Date.now() - (data.ts as number);
         setPlayerPings(prev => ({ ...prev, [data.name as string]: rtt }));
+        syncManager.broadcast({ type: 'PLAYER_PING_UPDATE', name: data.name, ping: rtt });
+      } else if (data.type === 'ADMIN_FORCE_CLOSE') {
+        // الأدمن أغلق الجلسة إجبارياً — أبلغ اللاعبين واطرد المضيف تلقائياً
+        syncManager.broadcast({ type: 'SESSION_ENDED' });
+        setAdminCloseMessage(data.message || 'تم إغلاق الجلسة بواسطة الإدارة.');
+        // اطرد المضيف تلقائياً بعد 3 ثوانٍ (يرى الرسالة ثم يُطرد)
+        setTimeout(() => onBack(), 3000);
       }
     });
     return unsubscribe;
@@ -504,6 +508,65 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [playerPings, setPlayerPings] = useState<Record<string, number>>({});
   const playerPingsRef = useRef<Record<string, number>>({});
   playerPingsRef.current = playerPings;
+
+  // ── Ghost Connection Detection — آخر وقت استُقبل فيه pong من كل لاعب ──────
+  const [playerLastPong, setPlayerLastPong] = useState<Record<string, number>>({});
+  const playerLastPongRef = useRef<Record<string, number>>({});
+  playerLastPongRef.current = playerLastPong;
+  // أسماء اللاعبين الذين صدر عنهم تحذير "غير متصل" (نتجنب تكرار التنبيه)
+  const offlineNotifiedRef = useRef<Set<string>>(new Set());
+  const [offlineAlerts, setOfflineAlerts] = useState<string[]>([]); // أسماء للعرض
+
+  /** يُحدّد حالة اتصال اللاعب بناءً على آخر pong مستلم */
+  const getPlayerStatus = React.useCallback((name: string): 'measuring' | 'online' | 'reconnecting' | 'offline' => {
+    const last = playerLastPongRef.current[name];
+    if (!last) return 'measuring';
+    const age = Date.now() - last;
+    if (age > 30_000) return 'offline';
+    if (age > 10_000) return 'reconnecting';
+    return 'online';
+  }, []);
+
+  // ── فحص دوري كل 2 ثانية لاكتشاف اللاعبين الغائبين ─────────────────────
+  React.useEffect(() => {
+    if (!roundStarted) return;
+    const id = setInterval(() => {
+      const now = Date.now();
+      const newOffline: string[] = [];
+      registeredPlayersRef.current.forEach(p => {
+        const last = playerLastPongRef.current[p.name];
+        if (!last) return; // لم يبدأ الـ ping بعد
+        const age = now - last;
+        if (age > 30_000 && !offlineNotifiedRef.current.has(p.name)) {
+          offlineNotifiedRef.current.add(p.name);
+          newOffline.push(p.name);
+        }
+        // عاد للاتصال — امسح التنبيه
+        if (age <= 10_000 && offlineNotifiedRef.current.has(p.name)) {
+          offlineNotifiedRef.current.delete(p.name);
+          setOfflineAlerts(prev => prev.filter(n => n !== p.name));
+        }
+      });
+      if (newOffline.length > 0) {
+        setOfflineAlerts(prev => [...new Set([...prev, ...newOffline])]);
+        // إخفاء التنبيه تلقائياً بعد 8 ثوانٍ
+        setTimeout(() => {
+          setOfflineAlerts(prev => prev.filter(n => !newOffline.includes(n)));
+        }, 8_000);
+      }
+    }, 2_000);
+    return () => clearInterval(id);
+  }, [roundStarted]);
+
+  // ── طلب قائمة اللاعبين فور تحميل HostScreen ─────────────────────────────
+  // يُحل مشكلة: اللاعبون دخلوا أثناء شاشة الإعدادات → بعد الانتقال لـ HostScreen لا يظهرون
+  // الحل: REQUEST_PLAYER_LIST يجعل كل لاعب مسجل يعيد إرسال player-registered
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      syncManager.broadcast({ type: 'REQUEST_PLAYER_LIST' });
+    }, 600); // 600ms تتيح للـ subscription الاستعداد أولاً
+    return () => clearTimeout(t);
+  }, []); // مرة واحدة عند Mount
 
   // ── استطلاع دوري لقائمة اللاعبين كل 12 ثانية ────────────────────────────
   // يطلب من جميع الأجهزة المتصلة إرسال بياناتهم → يُحدّث قائمة المقدم تلقائياً
@@ -523,6 +586,148 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     }, 5000);
     return () => clearInterval(id);
   }, [roundStarted]);
+
+  // ── عداد ثواني القفل + فك تلقائي بعد 15 ثانية ─────────────────────────────
+  React.useEffect(() => {
+    if (!isLocked) { setLockedSeconds(0); return; }
+    const id = setInterval(() => {
+      setLockedSeconds(s => {
+        const next = s + 1;
+        // فك القفل تلقائياً بعد 15 ثانية لمنع التعليق الدائم
+        if (next >= 15) {
+          console.warn('⚠️ Auto-unlock: isLocked stuck for 15s — forcing release');
+          setLocked(false);
+          setIsLoadingQuestion(false);
+          setSelectedCell(null);
+          clearInterval(id);
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isLocked, setLocked]);
+
+  // ── تأكيد المغادرة أثناء اللعبة (beforeunload) ──────────────────────────
+  React.useEffect(() => {
+    if (!roundStarted) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [roundStarted]);
+
+  // ── عدد الأجهزة المتصلة عبر Presence ────────────────────────────────────
+  const prevConnectedRef = React.useRef(0);
+  React.useEffect(() => {
+    return syncManager.onPresenceCount((count) => {
+      setConnectedCount(count);
+      // لاعب جديد انضم → اطلب قائمة اللاعبين بعد 800ms لمنح وقت للتسجيل
+      if (count > prevConnectedRef.current) {
+        setTimeout(() => {
+          syncManager.broadcast({ type: 'REQUEST_PLAYER_LIST' });
+        }, 800);
+      }
+      prevConnectedRef.current = count;
+    });
+  }, []);
+
+  // ── HeartbeatMonitor: كشف الأشباح بصمت (3 دقائق بلا heartbeat) ──────────
+  React.useEffect(() => {
+    heartbeatMonitor.start();
+
+    const unsub = heartbeatMonitor.onStatus((id, entry) => {
+      if (entry.status === 'offline') {
+        // 3 دقائق بلا نبضة → شبح — احذفه بصمت من القائمة
+        // لا نرسل player-kicked لأنه غالباً قفل المتصفح وما يسمع
+        console.log(`👻 "${entry.name}" غير متصل منذ 3 دقائق — حذف صامت`);
+        setRegisteredPlayers(prev => prev.filter(p => p.name !== entry.name));
+        heartbeatMonitor.remove(id);
+      }
+    });
+
+    return () => {
+      unsub();
+      heartbeatMonitor.stop();
+    };
+  }, []);
+
+  // ── تنظيف WebSocket عند مغادرة HostScreen (unmount) ─────────────────────
+  React.useEffect(() => {
+    return () => {
+      syncManager.disconnect();
+    };
+  }, []);
+
+  // ── تسجيل الجلسة في قاعدة البيانات (تحليلات) ──────────────────────────
+  // يُسجَّل فقط عندما يبدأ المقدم اللعبة فعلياً (roundStarted = true)
+  const sessionLogIdRef = useRef<string | null>(null);
+  const sessionLoggedRef = useRef(false);
+  React.useEffect(() => {
+    if (!roundStarted || !sessionId || !user?.id || sessionLoggedRef.current) return;
+    sessionLoggedRef.current = true;
+    supabase.rpc('log_session_start', {
+      p_session_code: sessionId,
+      p_game_mode: settings.winCondition || 'wall-to-wall',
+      p_rounds: settings.rounds || 3,
+      p_play_mode: settings.gameMode || 'normal',
+    }).then(({ data, error }) => {
+      if (!error && data) {
+        sessionLogIdRef.current = data;
+        // اللاعبون وصلوا قبل بداية اللعبة — حدّث العدد فوراً بعد إنشاء السجل
+        const playerCount = registeredPlayersRef.current.length;
+        if (playerCount > 0) {
+          supabase.rpc('update_session_players', {
+            p_session_code: sessionId,
+            p_player_count: playerCount,
+          });
+        }
+      }
+      else if (error) console.warn('[SessionLog] start failed:', error.message);
+    });
+  }, [roundStarted, sessionId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // عند المغادرة: سجّل نهاية الجلسة (فقط إذا كانت سُجلت أصلاً)
+  React.useEffect(() => {
+    return () => {
+      if (!sessionLoggedRef.current || !sessionId) return;
+      supabase.rpc('log_session_end', {
+        p_session_code: sessionId,
+        p_rounds_played: useGameStore.getState().currentRound,
+        p_peak_players: registeredPlayersRef.current.length,
+      }).then(({ error }) => { if (error) console.warn('[SessionLog] end:', error.message); });
+    };
+  }, [sessionId]);
+
+  // تحديث عدد اللاعبين كل ما يتغير العدد (فقط بعد تسجيل الجلسة)
+  React.useEffect(() => {
+    if (!sessionId || registeredPlayers.length === 0 || !sessionLoggedRef.current) return;
+    supabase.rpc('update_session_players', {
+      p_session_code: sessionId,
+      p_player_count: registeredPlayers.length,
+    }).then(() => { /* silent */ });
+  }, [sessionId, registeredPlayers.length]);
+
+  // ── استقبال أمر إغلاق من الأدمن ──────────────────────────────────────────
+  const [adminCloseMessage, setAdminCloseMessage] = useState<string | null>(null);
+
+  // ── تجديد كود الغرفة ────────────────────────────────────────────────────
+  const handleRefreshRoom = useCallback(() => {
+    const SAFE = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const newCode = Array.from(
+      { length: 5 },
+      () => SAFE[Math.floor(Math.random() * SAFE.length)],
+    ).join('');
+    // أبلغ اللاعبين الحاليين بانتهاء الجلسة
+    syncManager.broadcast({ type: 'SESSION_ENDED' });
+    // احذف الجلسة القديمة من DB بهدوء
+    deleteGameSession(sessionId);
+    // سجّل الكود الجديد واعرضه
+    localStorage.setItem('game-session-id', newCode);
+    syncManager.initSession(newCode);
+    setSessionId(newCode);
+  }, [sessionId]);
 
   // حفظ حالة اللعبة الكاملة — debounce 300ms
   // إذا تغيرت cells + scores + winStreak معاً خلال 50ms (إجابة صحيحة)
@@ -619,12 +824,21 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           isGolden: false,
         });
       } else {
-        // جلب سؤال ذكي من Supabase
+        // جلب سؤال ذكي من Supabase مع timeout أمان 10 ثوانٍ
         setIsLoadingQuestion(true);
+        const safetyTimer = setTimeout(() => {
+          // إذا بقي القفل بعد 10 ثوانٍ → فك تلقائي لمنع التعليق الدائم
+          if (useGameStore.getState().isLocked) {
+            setIsLoadingQuestion(false);
+            setLocked(false);
+            setSelectedCell(null);
+          }
+        }, 10000);
         const question = await getSmartQuestion(
           cell.letter,
           settings.selectedCategories
         );
+        clearTimeout(safetyTimer);
         setIsLoadingQuestion(false);
 
         if (question) {
@@ -666,19 +880,26 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     if (!selectedCell) return;
 
     setIsLoadingQuestion(true);
-    const question = await getSmartQuestion(selectedCell.letter, settings.selectedCategories);
-    setIsLoadingQuestion(false);
+    try {
+      const question = await getSmartQuestion(selectedCell.letter, settings.selectedCategories);
+      setIsLoadingQuestion(false);
 
-    if (question) {
-      setCurrentQuestion(question.question_text);
-      setCurrentAnswer(question.correct_answer);
-      setCurrentQuestionId(question.id);
-    } else {
-      setCurrentQuestion(`⚠️ لا توجد أسئلة للحرف "${selectedCell.letter}"`);
-      setCurrentAnswer('إجابة تجريبية');
-      setCurrentQuestionId(null);
+      if (question) {
+        setCurrentQuestion(question.question_text);
+        setCurrentAnswer(question.correct_answer);
+        setCurrentQuestionId(question.id);
+      } else {
+        setCurrentQuestion(`⚠️ لا توجد أسئلة للحرف "${selectedCell.letter}"`);
+        setCurrentAnswer('إجابة تجريبية');
+        setCurrentQuestionId(null);
+      }
+      setShowQuestion(true);
+    } catch (err) {
+      console.error('Failed to fetch golden question:', err);
+      setIsLoadingQuestion(false);
+      setLocked(false);
+      setSelectedCell(null);
     }
-    setShowQuestion(true);
   };
 
   // 🏆 يُستدعى عندما يختار المقدم البطاقة من منتقي بطاقة الحرف الذهبي
@@ -754,6 +975,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
       if (availableCells.length > 0) {
         const foundTarget = availableCells[Math.floor(Math.random() * availableCells.length)];
+        setSelectedCell(foundTarget);
         const afterMs = animateCellSelection(availableCells, foundTarget);
 
         setTimeout(async () => {
@@ -763,19 +985,28 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
           setTimeout(async () => {
             setCardAnimation(null);
-            const question = await getSmartQuestion(foundTarget.letter, settings.selectedCategories);
-            if (question) {
-              setCurrentQuestion(question.question_text);
-              setCurrentAnswer(question.correct_answer);
-              setCurrentQuestionId(question.id);
-            } else {
-              setCurrentQuestion(`سؤال تجريبي للحرف "${foundTarget.letter}"؟`);
-              setCurrentAnswer('إجابة تجريبية');
-              setCurrentQuestionId(null);
+            try {
+              const question = await getSmartQuestion(foundTarget.letter, settings.selectedCategories);
+              if (question) {
+                setCurrentQuestion(question.question_text);
+                setCurrentAnswer(question.correct_answer);
+                setCurrentQuestionId(question.id);
+              } else {
+                setCurrentQuestion(`سؤال تجريبي للحرف "${foundTarget.letter}"؟`);
+                setCurrentAnswer('إجابة تجريبية');
+                setCurrentQuestionId(null);
+              }
+              setShowQuestion(true);
+            } catch (err) {
+              console.error('Failed to fetch question in random letter mode:', err);
+              setLocked(false);
+              setSelectedCell(null);
             }
-            setShowQuestion(true);
           }, 3500);
         }, afterMs);
+      } else {
+        // لا توجد خلايا متاحة — فك القفل
+        setLocked(false);
       }
       return; // تم التعامل مع حالة الحرف العشوائي
     }
@@ -797,21 +1028,27 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     setTimeout(async () => {
       setCardAnimation(null);
 
-      const question = await getSmartQuestion(
-        targetCell?.letter || '',
-        settings.selectedCategories
-      );
+      try {
+        const question = await getSmartQuestion(
+          targetCell?.letter || '',
+          settings.selectedCategories
+        );
 
-      if (question) {
-        setCurrentQuestion(question.question_text);
-        setCurrentAnswer(question.correct_answer);
-        setCurrentQuestionId(question.id);
-      } else {
-        setCurrentQuestion(`سؤال تجريبي للحرف "${targetCell?.letter}"؟`);
-        setCurrentAnswer('إجابة تجريبية');
-        setCurrentQuestionId(null);
+        if (question) {
+          setCurrentQuestion(question.question_text);
+          setCurrentAnswer(question.correct_answer);
+          setCurrentQuestionId(question.id);
+        } else {
+          setCurrentQuestion(`سؤال تجريبي للحرف "${targetCell?.letter}"؟`);
+          setCurrentAnswer('إجابة تجريبية');
+          setCurrentQuestionId(null);
+        }
+        setShowQuestion(true);
+      } catch (err) {
+        console.error('Failed to fetch question after card reveal:', err);
+        setLocked(false);
+        setSelectedCell(null);
       }
-      setShowQuestion(true);
     }, 3500);
   };
 
@@ -915,6 +1152,18 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
     }
   };
 
+  // إغلاق نافذة السؤال بدون تسجيل فائز (في حالة الضغط بالغلط)
+  const handleCloseQuestion = useCallback(() => {
+    setShowQuestion(false);
+    setIsLoadingQuestion(false); // safety reset in case fetch was in progress
+    setSelectedCell(null);       // deselect cell so grid clears highlight
+    setLocked(false);            // 🔓 unlock grid — removes "جاري المعالجة" overlay
+    if (showQuestionOnPlayers) {
+      setShowQuestionOnPlayers(false);
+      syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
+    }
+  }, [showQuestionOnPlayers]);
+
   const handleChangeQuestion = async () => {
     if (!selectedCell?.letter) return;
 
@@ -926,28 +1175,33 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
     // جلب سؤال جديد مع استبعاد كل الأسئلة السابقة
     setIsLoadingQuestion(true);
-    const newQuestion = await getSmartQuestion(
-      selectedCell.letter,
-      settings.selectedCategories,
-      updatedExcluded
-    );
-    setIsLoadingQuestion(false);
+    try {
+      const newQuestion = await getSmartQuestion(
+        selectedCell.letter,
+        settings.selectedCategories,
+        updatedExcluded
+      );
+      setIsLoadingQuestion(false);
 
-    if (newQuestion) {
-      setCurrentQuestion(newQuestion.question_text);
-      setCurrentAnswer(newQuestion.correct_answer);
-      setCurrentQuestionId(newQuestion.id);
+      if (newQuestion) {
+        setCurrentQuestion(newQuestion.question_text);
+        setCurrentAnswer(newQuestion.correct_answer);
+        setCurrentQuestionId(newQuestion.id);
 
-      // بث السؤال الجديد للاعبين
-      syncManager.broadcast({
-        type: 'QUESTION_CHANGED',
-        letter: selectedCell.letter,
-        question: newQuestion.question_text,
-      });
-    } else {
-      // لا توجد أسئلة أخرى
-      setCurrentQuestion(`⚠️ لا توجد أسئلة إضافية للحرف "${selectedCell.letter}"`);
-      setCurrentQuestionId(null);
+        // بث السؤال الجديد للاعبين
+        syncManager.broadcast({
+          type: 'QUESTION_CHANGED',
+          letter: selectedCell.letter,
+          question: newQuestion.question_text,
+        });
+      } else {
+        // لا توجد أسئلة أخرى
+        setCurrentQuestion(`⚠️ لا توجد أسئلة إضافية للحرف "${selectedCell.letter}"`);
+        setCurrentQuestionId(null);
+      }
+    } catch (err) {
+      console.error('Failed to change question:', err);
+      setIsLoadingQuestion(false);
     }
   };
 
@@ -1014,30 +1268,39 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           setSelectedCell({ ...targetCell, letter: battleLetter });
           setLocked(true);
 
-          // جلب سؤال جديد للمعركة - استبعاد السؤال الحالي
-          const question = await getSmartQuestion(
-            battleLetter,
-            settings.selectedCategories,
-            currentQuestionId || undefined  // استبعاد السؤال الحالي
-          );
+          try {
+            // جلب سؤال جديد للمعركة - استبعاد السؤال الحالي
+            const question = await getSmartQuestion(
+              battleLetter,
+              settings.selectedCategories,
+              currentQuestionId || undefined  // استبعاد السؤال الحالي
+            );
 
-          if (question) {
-            setCurrentQuestion(question.question_text);
-            setCurrentAnswer(question.correct_answer);
-            setCurrentQuestionId(question.id);
-          } else {
-            setCurrentQuestion(`سؤال معركة للحرف "${battleLetter}"؟`);
-            setCurrentAnswer('إجابة تجريبية');
-            setCurrentQuestionId(null);
+            if (question) {
+              setCurrentQuestion(question.question_text);
+              setCurrentAnswer(question.correct_answer);
+              setCurrentQuestionId(question.id);
+            } else {
+              setCurrentQuestion(`سؤال معركة للحرف "${battleLetter}"؟`);
+              setCurrentAnswer('إجابة تجريبية');
+              setCurrentQuestionId(null);
+            }
+            setShowQuestion(true);
+
+            // بث السؤال للاعبين
+            syncManager.broadcast({
+              type: 'BATTLE_QUESTION',
+              letter: battleLetter,
+              question: question?.question_text || `سؤال معركة للحرف "${battleLetter}"؟`,
+            });
+          } catch (err) {
+            console.error('Failed to fetch battle question:', err);
+            setLocked(false);
+            setSelectedCell(null);
           }
-          setShowQuestion(true);
-
-          // بث السؤال للاعبين
-          syncManager.broadcast({
-            type: 'BATTLE_QUESTION',
-            letter: battleLetter,
-            question: question?.question_text || `سؤال معركة للحرف "${battleLetter}"؟`,
-          });
+        } else {
+          // الخلية ما انوجدت — فك القفل
+          setLocked(false);
         }
       }, 2500);
     }
@@ -1125,18 +1388,25 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       } else {
         (async () => {
           setIsLoadingQuestion(true);
-          const question = await getSmartQuestion(targetCell.letter, settings.selectedCategories);
-          setIsLoadingQuestion(false);
-          if (question) {
-            setCurrentQuestion(question.question_text);
-            setCurrentAnswer(question.correct_answer);
-            setCurrentQuestionId(question.id);
-            setShowQuestion(true);
-          } else {
-            setCurrentQuestion(`⚠️ لا توجد أسئلة متاحة للحرف "${targetCell.letter}" في التصنيفات المختارة!`);
-            setShowQuestion(true);
-            setCurrentAnswer('إجابة تجريبية');
-            setCurrentQuestionId(null);
+          try {
+            const question = await getSmartQuestion(targetCell.letter, settings.selectedCategories);
+            setIsLoadingQuestion(false);
+            if (question) {
+              setCurrentQuestion(question.question_text);
+              setCurrentAnswer(question.correct_answer);
+              setCurrentQuestionId(question.id);
+              setShowQuestion(true);
+            } else {
+              setCurrentQuestion(`⚠️ لا توجد أسئلة متاحة للحرف "${targetCell.letter}" في التصنيفات المختارة!`);
+              setShowQuestion(true);
+              setCurrentAnswer('إجابة تجريبية');
+              setCurrentQuestionId(null);
+            }
+          } catch (err) {
+            console.error('Failed to fetch question for random letter:', err);
+            setIsLoadingQuestion(false);
+            setLocked(false);
+            setSelectedCell(null);
           }
         })();
       }
@@ -1182,132 +1452,30 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const redLetters   = cells.filter(c => c.status === 'red').map(c => c.letter);
 
   return (
-    <div style={{
-      minHeight: '100vh',
+    <div className="screen-min-scroll" style={{
       background: theme.bgGradient,
       padding: isMobile ? '0.75rem' : isTablet ? '1rem' : '1.5rem',
-      // paddingTop يعوّض ارتفاع MatchScoreTracker (عنوان + لوحة + معلومات الجولة)
       paddingTop: isMobile ? '115px' : isTablet ? '118px' : '1.5rem',
+      paddingBottom: isMobile ? 'calc(env(safe-area-inset-bottom, 0px) + 2rem)' : undefined,
       display: 'flex',
       flexDirection: isDesktop ? 'row' : 'column',
       gap: isMobile ? '0.75rem' : '1.25rem',
       position: 'relative',
-      overflowX: 'hidden',
     }}>
 
-
-      {/* لوحتي الفريقين - صف أفقي على الموبايل/التابلت */}
-      {!isDesktop && (
+      {/* خلفية متوهجة خلف الشبكة — جوال فقط */}
+      {isMobile && (
         <div style={{
-          display: 'flex',
-          gap: isMobile ? '0.5rem' : '1rem',
-          width: '100%',
-        }}>
-          {/* بطاقة الفريق الأخضر - مضغوطة */}
-          <div style={{
-            flex: 1,
-            background: 'rgba(255, 255, 255, 0.1)',
-            backdropFilter: 'blur(10px)',
-            border: '2px solid rgba(16, 185, 129, 0.3)',
-            borderRadius: '1rem',
-            padding: isMobile ? '0.75rem' : '1rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: isMobile ? '0.5rem' : '0.75rem',
-          }}>
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #10b981, #14b8a6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <Users size={isMobile ? 18 : 22} color="white" />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700, color: '#10b981', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
-                {settings.teamNames.green}
-              </div>
-              {/* الحروف المجابة */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                {greenLetters.length > 0 ? greenLetters.map((l, i) => (
-                  <span key={i} style={{
-                    minWidth: isMobile ? '18px' : '22px', height: isMobile ? '18px' : '22px',
-                    background: 'rgba(16, 185, 129, 0.25)', border: '1px solid rgba(16, 185, 129, 0.5)',
-                    borderRadius: '4px', fontSize: isMobile ? '0.6rem' : '0.7rem', fontWeight: 900,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981',
-                    padding: '0 2px',
-                  }}>{l}</span>
-                )) : (
-                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.65rem' }}>لا توجد حروف</span>
-                )}
-              </div>
-            </div>
-            {teamCards.green.length > 0 && (
-              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                {teamCards.green.map((card, idx) => (
-                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* بطاقة الفريق الأحمر - مضغوطة */}
-          <div style={{
-            flex: 1,
-            background: 'rgba(255, 255, 255, 0.1)',
-            backdropFilter: 'blur(10px)',
-            border: '2px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: '1rem',
-            padding: isMobile ? '0.75rem' : '1rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: isMobile ? '0.5rem' : '0.75rem',
-          }}>
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <Users size={isMobile ? 18 : 22} color="white" />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: isMobile ? '0.7rem' : '0.8rem', fontWeight: 700, color: '#ef4444', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '4px' }}>
-                {settings.teamNames.red}
-              </div>
-              {/* الحروف المجابة */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
-                {redLetters.length > 0 ? redLetters.map((l, i) => (
-                  <span key={i} style={{
-                    minWidth: isMobile ? '18px' : '22px', height: isMobile ? '18px' : '22px',
-                    background: 'rgba(239, 68, 68, 0.25)', border: '1px solid rgba(239, 68, 68, 0.5)',
-                    borderRadius: '4px', fontSize: isMobile ? '0.6rem' : '0.7rem', fontWeight: 900,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444',
-                    padding: '0 2px',
-                  }}>{l}</span>
-                )) : (
-                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.65rem' }}>لا توجد حروف</span>
-                )}
-              </div>
-            </div>
-            {teamCards.red.length > 0 && (
-              <div style={{ display: 'flex', gap: '2px', flexWrap: 'wrap' }}>
-                {teamCards.red.map((card, idx) => (
-                  <span key={idx} style={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>{CARD_ICONS[card]}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
+          background: `
+            radial-gradient(ellipse 90% 55% at 50% 44%, rgba(139,92,246,0.22) 0%, transparent 62%),
+            radial-gradient(ellipse 55% 35% at 20% 85%, rgba(236,72,153,0.1) 0%, transparent 55%),
+            radial-gradient(ellipse 55% 35% at 80% 15%, rgba(99,102,241,0.1) 0%, transparent 55%)
+          `,
+        }} />
       )}
+
+
 
       {/* لوحة الفريق الأيمن (الأخضر) - Desktop فقط */}
       {isDesktop && (
@@ -1454,8 +1622,18 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               color: 'rgba(255, 255, 255, 0.6)',
               marginBottom: '0.75rem',
               textAlign: 'center',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', flexWrap: 'wrap',
             }}>
-              📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'green').length})
+              <span>📱 Answer Buzzers ({registeredPlayers.filter(p => p.team === 'green').length})</span>
+              {connectedCount > 0 && (
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 700,
+                  background: 'rgba(16,185,129,0.18)', border: '1px solid rgba(16,185,129,0.4)',
+                  borderRadius: '2rem', padding: '1px 7px', color: '#6ee7b7',
+                }}>
+                  📡 {connectedCount} متصل
+                </span>
+              )}
             </div>
             <div style={{
               display: 'flex',
@@ -1545,22 +1723,25 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
       {/* المنطقة الوسطى */}
       <div style={{
-        flex: 1,
+        flex: isMobile ? undefined : 1,
+        flexShrink: isMobile ? 0 : undefined,
         display: 'flex',
         flexDirection: 'column',
         gap: isMobile ? '0.6rem' : '1.25rem',
         minWidth: 0,
-        overflow: 'hidden',
+        overflow: isMobile ? 'visible' : 'hidden',
       }}>
 
 
         {/* الشبكة */}
         <div style={{
-          flex: 1,
+          flex: isMobile ? undefined : 1,
+          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          minHeight: isMobile ? '260px' : isTablet ? '380px' : '500px',
+          height: isMobile ? '360px' : undefined,
+          minHeight: isMobile ? undefined : isTablet ? '400px' : '500px',
           position: 'relative',
           overflow: 'hidden',
         }}>
@@ -1603,15 +1784,45 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               pointerEvents: 'all',
             }}>
               <div style={{
-                background: 'rgba(168, 85, 247, 0.2)',
-                border: '2px solid rgba(168, 85, 247, 0.5)',
-                borderRadius: '1rem',
-                padding: '1rem 2rem',
-                color: '#e9d5ff',
-                fontSize: '1.25rem',
-                fontWeight: 700,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.75rem',
               }}>
-                🔒 جاري المعالجة...
+                <div style={{
+                  background: 'rgba(168, 85, 247, 0.2)',
+                  border: '2px solid rgba(168, 85, 247, 0.5)',
+                  borderRadius: '1rem',
+                  padding: '1rem 2rem',
+                  color: '#e9d5ff',
+                  fontSize: '1.25rem',
+                  fontWeight: 700,
+                }}>
+                  🔒 جاري المعالجة...
+                </div>
+                {lockedSeconds >= 8 && (
+                  <button
+                    onClick={() => {
+                      setLocked(false);
+                      setIsLoadingQuestion(false);
+                      setSelectedCell(null);
+                      setLockedSeconds(0);
+                    }}
+                    style={{
+                      padding: '0.65rem 1.5rem',
+                      background: 'rgba(239,68,68,0.85)',
+                      border: '2px solid rgba(239,68,68,0.9)',
+                      borderRadius: '0.75rem',
+                      color: 'white',
+                      fontSize: '0.95rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
+                    }}
+                  >
+                    🔓 فك التعليق
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1743,10 +1954,12 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
         {/* شريط التحكم */}
         <div style={{
+          flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: '0.5rem',
+          width: '100%',
         }}>
 
           {/* زر الرجوع للإعدادات */}
@@ -1756,16 +1969,17 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               display: 'flex',
               alignItems: 'center',
               gap: '0.4rem',
-              padding: '0.45rem 1rem',
+              padding: isMobile ? '0.4rem 0.8rem' : '0.45rem 1rem',
               background: 'rgba(255, 255, 255, 0.07)',
               border: '1.5px solid rgba(255, 255, 255, 0.15)',
               borderRadius: '0.75rem',
               color: 'rgba(255, 255, 255, 0.6)',
-              fontSize: '0.78rem',
+              fontSize: isMobile ? '0.72rem' : '0.78rem',
               fontWeight: 700,
               cursor: 'pointer',
               transition: 'all 0.2s',
               alignSelf: 'center',
+              fontFamily: 'Tajawal, sans-serif',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)';
@@ -1778,32 +1992,35 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
             }}
           >
-            <Settings size={13} />
+            <Settings size={isMobile ? 12 : 13} />
             الرجوع للإعدادات
           </button>
 
-          {/* الأزرار الرئيسية */}
+          {/* الأزرار الرئيسية — سكرول أفقي */}
           <div style={{
-            overflowX: isMobile ? 'auto' : 'visible',
+            overflowX: 'auto',
             overflowY: 'visible',
             WebkitOverflowScrolling: 'touch' as any,
             borderRadius: '2rem',
-            alignSelf: 'center',
-            maxWidth: '100%',
+            alignSelf: 'stretch',
+            width: '100%',
+            // شريط سكرول مخفي بصرياً
+            msOverflowStyle: 'none' as any,
+            scrollbarWidth: 'none' as any,
           }}>
           <div style={{
             display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'center',
-            gap: isMobile ? '0.4rem' : isTablet ? '0.5rem' : '0.6rem',
-            flexWrap: isMobile ? 'nowrap' : 'wrap',
+            alignItems: 'center',
+            justifyContent: isMobile ? 'flex-start' : 'center',
+            gap: isMobile ? '0.35rem' : isTablet ? '0.5rem' : '0.6rem',
+            flexWrap: 'nowrap',
             background: 'rgba(0, 0, 0, 0.35)',
             backdropFilter: 'blur(10px)',
-            padding: isMobile ? '0.6rem 1rem' : '0.85rem 1.25rem',
+            padding: isMobile ? '0.55rem 0.85rem' : '0.85rem 1.25rem',
             borderRadius: '2rem',
             border: '2px solid rgba(255, 255, 255, 0.1)',
             boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-            minWidth: isMobile ? 'max-content' : 'auto',
+            minWidth: 'max-content',
           }}>
             {/* Zoom Slider */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
@@ -1845,6 +2062,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
             <ControlButton onClick={handleRandomLetter} color="#ec4899" icon={<Dices size={isMobile ? 16 : 20} />} title="حرف عشوائي — تحديد حرف غير مُجاب تلقائياً" label="حرف عشوائي" disabled={isLocked} isMobile={isMobile} />
             <ControlButton onClick={handleToggleColors} color="#a855f7" icon={<Palette size={isMobile ? 16 : 20} />} title="عكس الألوان — تبديل اتجاه مسار الفريقين" label="عكس الألوان" disabled={isLocked} isMobile={isMobile} />
             <ControlButton onClick={() => setShowBuzzerQRCode(true)} color="#10b981" icon={<QrCode size={isMobile ? 16 : 20} />} title="غرفة الانضمام — امسح الباركود للدخول كجارس" label="انضم للغرفة" disabled={false} isMobile={isMobile} />
+            <ControlButton onClick={handleRefreshRoom} color="#f59e0b" icon={<RefreshCw size={isMobile ? 16 : 20} />} title="تجديد الكود — ينشئ رمز غرفة جديد ويطرد اللاعبين الحاليين" label="تجديد الكود" disabled={false} isMobile={isMobile} />
             <ControlButton onClick={handleResetBuzzers} color="#f43f5e" icon={<BellOff size={isMobile ? 16 : 20} />} title="ريست الجرس — إلغاء الضغط الحالي وإعادة تعيين الجرس" label="ريست الجرس" disabled={false} isMobile={isMobile} />
             <ControlButton onClick={() => setShowCardPanel(true)} color="#f97316" icon={<Sparkles size={isMobile ? 16 : 20} />} title="البطاقات — توزيع وإدارة بطاقات الفريقين" label="البطاقات" disabled={isLocked} isMobile={isMobile} />
             <ControlButton onClick={() => setShowOnboarding(true)} color="#6366f1" icon={<HelpCircle size={isMobile ? 16 : 20} />} title="الدليل — شرح قواعد اللعبة وأدوات المقدم" label="الدليل" disabled={false} isMobile={isMobile} />
@@ -1854,7 +2072,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
 
         {/* ══ قسم المعلومات على الجوال/التابلت فقط (قائمة منسدلة) ══ */}
         {!isDesktop && (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ flexShrink: 0, width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
 
             {/* زر التوسيع/الطي */}
             <button
@@ -2315,29 +2533,68 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           background: 'rgba(0, 0, 0, 0.8)',
           backdropFilter: 'blur(6px)',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: isMobile ? 'flex-end' : 'center',
           justifyContent: 'center',
           zIndex: 1000,
-          padding: isMobile ? '0.75rem' : '2rem',
+          padding: isMobile ? '0' : '2rem',
+          overflowY: 'auto',
         }}>
           <div style={{
             maxWidth: isMobile ? '100%' : isTablet ? '90%' : '800px',
             width: '100%',
+            maxHeight: isMobile ? 'min(96dvh, 96vh)' : '90vh',
+            overflowY: isMobile ? 'auto' : 'visible',
+            WebkitOverflowScrolling: 'touch' as const,
             background: 'linear-gradient(135deg, #1a0b2e, #2d1154)',
             border: '3px solid rgba(168, 85, 247, 0.5)',
-            borderRadius: isMobile ? '1rem' : '2rem',
-            padding: isMobile ? '1.5rem' : isTablet ? '2rem' : '3rem',
-          }}>
+            borderRadius: isMobile ? '1.25rem 1.25rem 0 0' : '2rem',
+            padding: isMobile ? '1.25rem' : isTablet ? '2rem' : '3rem',
+            paddingBottom: isMobile ? 'calc(1.25rem + env(safe-area-inset-bottom, 12px))' : undefined,
+            position: 'relative',
+          } as React.CSSProperties}>
+            {/* ── زر إغلاق/رجوع (في حال الضغط بالغلط) ────────────────── */}
+            <button
+              onClick={handleCloseQuestion}
+              title="إغلاق السؤال — رجوع"
+              style={{
+                position: 'absolute',
+                top: isMobile ? '0.6rem' : '1rem',
+                left: isMobile ? '0.6rem' : '1rem',
+                width: isMobile ? '36px' : '40px',
+                height: isMobile ? '36px' : '40px',
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.07)',
+                border: '1.5px solid rgba(255,255,255,0.15)',
+                color: 'rgba(255,255,255,0.55)',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: isMobile ? '1.1rem' : '1.25rem',
+                fontWeight: 700,
+                transition: 'all 0.15s',
+                zIndex: 2,
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.18)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.45)';
+                (e.currentTarget as HTMLElement).style.color = '#ef4444';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)';
+                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)';
+                (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.55)';
+              }}
+            >✕</button>
             <div style={{
               textAlign: 'center',
-              marginBottom: isMobile ? '1rem' : '2rem',
+              marginBottom: isMobile ? '0.85rem' : '2rem',
+              marginTop: isMobile ? '1.75rem' : '0', // مسافة لزر الإغلاق ✕ في الجوال
             }}>
               <div style={{
                 display: 'inline-block',
-                padding: isMobile ? '1rem 1.5rem' : '1.5rem 2.5rem',
+                padding: isMobile ? '0.85rem 1.35rem' : '1.5rem 2.5rem',
                 background: 'linear-gradient(135deg, #a855f7, #ec4899)',
                 borderRadius: '1.5rem',
-                fontSize: isMobile ? '2.5rem' : isTablet ? '3rem' : '4rem',
+                fontSize: isMobile ? '2.2rem' : isTablet ? '3rem' : '4rem',
                 fontWeight: 900,
                 color: 'white',
               }}>
@@ -2371,57 +2628,64 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
               )}
             </div>
 
+            {/* ── كارت السؤال (نص فقط، بدون أزرار مدمجة) ─────────────────── */}
             <div style={{
               background: 'rgba(255, 255, 255, 0.05)',
               border: '2px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '1.5rem',
               padding: isMobile ? '1rem' : '2rem',
-              marginBottom: isMobile ? '1rem' : '2rem',
-              position: 'relative',
+              marginBottom: isMobile ? '0.65rem' : '1rem',
             }}>
-              {/* أيقونة إظهار/إخفاء السؤال على شاشة اللاعبين */}
-              <button
-                onClick={() => {
-                  const next = !showQuestionOnPlayers;
-                  setShowQuestionOnPlayers(next);
-                  if (next) {
-                    syncManager.broadcast({
-                      type: 'SHOW_QUESTION_TO_PLAYERS',
-                      question: currentQuestion,
-                      letter: selectedCell?.letter ?? '',
-                    });
-                  } else {
-                    syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
-                  }
-                }}
-                title={showQuestionOnPlayers ? 'إخفاء السؤال من شاشة اللاعبين' : 'إظهار السؤال على شاشة اللاعبين'}
-                style={{
-                  position: 'absolute',
-                  top: '0.55rem',
-                  left: '0.55rem',
-                  width: isMobile ? '30px' : '36px',
-                  height: isMobile ? '30px' : '36px',
-                  borderRadius: '50%',
-                  background: showQuestionOnPlayers ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.08)',
-                  border: `1.5px solid ${showQuestionOnPlayers ? 'rgba(16,185,129,0.55)' : 'rgba(255,255,255,0.18)'}`,
-                  color: showQuestionOnPlayers ? '#10b981' : 'rgba(255,255,255,0.45)',
-                  cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.2s',
-                  flexShrink: 0,
-                }}
-              >
-                {showQuestionOnPlayers ? <EyeOff size={isMobile ? 14 : 17} /> : <Eye size={isMobile ? 14 : 17} />}
-              </button>
-
               <div style={{
                 color: 'white',
                 fontSize: isMobile ? '1.1rem' : '1.5rem',
                 fontWeight: 700,
+                textAlign: 'center',
+                lineHeight: 1.6,
               }}>
                 {currentQuestion}
               </div>
             </div>
+
+            {/* ── زر إظهار/إخفاء السؤال على شاشة اللاعبين (صف مستقل) ──── */}
+            <button
+              onClick={() => {
+                const next = !showQuestionOnPlayers;
+                setShowQuestionOnPlayers(next);
+                if (next) {
+                  syncManager.broadcast({
+                    type: 'SHOW_QUESTION_TO_PLAYERS',
+                    question: currentQuestion,
+                    letter: selectedCell?.letter ?? '',
+                  });
+                } else {
+                  syncManager.broadcast({ type: 'HIDE_QUESTION_FROM_PLAYERS' });
+                }
+              }}
+              style={{
+                width: '100%',
+                marginBottom: isMobile ? '0.65rem' : '1rem',
+                padding: isMobile ? '0.6rem 1rem' : '0.75rem 1.25rem',
+                borderRadius: '0.9rem',
+                background: showQuestionOnPlayers
+                  ? 'rgba(16,185,129,0.15)'
+                  : 'rgba(255,255,255,0.06)',
+                border: `1.5px solid ${showQuestionOnPlayers ? 'rgba(16,185,129,0.55)' : 'rgba(255,255,255,0.18)'}`,
+                color: showQuestionOnPlayers ? '#10b981' : 'rgba(255,255,255,0.55)',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.55rem',
+                fontSize: isMobile ? '0.8rem' : '0.9rem',
+                fontWeight: 700,
+                fontFamily: 'Tajawal, sans-serif',
+                transition: 'all 0.2s',
+              }}
+            >
+              {/* الأيقونة تُظهر الحالة الحالية: مرئي = Eye، مخفي = EyeOff */}
+              {showQuestionOnPlayers
+                ? <><Eye size={isMobile ? 15 : 17} /> السؤال ظاهر للاعبين — اضغط للإخفاء</>
+                : <><EyeOff size={isMobile ? 15 : 17} /> السؤال مخفي عن اللاعبين — اضغط للإظهار</>
+              }
+            </button>
           {/* 3. ✅ صندوق الإجابة (تم نقله ليصبح تحت السؤال) */}
             {currentAnswer && (
               <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '2px dashed rgba(16, 185, 129, 0.4)', borderRadius: '1.25rem', padding: isMobile ? '1rem' : '1.5rem', marginBottom: isMobile ? '1rem' : '2rem', textAlign: 'center' }}>
@@ -3225,6 +3489,48 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           sessionId={sessionId}
           onClose={() => setShowBuzzerQRCode(false)}
         />
+      )}
+
+      {/* مودال التحذير من الخمول — AFK System */}
+      {showAfkWarning && (
+        <InactivityWarningModal countdown={afkCountdown} onStay={afkStayActive} />
+      )}
+
+      {/* مودال إغلاق الجلسة من الأدمن */}
+      {adminCloseMessage && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          direction: 'rtl', fontFamily: 'Tajawal,sans-serif',
+        }}>
+          <div style={{
+            textAlign: 'center', maxWidth: '380px', width: '90%', padding: '2rem',
+            background: 'linear-gradient(145deg, rgba(15,6,38,0.99), rgba(30,12,60,0.99))',
+            border: '2px solid rgba(239,68,68,0.4)', borderRadius: '1.5rem',
+            boxShadow: '0 0 60px rgba(239,68,68,0.2)',
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'white', marginBottom: '0.75rem' }}>
+              تم إغلاق الجلسة
+            </div>
+            <div style={{ fontSize: '0.88rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, marginBottom: '1rem' }}>
+              {adminCloseMessage}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginBottom: '1rem' }}>
+              سيتم نقلك تلقائياً خلال ثوانٍ...
+            </div>
+            <button onClick={onBack} style={{
+              width: '100%', padding: '0.85rem',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              border: 'none', borderRadius: '0.875rem',
+              color: 'white', fontSize: '1rem', fontWeight: 800,
+              cursor: 'pointer', fontFamily: 'Tajawal,sans-serif',
+            }}>
+              الخروج الآن
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ═══════════════════════════════════════════════

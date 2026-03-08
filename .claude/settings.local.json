@@ -19,7 +19,9 @@
       "Bash(python -c \"import os; print\\(os.getcwd\\(\\)\\)\")",
       "Bash(python -c \"open\\(''C:/Users/Admin/Desktop/write_frags.py'',''wb''\\).write\\(b''print\\(42\\)''\\)\")",
       "Bash(python C:/Users/Admin/Desktop/write_frags.py)",
-      "Bash(python C:/Users/Admin/Desktop/do_edits.py)"
+      "Bash(python C:/Users/Admin/Desktop/do_edits.py)",
+      "Bash(grep -l \"buyers\" *.sql)",
+      "Bash(grep -n \"CREATE TABLE.*buyers\" *.sql)"
     ]
   }
 }

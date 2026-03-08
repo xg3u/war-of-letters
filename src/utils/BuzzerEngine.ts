@@ -252,6 +252,10 @@ export class BuzzerChannel {
   private winnerListeners:  Set<WinnerCallback>  = new Set();
   private statusListeners:  Set<StatusCallback>  = new Set();
   private _currentStatus: BuzzerStatus = 'connecting';
+  // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s
+  private reconnectAttempts = 0;
+  private readonly BACKOFF = [1000, 2000, 4000, 8000, 16000, 30000];
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -287,12 +291,17 @@ export class BuzzerChannel {
     this.channel.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
         console.log(`🔔 BuzzerChannel ready: buzzer-v2-${this.sessionId}`);
+        this.reconnectAttempts = 0; // reset backoff on success
+        if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
         this._emitStatus('ready');
       }
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.warn(`⚠️ BuzzerChannel ${status} — reconnecting...`);
+        this.reconnectAttempts++;
+        const delay = this.BACKOFF[Math.min(this.reconnectAttempts - 1, this.BACKOFF.length - 1)];
+        console.warn(`⚠️ BuzzerChannel ${status} — attempt ${this.reconnectAttempts}, retry in ${delay / 1000}s`);
         this._emitStatus('error');
-        setTimeout(() => this.setup(), 2000);
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.setup(), delay);
       }
     });
   }
@@ -304,6 +313,41 @@ export class BuzzerChannel {
       event: 'attempt',
       payload: attempt,
     }).catch((e: any) => console.error('BuzzerChannel.sendAttempt:', e));
+  }
+
+  /**
+   * attemptBuzzDB — قفل قاعدة البيانات لمنع تعارض الجرس بين الأجهزة
+   *
+   * يستدعي RPC `attempt_buzz` على قاعدة البيانات:
+   *  - النجاح  → يُرجع true  (الجهاز هو الفائز ويُكمل إرسال الـ attempt)
+   *  - الفشل   → يُرجع false (جهاز آخر سبقه — لا يُرسل شيئاً)
+   *  - خطأ شبكة → يُرجع true (fallback: دع نظام الـ host يحكم كما في السابق)
+   *
+   * يجب أن يكون الجدول `game_sessions` موجوداً في Supabase
+   * (راجع: supabase/migrations/001_game_stability.sql)
+   */
+  async attemptBuzzDB(
+    sessionId: string,
+    playerId: string,
+    team: string,
+  ): Promise<boolean> {
+    try {
+      const { data, error } = await supabase.rpc('attempt_buzz', {
+        p_session_id: sessionId,
+        p_player_id:  playerId,
+        p_team:       team,
+      });
+
+      if (error) {
+        // إذا لم يكن الجدول موجوداً أو حدث خطأ شبكة → fallback للنظام القديم
+        console.warn('[BuzzerDB] attempt_buzz fallback:', error.message);
+        return true;
+      }
+
+      return (data as any)?.success === true;
+    } catch {
+      return true; // fallback: دع الـ host يحكم
+    }
   }
 
   /** يُستدعى فقط من HostScreen — يُعلن الفائز لجميع الأجهزة */
@@ -334,6 +378,8 @@ export class BuzzerChannel {
   }
 
   close() {
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    this.reconnectAttempts = 0;
     if (this.channel) {
       supabase.removeChannel(this.channel);
       this.channel = null;

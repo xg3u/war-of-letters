@@ -169,7 +169,7 @@ export const BuzzerGuide: React.FC<BuzzerGuideProps> = ({ onClose, onDontShowAga
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 50000,
-      padding: '0.5rem',
+      padding: '0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom)) 0.5rem',
     }}>
       <div style={{
         maxWidth: '480px',

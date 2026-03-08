@@ -109,6 +109,18 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   });
   const [codeInput, setCodeInput] = React.useState('');
   const [codeError, setCodeError] = React.useState(false);
+  const [connectionDegraded, setConnectionDegraded] = React.useState(false);
+
+  // ── فتح Realtime صريحاً (لا يحدث تلقائياً في Constructor) ──
+  React.useEffect(() => {
+    if (!sessionId) return;
+    syncManager.joinSession(sessionId);
+  }, [sessionId]);
+
+  // مراقبة صحة الاتصال — Full House / شبكة معطلة
+  React.useEffect(() => {
+    return syncManager.onHealth(h => setConnectionDegraded(h === 'degraded'));
+  }, []);
 
   // المزامنة فقط
   React.useEffect(() => {
@@ -177,7 +189,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         if (data.teamCards) {
           setLocalTeamCards(data.teamCards);
         }
-      } else if (data.type === 'SESSION_ENDED') {
+      } else if (data.type === 'SESSION_ENDED' || data.type === 'ADMIN_FORCE_CLOSE') {
+        syncManager.disconnect();
         setSessionEnded(true);
       } else if (data.type === 'ZOOM_CHANGED' && typeof data.zoom === 'number') {
         setZoom(data.zoom);
@@ -317,7 +330,10 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
         setRegisteredPlayers(prev => prev.filter(p => p.name !== data.name));
       }
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      syncManager.disconnect(); // تحرير WebSocket عند مغادرة الشاشة
+    };
   }, [syncFromExternal]);
 
   // عداد الجرس التنازلي + إغلاق تلقائي بعد انتهاء الـ 5 ثوانٍ
@@ -495,8 +511,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
   const redLetters   = cells.filter(c => c.status === 'red').map(c => c.letter);
 
   return (
-    <div style={{
-      minHeight: '100vh',
+    <div className="screen-min-scroll" style={{
       background: theme.bgGradient,
       padding: isMobile ? '0.75rem' : '1rem',
       // paddingTop يعوّض ارتفاع MatchScoreTracker (عنوان + لوحة + معلومات الجولة)
@@ -510,6 +525,35 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({
       overflowX: 'hidden',
     }}>
 
+
+      {/* ─── شريط تحذير Full House / انقطاع الاتصال ─── */}
+      {connectionDegraded && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: 'linear-gradient(90deg, #7c2d12, #991b1b)',
+          borderBottom: '2px solid rgba(239,68,68,0.5)',
+          padding: '0.6rem 1rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '0.75rem', direction: 'rtl',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+        }}>
+          <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+          <span style={{ color: 'white', fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.4, textAlign: 'center' }}>
+            تعذّر الاتصال بالخادم — قد يكون الخادم ممتلئاً أو الشبكة غير مستقرة. يتم إعادة المحاولة تلقائياً...
+          </span>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '0.25rem 0.8rem', borderRadius: '2rem',
+              background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)',
+              color: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
+              flexShrink: 0, whiteSpace: 'nowrap',
+            }}
+          >
+            تحديث
+          </button>
+        </div>
+      )}
 
       {/* زر الدليل - عائم يسار */}
       <button

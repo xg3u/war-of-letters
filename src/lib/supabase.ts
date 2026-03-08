@@ -11,7 +11,23 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('VITE_SUPABASE_ANON_KEY:', supabaseAnonKey ? '✓ Loaded' : '✗ Missing');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession:   true,   // حفظ الجلسة في localStorage (افتراضي، نؤكد صراحةً)
+    autoRefreshToken: true,   // تجديد التوكن تلقائياً
+    detectSessionInUrl: true, // للروابط السحرية (magic links / recovery)
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,    // حد أقصى للرسائل في الثانية — يحمي من الإغراق
+    },
+  },
+  global: {
+    headers: {
+      'x-client-info': 'war-of-letters/1.0', // تعريف الـ client لتحليل الطلبات
+    },
+  },
+});
 
 // ========== Database Connection Test ==========
 export const testDatabaseConnection = async (): Promise<{
@@ -87,12 +103,60 @@ export interface UserSeenQuestion {
 // يمكنك استخدام localStorage أو session
 export const getUserId = (): string => {
   let userId = localStorage.getItem('game_user_id');
-  
+
   if (!userId) {
     userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     localStorage.setItem('game_user_id', userId);
   }
-  
+
   return userId;
+};
+
+// ========== Game Session Helpers (Anti-Race Buzzer) ==========
+
+/**
+ * createGameSession — يُنشئ سطراً في `game_sessions` عند بدء الجلسة
+ * يُستدعى من HostScreen مرة واحدة عند initSession()
+ * إذا كانت الجلسة موجودة (ON CONFLICT DO NOTHING) لا شيء يحدث
+ */
+export const createGameSession = async (sessionId: string, hostId: string): Promise<void> => {
+  try {
+    await supabase.from('game_sessions').upsert(
+      { session_id: sessionId, host_id: hostId, state: 'waiting', buzzer_owner: null },
+      { onConflict: 'session_id', ignoreDuplicates: true },
+    );
+  } catch {
+    // الجدول غير موجود أو خطأ شبكة — لا يؤثر على اللعبة (الـ RPC يعمل كـ fallback)
+  }
+};
+
+/**
+ * resetBuzzerLock — يُعيد ضبط قفل الجرس في DB بعد كل سؤال
+ * يُستدعى من HostScreen عند resetBuzzers أو بعد حسم السؤال
+ */
+export const resetBuzzerLock = async (sessionId: string): Promise<void> => {
+  try {
+    await supabase
+      .from('game_sessions')
+      .update({ buzzer_owner: null, buzzer_team: null, state: 'waiting' })
+      .eq('session_id', sessionId);
+  } catch {
+    // silent — الـ host-arbitrated system يعمل بشكل مستقل
+  }
+};
+
+/**
+ * deleteGameSession — يحذف جلسة اللعب من DB عند تجديد الكود
+ * يُستدعى من HostScreen عند الضغط على "تجديد الكود"
+ */
+export const deleteGameSession = async (sessionId: string): Promise<void> => {
+  try {
+    await supabase
+      .from('game_sessions')
+      .delete()
+      .eq('session_id', sessionId);
+  } catch {
+    // silent — لا يؤثر على اللعبة
+  }
 };
 

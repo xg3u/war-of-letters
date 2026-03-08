@@ -5,12 +5,26 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 2. استيراد الخط العربي وإعدادات الصفحة العامة */
-@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&family=Lalezar&display=swap');
+/* 2. الخط العربي يُحمَّل من index.html كـ <link> (أسرع من @import) */
 
 :root {
   font-family: 'Tajawal', sans-serif;
   direction: rtl;
+  /* dvh fallback: يُحسب من window.innerHeight للمتصفحات القديمة */
+  --vh: 1vh;
+}
+
+/* شاشات التطبيق: تستخدم dvh (يستثني شريط المتصفح) مع fallback لـ vh */
+/* height ثابتة تُنشئ scroll context صحيح — المحتوى الزائد يسكرول داخلها */
+.screen-scroll,
+.screen-min-scroll {
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* مساحة إضافية في الأسفل تحت شريط المتصفح + الـ home indicator */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4rem) !important;
 }
 
 body {
@@ -191,6 +205,49 @@ body {
 /* تأثير الحدود المتوهجة */
 .border-glow {
   box-shadow: 0 0 20px currentColor, inset 0 0 20px currentColor;
+}
+
+/* ===== تحسينات الأداء للجوال ===== */
+
+/* will-change فقط على الديسكتوب — على الجوال يأكل ذاكرة GPU بدون فائدة */
+@media (hover: hover) {
+  .animate-letter,
+  .animate-letter-fall,
+  .animate-float-slow,
+  .animate-shimmer {
+    will-change: transform, opacity;
+  }
+}
+
+/* عزل تصيير البطاقات لتفادي reflow */
+.hexagon-shape {
+  contain: layout style;
+}
+
+/* تحسين scroll performance */
+.overflow-y-auto,
+.overflow-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* تقليل blur على الجوال لأنه ثقيل جداً */
+@media (max-width: 768px) and (hover: none) {
+  .backdrop-blur-3xl {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+}
+
+/* تعطيل الانيميشن غير الضروري عند طلب تقليل الحركة */
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-slow,
+  .animate-gradient-shift,
+  .animate-shimmer,
+  .animate-letter,
+  .animate-letter-fall {
+    animation: none;
+  }
 }
 
 /* ===== Responsive Media Queries ===== */

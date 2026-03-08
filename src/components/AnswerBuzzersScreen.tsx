@@ -1,7 +1,8 @@
 // src/components/AnswerBuzzersScreen.tsx
 // شاشة Answer Buzzers — نظام جرس صارم بالفريق مع Real-time عبر Supabase
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useInactivityKick, InactivityWarningModal, DisconnectedScreen } from '../hooks/useInactivityKick';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, CreditCard, HelpCircle } from 'lucide-react';
 import {
@@ -105,6 +106,8 @@ export const AnswerBuzzersScreen: React.FC = () => {
   const selectedTeamRef = useRef(selectedTeam);
   playerNameRef.current = playerName.trim();
   selectedTeamRef.current = selectedTeam;
+  // يُستخدم لتجاوز beforeunload عند الطرد التلقائي (يمنع ظهور "Leave site?")
+  const isKickingRef = useRef(false);
 
   // ── أفاتار الشخصية ──
   const [avatar, setAvatar] = useState<AvatarConfig>(DEFAULT_AVATAR);
@@ -125,6 +128,9 @@ export const AnswerBuzzersScreen: React.FC = () => {
     avatar: AvatarConfig;
   }>>([]);
   const [showLobbyEdit, setShowLobbyEdit] = useState(false);
+
+  // ── Ping الخاص باللاعب ──
+  const [myPing, setMyPing] = useState<number | null>(null);
 
   // ── نظام الجرس الجديد ──
   const [buzzerState, setBuzzerState] = useState<BuzzerState>(INITIAL_BUZZER_STATE);
@@ -171,6 +177,75 @@ export const AnswerBuzzersScreen: React.FC = () => {
 
   const sessionId = new URLSearchParams(window.location.search).get('session') || '';
 
+  // ── فتح Realtime صريحاً (لا يحدث تلقائياً في Constructor) ──
+  useEffect(() => {
+    if (!sessionId) return;
+    syncManager.joinSession(sessionId);
+  }, [sessionId]);
+
+  const [connectionDegraded, setConnectionDegraded] = useState(false);
+  const [overloadCountdown, setOverloadCountdown] = useState(30);
+
+  // مراقبة صحة الاتصال — Full House / شبكة معطلة
+  useEffect(() => {
+    return syncManager.onHealth(h => setConnectionDegraded(h === 'degraded'));
+  }, []);
+
+  // عند امتلاء السيرفر وكان اللاعب مسجلاً → عداد 30 ثانية ثم طرد تلقائي
+  useEffect(() => {
+    if (!connectionDegraded || !isRegistered) return;
+    setOverloadCountdown(30);
+    const interval = setInterval(() => {
+      setOverloadCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          if (playerNameRef.current) {
+            syncManager.broadcast({ type: 'player-left', name: playerNameRef.current });
+          }
+          window.location.href = window.location.origin + window.location.pathname + '?kicked=overload';
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [connectionDegraded, isRegistered]);
+
+  // ── AFK System: طرد تلقائي بعد 5 دقائق من عدم النشاط ──
+
+  const shouldKick = useCallback(async () => {
+    // دائماً اطرد بعد انتهاء وقت الخمول — بغض النظر عن حجم السيرفر
+    return true;
+  }, []);
+
+  const {
+    showWarning: showAfkWarning,
+    countdown: afkCountdown,
+    stayActive: afkStayActive,
+    isDisconnected,
+    reconnect: afkReconnect,
+  } = useInactivityKick({
+      enabled: isRegistered,
+      onBeforeKick: () => {
+        if (playerNameRef.current) {
+          syncManager.broadcast({ type: 'player-left', name: playerNameRef.current });
+        }
+      },
+      shouldKick,
+    });
+
+  // ── تحذير عند تحديث/إغلاق الصفحة أثناء اللعبة ──
+  useEffect(() => {
+    if (!isRegistered) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isKickingRef.current) return; // اسمح للطرد التلقائي بالمرور بدون حوار
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isRegistered]);
+
   // ═══════════════════════════════════════════════════════════════
   // broadcast "player-left" عند إغلاق الصفحة أو مغادرة اللاعب
   // ═══════════════════════════════════════════════════════════════
@@ -179,6 +254,8 @@ export const AnswerBuzzersScreen: React.FC = () => {
       if (isRegisteredRef.current && playerNameRef.current) {
         syncManager.broadcast({ type: 'player-left', name: playerNameRef.current });
       }
+      // تنظيف WebSocket عند مغادرة الشاشة (unmount)
+      syncManager.disconnect();
     };
   }, []);
 
@@ -251,6 +328,17 @@ export const AnswerBuzzersScreen: React.FC = () => {
     const unsubscribe = syncManager.subscribe((data: any) => {
       if (data.type === 'reset-buzzers') {
         setBuzzerState(INITIAL_BUZZER_STATE);
+        setIsSending(false);
+      } else if (data.type === 'BUZZER_WINNER_SYNC') {
+        // نسخة احتياطية من قرار المقدم — نفس منطق onWinner
+        const state = data.newState as BuzzerState;
+        const freshState: BuzzerState = {
+          ...state,
+          ...(state.activeTeam && state.activeUntil
+            ? { activeUntil: Date.now() + PHASE1_DURATION }
+            : {}),
+        };
+        setBuzzerState(freshState);
         setIsSending(false);
       } else if (data.type === 'CELL_SELECTED') {
         if (data.cellId) {
@@ -367,6 +455,8 @@ export const AnswerBuzzersScreen: React.FC = () => {
           ? Date.now() - registrationTimeRef.current
           : Infinity;
         if (msSinceReg >= 2000) {
+          // قطع WebSocket فوراً — تحرير اتصال Supabase
+          syncManager.disconnect();
           setIsRegistered(false);
           isRegisteredRef.current = false;
           setIsWaitingRoom(false);
@@ -377,6 +467,14 @@ export const AnswerBuzzersScreen: React.FC = () => {
           setWaitingPlayers([]);
           setRejectedMessage('انتهت الجلسة. يمكنك الانضمام لجلسة جديدة.');
         }
+      } else if (data.type === 'ADMIN_FORCE_CLOSE') {
+        // الأدمن أغلق الجلسة — نفس معاملة SESSION_ENDED
+        syncManager.disconnect();
+        setIsRegistered(false);
+        isRegisteredRef.current = false;
+        setIsWaitingRoom(false);
+        isWaitingRoomRef.current = false;
+        setRejectedMessage(data.message || 'تم إغلاق الجلسة بواسطة الإدارة. تواصل مع فريق الدعم إن كانت هناك أي إشكالية.');
       } else if (data.type === 'MATCH_RESET') {
         setLocalScores({ green: 0, red: 0 });
         setLocalMatchWinner(null);
@@ -409,6 +507,10 @@ export const AnswerBuzzersScreen: React.FC = () => {
             name: playerNameRef.current,
             ts: data.ts,
           });
+        }
+      } else if (data.type === 'PLAYER_PING_UPDATE') {
+        if (data.name === playerNameRef.current) {
+          setMyPing(data.ping as number);
         }
       } else if (data.type === 'REQUEST_PLAYER_LIST') {
         // المقدم يطلب قائمة اللاعبين (دوري أو عند انضمام لاعب جديد)
@@ -479,12 +581,35 @@ export const AnswerBuzzersScreen: React.FC = () => {
     return unsubscribe;
   }, [sessionId]);
 
+  // إعادة إرسال player-registered بعد التسجيل بفترات زمنية لضمان وصوله للـ host
+  // يعالج حالة: الإرسال الأول قبل اكتمال اتصال Realtime
+  useEffect(() => {
+    if (!isRegistered || !sessionId) return;
+    const retries = [2000, 5000, 10000];
+    const timers = retries.map(delay =>
+      setTimeout(() => {
+        if (!isRegisteredRef.current || !playerNameRef.current) return;
+        syncManager.broadcast({
+          type: 'player-registered',
+          player: {
+            name: playerNameRef.current,
+            team: selectedTeamRef.current,
+            timestamp: Date.now(),
+            avatar: avatarRef.current,
+          },
+        });
+      }, delay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [isRegistered, sessionId]);
+
   // طلب قائمة اللاعبين فور تحميل الشاشة (للكشف عن أسماء مكررة قبل التسجيل)
+  // نبدأ بعد 1.5 ث لإتاحة وقت كافٍ لاتصال Realtime
   useEffect(() => {
     if (!sessionId) return;
     const t = setTimeout(() => {
       syncManager.broadcast({ type: 'REQUEST_PLAYER_LIST' });
-    }, 500);
+    }, 1500);
     return () => clearTimeout(t);
   }, [sessionId]);
 
@@ -696,9 +821,9 @@ export const AnswerBuzzersScreen: React.FC = () => {
       setAvatar(a => ({ ...a, accessory: ACCESSORIES[next].acc }));
     };
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: '1rem 1rem 2rem', background: theme.bgGradient, direction: 'rtl', overflowY: 'auto',
+      <div className="screen-min-scroll" style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: '1rem', background: theme.bgGradient, direction: 'rtl',
       }}>
         <div style={{
           maxWidth: isMobile ? '100%' : '400px', width: '100%', marginTop: isMobile ? '0' : '0.5rem',
@@ -1645,12 +1770,68 @@ export const AnswerBuzzersScreen: React.FC = () => {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: theme.bgGradient, overflowX: 'hidden' }}>
 
+      {/* ─── شريط تحذير Full House / انقطاع الاتصال ─── */}
+      {connectionDegraded && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: 'linear-gradient(90deg, #7c2d12, #991b1b)',
+          borderBottom: '2px solid rgba(239,68,68,0.5)',
+          padding: '0.6rem 1rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '0.75rem', direction: 'rtl',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+        }}>
+          <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+          <span style={{ color: 'white', fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.4, textAlign: 'center', flex: 1 }}>
+            {isRegistered
+              ? `السيرفر ممتلئ — سيتم فصلك تلقائياً خلال ${overloadCountdown} ثانية`
+              : 'تعذّر الاتصال بالخادم — قد يكون ممتلئاً. يتم إعادة المحاولة...'}
+          </span>
+          {!isRegistered && (
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '0.25rem 0.8rem', borderRadius: '2rem',
+                background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)',
+                color: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
+                flexShrink: 0, whiteSpace: 'nowrap',
+              }}
+            >
+              تحديث
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ─── شريط الهيدر ─── */}
       <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'linear-gradient(135deg,#1a0b2e,#2d1154)', borderBottom: '2px solid rgba(168,85,247,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)', paddingTop: 'env(safe-area-inset-top)' }}>
         {/* صف 1: اسم + نتيجة + فريق */}
         <div style={{ padding: '0.5rem 0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-          <div style={{ fontWeight: 900, fontSize: '0.92rem', background: 'linear-gradient(135deg,#f97316,#ec4899,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px', flexShrink: 1 }}>
-            {playerName}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 900, fontSize: '0.92rem', background: 'linear-gradient(135deg,#f97316,#ec4899,#a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px' }}>
+              {playerName}
+            </div>
+            {/* مؤشر الـ Ping */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '3px',
+              background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '2rem', padding: '2px 7px', flexShrink: 0,
+            }}>
+              <div style={{
+                width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0,
+                background: myPing === null ? '#6b7280'
+                  : myPing < 150 ? '#10b981'
+                  : myPing < 350 ? '#fbbf24' : '#ef4444',
+              }} />
+              <span style={{
+                fontSize: '0.62rem', fontWeight: 700,
+                color: myPing === null ? '#9ca3af'
+                  : myPing < 150 ? '#6ee7b7'
+                  : myPing < 350 ? '#fcd34d' : '#fca5a5',
+              }}>
+                {myPing === null ? '...' : `${myPing}ms`}
+              </span>
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2rem', padding: '0.22rem 0.75rem', flexShrink: 0 }}>
             <span style={{ color: '#10b981', fontWeight: 900, fontSize: '1rem' }}>{localScores.green}</span>
@@ -2103,6 +2284,36 @@ export const AnswerBuzzersScreen: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── مودال التحذير من الخمول — AFK System */}
+      {showAfkWarning && !isDisconnected && (
+        <InactivityWarningModal countdown={afkCountdown} onStay={afkStayActive} />
+      )}
+
+      {/* ── شاشة إعادة الاتصال بعد الفصل */}
+      {isDisconnected && (
+        <DisconnectedScreen
+          onReconnect={() => {
+            // أعد إرسال تسجيل اللاعب للغرفة
+            if (playerNameRef.current) {
+              syncManager.broadcast({
+                type: 'player-registered',
+                player: {
+                  name: playerNameRef.current,
+                  team: selectedTeamRef.current,
+                  timestamp: Date.now(),
+                  avatar: avatarRef.current,
+                },
+              });
+            }
+            afkReconnect();
+          }}
+          onLeave={() => {
+            syncManager.disconnect();
+            window.location.href = window.location.origin + window.location.pathname;
+          }}
+        />
       )}
 
       <style>{`

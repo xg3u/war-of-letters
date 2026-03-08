@@ -39,9 +39,9 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
         inset: 0,
         zIndex: 10000,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: isMobile ? 'flex-end' : 'center',
         justifyContent: 'center',
-        padding: '1rem',
+        padding: isMobile ? '0' : '1rem',
         background: 'linear-gradient(135deg, rgba(10, 1, 24, 0.75) 0%, rgba(26, 11, 46, 0.85) 50%, rgba(45, 17, 84, 0.75) 100%)',
         backdropFilter: 'blur(20px)',
         animation: 'fadeIn 0.3s ease',
@@ -52,17 +52,24 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ onClose }) => {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: isMobile ? '95%' : '700px',
+          maxWidth: isMobile ? '100%' : '700px',
           width: '100%',
-          maxHeight: '90vh',
+          maxHeight: isMobile ? 'min(96dvh, 96vh)' : '90vh',
           overflowY: 'auto',
-          borderRadius: isMobile ? '1rem' : '2rem',
+          borderRadius: isMobile ? '1.5rem 1.5rem 0 0' : '2rem',
           background: 'linear-gradient(135deg, #1a0b2e 0%, #2d1154 100%)',
           border: '2px solid rgba(168, 85, 247, 0.3)',
           boxShadow: '0 20px 60px rgba(168, 85, 247, 0.4)',
           position: 'relative',
+          paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : undefined,
         }}
       >
+        {/* مقبض السحب — جوال فقط */}
+        {isMobile && (
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '0.75rem', paddingBottom: '0.25rem' }}>
+            <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.25)' }} />
+          </div>
+        )}
         {/* زر الإغلاق */}
         <button
           onClick={handleSkip}

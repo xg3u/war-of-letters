@@ -52,12 +52,22 @@
     <link rel="manifest" href="/manifest.json" />
 
     <!-- ══ سرعة التحميل ══ -->
+    <!-- Fonts: preconnect أولاً ثم load غير مُعيق -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
-    <link rel="dns-prefetch" href="https://oxrdrdovvzutfxsalxnc.supabase.co" />
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" />
+    <!-- Supabase: preconnect للاتصال السريع -->
+    <link rel="preconnect" href="https://qgv11zjhriosmuffpdyx.supabase.co" />
+    <link rel="dns-prefetch" href="https://qgv11zjhriosmuffpdyx.supabase.co" />
+    <!-- تحميل الخط بشكل غير مُعيق (non-blocking) لتسريع LCP -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" /></noscript>
+    <!-- CSS أساسي inline لتجنب FOUT (Flash of Unstyled Text) -->
+    <style>
+      *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+      html,body,#root{height:100%;width:100%;overflow:hidden}
+      body{background:#1a0b2e;color:#fff;font-family:Tajawal,Arial,sans-serif;direction:rtl;-webkit-font-smoothing:antialiased}
+      #root{display:flex;flex-direction:column}
+    </style>
 
     <!-- ══ البيانات المنظمة (Schema.org) ══ -->
     <script type="application/ld+json">
