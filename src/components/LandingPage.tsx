@@ -19,6 +19,154 @@ import { useAuthContext } from '../context/AuthContext';
 const ARABIC_LETTERS = "أبتثجحخدذرزسشصضطظعغفقكلمنهوي";
 const LETTER_COLORS = ['#a855f7', '#10b981', '#f97316', '#ef4444', '#3b82f6', '#fbbf24', '#ec4899', '#14b8a6'];
 
+// ── مكوّن الحرف التفاعلي المتساقط ──────────────────────────
+interface FallingLetterData {
+  id: number;
+  char: string;
+  color: string;
+  left: string;
+  duration: string;
+  delay: string;
+  size: string;
+  opacity: number;
+  glow: number;
+}
+
+const InteractiveLetter: React.FC<{ letter: FallingLetterData }> = React.memo(({ letter }) => {
+  const elRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const posRef = useRef({ x: 0, y: 0 });
+  const rafRef = useRef(0);
+  const speedRef = useRef(0);
+  // 'css' = أنيميشن CSS عادية (أو متوقفة عند hover)
+  // 'held' = ممسوك بالماوس
+  // 'free' = مُفلَت — يكمل نزول
+  const [phase, setPhase] = useState<'css' | 'held' | 'free'>('css');
+  const [paused, setPaused] = useState(false);
+
+  // سرعة السقوط: بكسل/فريم — نحسبها من مدة الأنيميشن الأصلية
+  useEffect(() => {
+    // الأنيميشن من -10vh إلى 110vh = 120vh خلال letter.duration ثانية
+    const totalPx = window.innerHeight * 1.2;
+    const sec = parseFloat(letter.duration);
+    speedRef.current = totalPx / (sec * 60);
+  }, [letter.duration]);
+
+  // ── Hover: وقّف الأنيميشن بدون ما تلغيها (الحرف يثبت مكانه ويضيء) ──
+  const onEnter = useCallback(() => {
+    if (phase === 'css') setPaused(true);
+  }, [phase]);
+
+  const onLeave = useCallback(() => {
+    if (phase === 'css' && !dragging.current) setPaused(false);
+  }, [phase]);
+
+  // ── الضغط: امسك الحرف ──
+  const onDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging.current = true;
+    cancelAnimationFrame(rafRef.current);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    const el = elRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    offsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    // خذ الموقع المرئي الحالي (سواء من CSS animation أو من posRef)
+    if (phase === 'css') {
+      posRef.current = { x: rect.left, y: rect.top };
+    }
+    setPhase('held');
+    setPaused(false);
+    // حدّث فوراً
+    el.style.transform = `translate3d(${posRef.current.x}px, ${posRef.current.y}px, 0)`;
+  }, [phase]);
+
+  // ── تحريك ──
+  const onMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    const x = e.clientX - offsetRef.current.x;
+    const y = e.clientY - offsetRef.current.y;
+    posRef.current = { x, y };
+    const el = elRef.current;
+    if (el) el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  }, []);
+
+  // ── إفلات ──
+  const onUp = useCallback(() => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    setPhase('free');
+  }, []);
+
+  // ── حلقة النزول الحر بنفس السرعة الأصلية ──
+  useEffect(() => {
+    if (phase !== 'free') return;
+    let alive = true;
+    const spd = speedRef.current;
+    const tick = () => {
+      if (!alive) return;
+      posRef.current.y += spd;
+      const el = elRef.current;
+      if (el) el.style.transform = `translate3d(${posRef.current.x}px, ${posRef.current.y}px, 0)`;
+      if (posRef.current.y > window.innerHeight + 100) {
+        if (el) el.style.transform = '';
+        setPhase('css');
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { alive = false; cancelAnimationFrame(rafRef.current); };
+  }, [phase]);
+
+  const c = letter.color;
+  const isManual = phase === 'held' || phase === 'free';
+
+  return (
+    <div
+      ref={elRef}
+      className="falling-letter"
+      onPointerEnter={onEnter}
+      onPointerLeave={onLeave}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={onUp}
+      style={{
+        position: isManual ? 'fixed' : 'absolute',
+        left: isManual ? 0 : letter.left,
+        top: isManual ? 0 : '-5%',
+        fontSize: letter.size,
+        color: c,
+        opacity: (paused || isManual) ? 0.95 : letter.opacity,
+        fontWeight: 900,
+        fontFamily: 'Tajawal, sans-serif',
+        // CSS animation: تبقى دائماً — بس نوقفها بـ paused أو نشيلها في held/free
+        animation: isManual ? 'none' : `letterFall ${letter.duration} linear infinite`,
+        animationDelay: isManual ? undefined : letter.delay,
+        animationPlayState: paused ? 'paused' : 'running',
+        cursor: phase === 'held' ? 'grabbing' : 'grab',
+        userSelect: 'none',
+        touchAction: 'none',
+        zIndex: isManual ? 99999 : 50,
+        pointerEvents: 'auto',
+        textShadow: (paused || isManual)
+          ? `0 0 15px ${c}, 0 0 35px ${c}90, 0 0 60px ${c}40`
+          : `0 0 ${letter.glow}px ${c}60`,
+        transition: phase === 'css' ? 'opacity 0.3s, text-shadow 0.3s' : 'none',
+        willChange: isManual ? 'transform' : 'auto',
+        lineHeight: 1,
+        padding: '10px',
+      }}
+    >
+      {letter.char}
+    </div>
+  );
+});
+
 // ربط category_id في DB مع id المحلي في categories.ts
 const DB_CATEGORY_MAP: Record<number, string> = {
   1: 'culture',
@@ -177,19 +325,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
     onOpenSettings();
   }, [isAuthenticated, isLoadingSubscription, planDisplay, role, onNavigateToLogin, onOpenSettings]);
 
-  // الحروف المتساقطة
-  const fallingLetters = useMemo(() =>
-    Array.from({ length: 18 }).map((_, i) => ({
+  // الحروف المتساقطة — ألوان من الثيم
+  const fallingLetters = useMemo(() => {
+    const themeColors = [theme.accent, theme.accentSecondary, ...LETTER_COLORS];
+    return Array.from({ length: 20 }).map((_, i) => ({
       id: i,
       char: ARABIC_LETTERS[Math.floor(Math.random() * ARABIC_LETTERS.length)],
-      color: LETTER_COLORS[Math.floor(Math.random() * LETTER_COLORS.length)],
-      left: `${Math.random() * 100}%`,
-      duration: `${18 + Math.random() * 22}s`,
-      delay: `${Math.random() * 15}s`,
-      size: `${1.5 + Math.random() * 2}rem`,
-      opacity: 0.12 + Math.random() * 0.15,
-    }))
-  , []);
+      color: themeColors[Math.floor(Math.random() * themeColors.length)],
+      left: `${3 + Math.random() * 94}%`,
+      duration: `${16 + Math.random() * 24}s`,
+      delay: `${-(Math.random() * 30)}s`,
+      size: `${1.5 + Math.random() * 2.5}rem`,
+      opacity: 0.15 + Math.random() * 0.2,
+      glow: 6 + Math.random() * 10,
+    }));
+  }, [theme.accent, theme.accentSecondary]);
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
@@ -206,8 +356,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
   }, [signOut, onNavigateToLogin]);
 
 
-  // جميع الثيمات داكنة - isDarkMode دائماً true للحفاظ على التوافق مع الكود الموجود
   const isDarkMode = true;
+
+  // helper: hex → rgba
+  const rgba = useCallback((hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }, []);
+
+  // ألوان مشتقة من الثيم — بدل الألوان المكتوبة يدوياً
+  const a = theme.accent;       // اللون الرئيسي
+  const a2 = theme.accentSecondary;
+  const tp = theme.textPrimary;
+
   const colors = {
     bg: theme.bgGradient,
     bgGradient: theme.bgGradient,
@@ -215,6 +378,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
     text: theme.textPrimary,
     textSecondary: theme.textSecondary,
     border: theme.cardBorder,
+    // ألوان مشتقة
+    headerBg: `linear-gradient(180deg, ${rgba(a, 0.03)} 0%, transparent 100%)`,
+    dropdownBg: `${rgba(a, 0.04)}`,
+    hoverBg: rgba(a, 0.15),
+    hoverText: theme.accent,
+    avatarBorder: rgba(a, 0.5),
+    subtleText: rgba(tp, 0.45),
+    dimText: rgba(tp, 0.7),
+    separator: rgba(tp, 0.08),
   };
 
   return (
@@ -281,26 +453,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
         >
           <div
             style={{
-              background: 'linear-gradient(135deg, #0f0525, #1a0b2e)',
-              border: '1px solid rgba(168,85,247,0.4)', borderRadius: '2rem',
+              background: 'linear-gradient(135deg, rgba(10,10,15,0.98), rgba(20,20,30,0.98))',
+              border: `1px solid ${rgba(a, 0.25)}`, borderRadius: '2rem',
               padding: isMobile ? '1.5rem' : '2.5rem', maxWidth: '380px', width: '100%',
               boxShadow: '0 30px 80px rgba(0,0,0,0.7)', textAlign: 'center',
             }}
             onClick={e => e.stopPropagation()}
           >
             <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📊</div>
-            <h2 style={{ fontWeight: 900, fontSize: '1.5rem', marginBottom: '1.5rem', color: '#e9d5ff' }}>إحصائياتي</h2>
+            <h2 style={{ fontWeight: 900, fontSize: '1.5rem', marginBottom: '1.5rem', color: tp }}>إحصائياتي</h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
               {/* الأسئلة التي شوهدت */}
               <div style={{
-                background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.25)',
+                background: rgba(a, 0.08), border: `1px solid ${rgba(a, 0.2)}`,
                 borderRadius: '1rem', padding: '1.25rem',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.25rem' }}>الأسئلة التي شوهدت</div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#a855f7' }}>
+                  <div style={{ fontSize: '0.8rem', color: colors.subtleText, marginBottom: '0.25rem' }}>الأسئلة التي شوهدت</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: a }}>
                     {statsLoading ? '...' : (statsCount ?? '--')}
                   </div>
                 </div>
@@ -314,7 +486,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.25rem' }}>جلسات اللعب</div>
+                  <div style={{ fontSize: '0.8rem', color: colors.subtleText, marginBottom: '0.25rem' }}>جلسات اللعب</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#10b981' }}>--</div>
                   <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)' }}>قريباً</div>
                 </div>
@@ -323,13 +495,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
 
               {/* عضو منذ */}
               <div style={{
-                background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)',
+                background: rgba(a, 0.08), border: `1px solid ${rgba(a, 0.2)}`,
                 borderRadius: '1rem', padding: '1.25rem',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.25rem' }}>عضو منذ</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fb923c' }}>
+                  <div style={{ fontSize: '0.8rem', color: colors.subtleText, marginBottom: '0.25rem' }}>عضو منذ</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: a }}>
                     {user?.created_at ? new Date(user.created_at).toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' }) : '--'}
                   </div>
                 </div>
@@ -351,27 +523,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
         </div>
       )}
 
-      {/* الحروف المتساقطة */}
-      <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+      {/* الحروف المتساقطة — تفاعلية: اسحبها بالماوس أو اللمس */}
+      <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', zIndex: 10, pointerEvents: 'none' }}>
         {fallingLetters.map((letter) => (
-          <div
-            key={letter.id}
-            style={{
-              position: 'absolute',
-              left: letter.left,
-              top: '-5%',
-              fontSize: letter.size,
-              color: letter.color,
-              opacity: isDarkMode ? letter.opacity : letter.opacity * 0.5,
-              fontWeight: 900,
-              fontFamily: 'Tajawal, sans-serif',
-              animation: `letterFall ${letter.duration} linear infinite`,
-              animationDelay: letter.delay,
-              willChange: 'transform',
-            }}
-          >
-            {letter.char}
-          </div>
+          <InteractiveLetter key={letter.id} letter={letter} />
         ))}
       </div>
 
@@ -383,11 +538,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
         right: 0,
         zIndex: 100,
         paddingTop: 'env(safe-area-inset-top)',
-        background: isDarkMode
-          ? 'linear-gradient(180deg, rgba(10, 1, 24, 0.98) 0%, rgba(10, 1, 24, 0.9) 50%, rgba(10, 1, 24, 0.7) 100%)'
-          : 'linear-gradient(180deg, rgba(248, 249, 250, 0.98) 0%, rgba(248, 249, 250, 0.9) 50%, rgba(248, 249, 250, 0.7) 100%)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: `1px solid ${isDarkMode ? 'rgba(168, 85, 247, 0.2)' : 'rgba(124, 58, 237, 0.15)'}`,
+        background: 'rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderBottom: `1px solid ${rgba(a, 0.15)}`,
       }}>
         <div style={{
           display: 'flex',
@@ -409,7 +563,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
               style={{
                 height: isMobile ? '36px' : '50px',
                 objectFit: 'contain',
-                filter: isDarkMode ? 'drop-shadow(0 2px 8px rgba(168, 85, 247, 0.4))' : 'none',
+                filter: `drop-shadow(0 2px 8px ${rgba(a, 0.3)})`,
               }}
             />
           </div>
@@ -419,10 +573,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
             display: isMobile ? 'none' : 'flex',
             gap: '0.25rem',
             alignItems: 'center',
-            background: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+            background: 'rgba(255, 255, 255, 0.05)',
             borderRadius: '1rem',
             padding: '0.35rem',
-            border: `1px solid ${isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
+            border: '1px solid rgba(255, 255, 255, 0.1)',
           }}>
             {([
               { label: 'الرئيسية', section: 'hero',       Icon: Home       },
@@ -438,7 +592,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)',
+                  color: colors.dimText,
                   cursor: 'pointer',
                   padding: isMobile ? '0.55rem' : '0.55rem 0.9rem',
                   transition: 'all 0.2s ease',
@@ -453,12 +607,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                   fontSize: '0.85rem',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(168,85,247,0.18)';
-                  e.currentTarget.style.color = '#c084fc';
+                  e.currentTarget.style.background = colors.hoverBg;
+                  e.currentTarget.style.color = a;
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = isDarkMode ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)';
+                  e.currentTarget.style.color = colors.dimText;
                 }}
               >
                 <item.Icon size={18} />
@@ -499,7 +653,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                   <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={() => setShowThemePicker(false)} />
                   <div style={{
                     position: 'absolute', top: 'calc(100% + 0.5rem)', left: 0,
-                    background: 'rgba(10, 1, 24, 0.97)', backdropFilter: 'blur(20px)',
+                    background: 'rgba(15, 15, 20, 0.97)', backdropFilter: 'blur(20px)',
                     border: `1px solid ${theme.cardBorder}`, borderRadius: '1rem',
                     padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem',
                     zIndex: 200, minWidth: '180px', boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
@@ -533,12 +687,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
               <button
                 onClick={onNavigateToLogin}
                 style={{
-                  background: 'linear-gradient(135deg, #a855f7, #ec4899)',
+                  background: `linear-gradient(135deg, ${a}, ${a2})`,
                   border: 'none', borderRadius: '0.75rem',
                   padding: isMobile ? '0.6rem' : '0.6rem 1.2rem',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
                   color: 'white', fontWeight: 700, fontSize: '0.9rem',
-                  boxShadow: '0 4px 15px rgba(168,85,247,0.4)',
+                  boxShadow: `0 4px 15px ${rgba(a, 0.35)}`,
                 }}
               >
                 <span>🔐</span>
@@ -553,19 +707,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
                   style={{
-                    background: showDropdown ? 'rgba(168,85,247,0.25)' : 'rgba(168,85,247,0.12)',
-                    border: `1px solid rgba(168,85,247,${showDropdown ? '0.6' : '0.3'})`,
+                    background: showDropdown ? rgba(a, 0.2) : rgba(a, 0.1),
+                    border: `1px solid ${rgba(a, showDropdown ? 0.5 : 0.25)}`,
                     borderRadius: '0.75rem',
                     padding: isMobile ? '0.5rem 0.7rem' : '0.5rem 1rem',
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    color: '#e9d5ff', fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s',
+                    color: tp, fontWeight: 600, fontSize: '0.9rem', transition: 'all 0.2s',
                   }}
                 >
                   {avatarUrl ? (
                     <img
                       src={avatarUrl}
                       alt="أفاتار"
-                      style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(168,85,247,0.5)', flexShrink: 0 }}
+                      style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${rgba(a, 0.4)}`, flexShrink: 0 }}
                     />
                   ) : (
                     <span style={{ fontSize: '1.1rem' }}>👤</span>
@@ -581,14 +735,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 {showDropdown && (
                   <div style={{
                     position: 'absolute', top: 'calc(100% + 0.5rem)', left: 0,
-                    background: 'rgba(10,1,24,0.97)', backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(168,85,247,0.3)', borderRadius: '1.25rem',
+                    background: 'rgba(15,15,20,0.97)', backdropFilter: 'blur(20px)',
+                    border: `1px solid ${rgba(a, 0.2)}`, borderRadius: '1.25rem',
                     padding: '1rem', zIndex: 299, minWidth: '230px',
                     boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
                     display: 'flex', flexDirection: 'column', gap: '0.25rem',
                   }}>
                     {/* الأفاتار + معلومات المستخدم */}
-                    <div style={{ padding: '0.5rem 0.25rem 0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ padding: '0.5rem 0.25rem 0.75rem', borderBottom: `1px solid ${colors.separator}`, display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       {/* صورة الملف الشخصي */}
                       <div
                         onClick={() => fileInputRef.current?.click()}
@@ -599,13 +753,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                           <img
                             src={avatarUrl}
                             alt="أفاتار"
-                            style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(168,85,247,0.6)', display: 'block' }}
+                            style={{ width: '52px', height: '52px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${rgba(a, 0.5)}`, display: 'block' }}
                           />
                         ) : (
                           <div style={{
                             width: '52px', height: '52px', borderRadius: '50%',
-                            background: 'rgba(168,85,247,0.15)',
-                            border: '2px dashed rgba(168,85,247,0.5)',
+                            background: rgba(a, 0.1),
+                            border: `2px dashed ${rgba(a, 0.4)}`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '1.6rem',
                           }}>
@@ -630,13 +784,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
 
                       {/* الاسم والبريد */}
                       <div style={{ overflow: 'hidden' }}>
-                        <div style={{ fontWeight: 800, fontSize: '1rem', color: '#e9d5ff', marginBottom: '0.15rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontWeight: 800, fontSize: '1rem', color: tp, marginBottom: '0.15rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user?.user_metadata?.first_name || '—'}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', direction: 'ltr', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user?.email}
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'rgba(168,85,247,0.7)', marginTop: '0.2rem', cursor: 'pointer' }}
+                        <div style={{ fontSize: '0.7rem', color: rgba(a, 0.6), marginTop: '0.2rem', cursor: 'pointer' }}
                           onClick={() => fileInputRef.current?.click()}>
                           {avatarUploading ? 'جارٍ الرفع...' : 'تغيير الصورة'}
                         </div>
@@ -653,17 +807,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                     />
 
                     {/* الباقة */}
-                    <div style={{ padding: '0.75rem 0.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.4rem' }}>الباقة الحالية</div>
+                    <div style={{ padding: '0.75rem 0.25rem', borderBottom: `1px solid ${colors.separator}` }}>
+                      <div style={{ fontSize: '0.75rem', color: colors.subtleText, marginBottom: '0.4rem' }}>الباقة الحالية</div>
                       {planDisplay === 'free' && (
                         <button
                           onClick={() => { setShowDropdown(false); setPaymentDefaultPlan(undefined); setShowPayment(true); }}
                           style={{
-                            background: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(249,115,22,0.2))',
-                            border: '1px solid rgba(249,115,22,0.5)', borderRadius: '0.6rem',
+                            background: `linear-gradient(135deg, ${rgba(a, 0.15)}, ${rgba(a2, 0.15)})`,
+                            border: `1px solid ${rgba(a, 0.4)}`, borderRadius: '0.6rem',
                             padding: '0.5rem 0.75rem', cursor: 'pointer', width: '100%',
                             display: 'flex', alignItems: 'center', gap: '0.5rem',
-                            color: '#fb923c', fontWeight: 700, fontSize: '0.88rem',
+                            color: a, fontWeight: 700, fontSize: '0.88rem',
                           }}
                         >
                           <span>🔓</span> ترقية الباقة
@@ -687,11 +841,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                             }}
                             style={{
                               width: '100%',
-                              background: 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(236,72,153,0.2))',
-                              border: '1px solid rgba(168,85,247,0.4)',
+                              background: `linear-gradient(135deg, ${rgba(a, 0.15)}, ${rgba(a2, 0.15)})`,
+                              border: `1px solid ${rgba(a, 0.35)}`,
                               borderRadius: '0.6rem', padding: '0.5rem 0.75rem',
                               display: 'flex', alignItems: 'center', gap: '0.5rem',
-                              color: '#a855f7', fontWeight: 700, fontSize: '0.85rem',
+                              color: a, fontWeight: 700, fontSize: '0.85rem',
                               cursor: 'pointer',
                             }}
                           >
@@ -701,10 +855,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                       )}
                       {planDisplay === 'unlimited' && (
                         <div style={{
-                          background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)',
+                          background: rgba(a, 0.08), border: `1px solid ${rgba(a, 0.25)}`,
                           borderRadius: '0.6rem', padding: '0.5rem 0.75rem',
                           display: 'flex', alignItems: 'center', gap: '0.5rem',
-                          color: '#a855f7', fontWeight: 700, fontSize: '0.88rem',
+                          color: a, fontWeight: 700, fontSize: '0.88rem',
                         }}>
                           <Crown size={14} /> باقة بلا حدود ♾️
                         </div>
@@ -724,7 +878,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                       onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
-                      <BarChart2 size={16} color="#a855f7" /> إحصائياتي
+                      <BarChart2 size={16} color={a} /> إحصائياتي
                     </button>
 
                     {/* لوحة الإدارة — للمدير فقط */}
@@ -735,10 +889,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                           background: 'transparent', border: 'none', borderRadius: '0.6rem',
                           padding: '0.6rem 0.5rem', cursor: 'pointer', width: '100%',
                           display: 'flex', alignItems: 'center', gap: '0.6rem',
-                          color: '#a855f7', fontWeight: 700, fontSize: '0.9rem',
+                          color: a, fontWeight: 700, fontSize: '0.9rem',
                           textAlign: 'right', transition: 'background 0.15s',
                         }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(168,85,247,0.1)')}
+                        onMouseEnter={e => (e.currentTarget.style.background = rgba(a, 0.08))}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                       >
                         <span style={{ fontSize: '1rem' }}>⚙️</span> لوحة الإدارة
@@ -796,11 +950,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
             textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
           }}>
             <div style={{ fontSize: isMobile ? '3.5rem' : '5rem', marginBottom: '1rem' }}>⚔️</div>
-            <h1 style={{ fontSize: isMobile ? '2rem' : isTablet ? '2.75rem' : '3.5rem', fontWeight: 900, background: 'linear-gradient(to left, #f97316, #ec4899, #a855f7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              حرب الحروف — لعبة مسابقات للجمعات
+            <h1 style={{ fontSize: isMobile ? '2.2rem' : isTablet ? '3rem' : '3.8rem', fontWeight: 900, lineHeight: 1.2, marginBottom: '0.75rem' }}>
+              <span style={{ color: tp }}>حرب الحروف</span>
             </h1>
-            <p style={{ fontSize: isMobile ? '1rem' : '1.25rem', fontWeight: 600, color: colors.textSecondary, marginBottom: '2rem' }}>
-              سباق الحروف الاستراتيجي — مثالية لفعاليات الشاليهات والويكند مع أصدقاءك
+            <p style={{ fontSize: isMobile ? '1rem' : '1.2rem', fontWeight: 600, color: colors.textSecondary, marginBottom: '2rem' }}>
+              حروف مع عزيز.. لكن بطريقتنا! تحدّوا بعض في أقوى مسابقة حروف عربية
             </p>
             <button
               onClick={handleStartGame}
@@ -809,11 +963,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
               style={{
                 width: '100%', padding: isMobile ? '1.1rem' : '1.5rem', borderRadius: '1.5rem',
                 background: (isAuthenticated === true && isLoadingSubscription)
-                  ? 'rgba(168, 85, 247, 0.4)'
-                  : 'linear-gradient(135deg, #f97316, #ec4899)',
+                  ? rgba(a, 0.35)
+                  : `linear-gradient(135deg, ${a}, ${a2})`,
                 color: 'white', fontSize: isMobile ? '1.1rem' : '1.5rem', fontWeight: 900, border: 'none',
                 cursor: (isAuthenticated === true && isLoadingSubscription) ? 'wait' : 'pointer',
-                boxShadow: '0 10px 30px rgba(249, 115, 22, 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem',
+                boxShadow: `0 10px 30px ${rgba(a, 0.3)}`, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem',
                 opacity: (isAuthenticated === true && isLoadingSubscription) ? 0.7 : 1,
               }}
             >
@@ -864,14 +1018,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 display: 'inline-flex',
                 padding: isMobile ? '0.75rem 1rem' : '1rem 2rem',
                 borderRadius: '1.5rem',
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))',
-                border: '1px solid rgba(168, 85, 247, 0.3)',
+                background: `linear-gradient(135deg, ${rgba(a, 0.2)}, ${rgba(a2, 0.2)})`,
+                border: `1px solid ${rgba(a, 0.3)}`,
                 marginBottom: '1rem',
                 gap: '0.75rem',
                 alignItems: 'center',
               }}>
-                <BookOpen size={32} color="#a855f7" />
-                <span style={{ fontSize: '1.5rem', fontWeight: 800, color: '#a855f7' }}>الدليل الشامل</span>
+                <BookOpen size={32} color={a} />
+                <span style={{ fontSize: '1.5rem', fontWeight: 800, color: a }}>الدليل الشامل</span>
               </div>
               <h2 style={{ fontSize: isMobile ? '1.5rem' : '2.5rem', fontWeight: 900, margin: '0.5rem 0' }}>كل ما تحتاج معرفته عن اللعبة</h2>
               <p style={{ fontSize: '1.1rem', color: colors.textSecondary, maxWidth: '600px', margin: '0 auto' }}>
@@ -892,7 +1046,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                   width: '50px',
                   height: '50px',
                   borderRadius: '1rem',
-                  background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                  background: `linear-gradient(135deg, ${a}, ${a2})`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -903,11 +1057,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
               </div>
 
               <div style={{
-                background: isDarkMode ? 'rgba(249, 115, 22, 0.1)' : 'rgba(249, 115, 22, 0.05)',
+                background: rgba(a, 0.08),
                 borderRadius: '1rem',
                 padding: '1.5rem',
                 marginBottom: '1.5rem',
-                border: '1px solid rgba(249, 115, 22, 0.2)',
+                border: `1px solid ${rgba(a, 0.2)}`,
               }}>
                 <p style={{ margin: 0, lineHeight: 1.8, fontSize: '1.05rem' }}>
                   <b>حرب الحروف</b> هي لعبة استراتيجية بين فريقين (أخضر وأحمر). الهدف هو بناء <b>جسر متصل</b> من الحروف
@@ -978,7 +1132,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                   textAlign: 'center',
                 }}>
                   <div style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '0.75rem' }}>🃏</div>
-                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#ec4899' }}>البطاقات المخفية</h4>
+                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: a2 }}>البطاقات المخفية</h4>
                   <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
                     بعض الخلايا تحتوي على بطاقات مخفية. عند الإجابة الصحيحة على سؤال الخلية، تحصل على بطاقة عشوائية!
                   </p>
@@ -1006,7 +1160,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                   textAlign: 'center',
                 }}>
                   <div style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', marginBottom: '0.75rem' }}>🔥</div>
-                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: '#f97316' }}>سلسلة الانتصارات</h4>
+                  <h4 style={{ fontWeight: 700, marginBottom: '0.5rem', color: a }}>سلسلة الانتصارات</h4>
                   <p style={{ margin: 0, fontSize: '0.9rem', opacity: 0.8, lineHeight: 1.6 }}>
                     أجب على <b>3 أسئلة صحيحة متتالية</b> واحصل على بطاقة مكافأة تلقائياً!
                   </p>
@@ -1041,7 +1195,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                   width: '50px',
                   height: '50px',
                   borderRadius: '1rem',
-                  background: 'linear-gradient(135deg, #ec4899, #db2777)',
+                  background: `linear-gradient(135deg, ${a2}, ${a})`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1100,22 +1254,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
 
                 {/* بطاقة المعركة */}
                 <div style={{
-                  background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(234, 88, 12, 0.05))',
+                  background: `linear-gradient(135deg, ${rgba(a, 0.15)}, ${rgba(a, 0.05)})`,
                   borderRadius: '1.25rem',
                   padding: '1.5rem',
-                  border: '2px solid rgba(249, 115, 22, 0.3)',
+                  border: `2px solid ${rgba(a, 0.3)}`,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
                     <span style={{ fontSize: '2.5rem' }}>⚔️</span>
                     <div>
-                      <h4 style={{ margin: 0, fontWeight: 800, color: '#f97316', fontSize: '1.25rem' }}>بطاقة المعركة</h4>
+                      <h4 style={{ margin: 0, fontWeight: 800, color: a, fontSize: '1.25rem' }}>بطاقة المعركة</h4>
                       <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>Battle Card</span>
                     </div>
                   </div>
                   <div style={{ fontSize: '0.95rem', lineHeight: 1.7 }}>
                     <p style={{ margin: '0 0 0.75rem 0' }}><b>الهدف:</b> خلية يملكها الخصم</p>
                     <p style={{ margin: '0 0 0.75rem 0' }}><b>التأثير:</b> تحدي على سؤال جديد</p>
-                    <p style={{ margin: 0, color: '#fb923c' }}>
+                    <p style={{ margin: 0, color: a }}>
                       <b>الفائدة:</b> إذا أجبت صح تسرق الخلية! إذا أخطأت تبقى للخصم. فرصة ذهبية لقلب الموازين!
                     </p>
                   </div>
@@ -1243,11 +1397,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 marginTop: '1.5rem',
                 padding: '1.25rem',
                 borderRadius: '1rem',
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(236, 72, 153, 0.1))',
-                border: '1px dashed rgba(168, 85, 247, 0.3)',
+                background: `linear-gradient(135deg, ${rgba(a, 0.1)}, ${rgba(a2, 0.1)})`,
+                border: `1px dashed ${rgba(a, 0.3)}`,
                 textAlign: 'center',
               }}>
-                <HelpCircle size={24} color="#a855f7" style={{ marginBottom: '0.5rem' }} />
+                <HelpCircle size={24} color={a} style={{ marginBottom: '0.5rem' }} />
                 <p style={{ margin: 0, fontWeight: 600, lineHeight: 1.6 }}>
                   <b>نصيحة:</b> استخدم البطاقات بحكمة! لا تستخدمها عشوائياً، بل احتفظ بها للحظات الحاسمة.
                   بطاقة المعركة ممتازة لسرقة خلية استراتيجية، والدرع مثالي لحماية خلية قريبة من إكمال جسرك!
@@ -1277,7 +1431,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 <span style={{ fontSize: '1.5rem' }}>⚔️</span>
                 <span style={{
                   fontSize: '1.15rem', fontWeight: 900,
-                  background: 'linear-gradient(135deg, #a855f7, #ec4899, #f97316)',
+                  background: `linear-gradient(135deg, ${a}, ${a2})`,
                   WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
                 }}>حرب الحروف</span>
               </div>
@@ -1426,7 +1580,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
             ? 'rgba(8, 2, 20, 0.97)'
             : 'rgba(248, 249, 250, 0.97)',
           backdropFilter: 'blur(16px)',
-          borderTop: `1px solid ${isDarkMode ? 'rgba(168,85,247,0.25)' : 'rgba(124,58,237,0.15)'}`,
+          borderTop: `1px solid ${rgba(a, 0.15)}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-around',
@@ -1464,7 +1618,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
                 minHeight: '52px',
                 transition: 'color 0.2s',
               }}
-              onTouchStart={(e) => { e.currentTarget.style.color = '#c084fc'; }}
+              onTouchStart={(e) => { e.currentTarget.style.color = a; }}
               onTouchEnd={(e) => { e.currentTarget.style.color = isDarkMode ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.55)'; }}
             >
               <item.Icon size={22} />
@@ -1514,13 +1668,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenSettings, onNavi
       <style>{`
         @keyframes letterFall {
           0% {
-            transform: translate3d(0, -10vh, 0) rotate(0deg);
+            transform: translate3d(0, -10vh, 0) rotate(0deg) scale(0.8);
             opacity: 0;
           }
-          5% { opacity: 1; }
+          5% { opacity: 1; transform: translate3d(5px, 0vh, 0) rotate(10deg) scale(1); }
+          25% { transform: translate3d(-8px, 25vh, 0) rotate(-15deg) scale(1.05); }
+          50% { transform: translate3d(6px, 55vh, 0) rotate(20deg) scale(1); }
+          75% { transform: translate3d(-5px, 80vh, 0) rotate(-10deg) scale(0.95); }
           95% { opacity: 1; }
           100% {
-            transform: translate3d(0, 110vh, 0) rotate(360deg);
+            transform: translate3d(3px, 110vh, 0) rotate(360deg) scale(0.8);
             opacity: 0;
           }
         }

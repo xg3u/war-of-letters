@@ -63,6 +63,15 @@ body {
   animation: fall linear infinite;
 }
 
+/* الحروف المتساقطة التفاعلية */
+.falling-letter {
+  pointer-events: auto;
+  cursor: grab;
+}
+.falling-letter:active {
+  cursor: grabbing;
+}
+
 /* 4. إعدادات البطاقات التفاعلية 3D (Flip Cards) */
 /* ضرورية لكي يعمل "أوبجيكت" التصنيف ويدور عند النقر عليه */
 @layer utilities {
@@ -338,4 +347,48 @@ button,
 [data-theme="sunset"] {
   --theme-accent: #ff7043;
   --theme-accent2: #ff1744;
+}
+
+/* ===== Duolingo Theme Overrides ===== */
+[data-theme="duolingo"] {
+  --theme-accent: #58CC02;
+  --theme-accent2: #1CB0F6;
+  --theme-text: #e8f5e0;
+  --theme-radius: 1rem;
+}
+
+/* خلفية داكنة بلون أخضر غامق */
+[data-theme="duolingo"] body {
+  background-color: #0d1a0a;
+  color: #e8f5e0;
+}
+
+/* أزرار بستايل Duolingo 3D — حواف سفلية بارزة + زوايا مستديرة */
+[data-theme="duolingo"] button:not([style*="background: rgba(239"]):not([style*="background: transparent"]) {
+  border-radius: 16px !important;
+  box-shadow: 0 4px 0 rgba(35, 90, 0, 0.7) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
+  transition: all 0.1s ease !important;
+  border: 2px solid rgba(88, 204, 2, 0.2) !important;
+}
+
+/* تأثير الضغط — الزر ينزل لتحت */
+[data-theme="duolingo"] button:not([style*="background: rgba(239"]):not([style*="background: transparent"]):active {
+  box-shadow: 0 1px 0 rgba(35, 90, 0, 0.7) !important;
+  transform: translateY(3px) !important;
+}
+
+/* شريط التقدم مستدير بستايل Duolingo */
+[data-theme="duolingo"] [role="progressbar"],
+[data-theme="duolingo"] .progress-bar {
+  background: rgba(88, 204, 2, 0.15) !important;
+  border-radius: 999px !important;
+}
+
+/* الحروف المتساقطة: أخضر ديولينجو */
+[data-theme="duolingo"] .animate-letter,
+[data-theme="duolingo"] .animate-letter-fall {
+  color: #58CC02 !important;
+  opacity: 0.12 !important;
 }

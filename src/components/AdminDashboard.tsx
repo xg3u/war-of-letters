@@ -598,10 +598,91 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const handleOrderAction = useCallback(async (orderId: string, action: 'approved' | 'rejected') => {
     setApprovingOrder(orderId);
-    await supabase.from('partner_orders').update({ status: action }).eq('id', orderId);
+
+    // Find the order details
+    const order = partnerOrders.find(o => o.id === orderId);
+
+    // Update status in DB
+    const { error: updateErr } = await supabase.from('partner_orders').update({ status: action }).eq('id', orderId);
+    if (updateErr) {
+      console.error('[OrderAction] update error:', updateErr.message);
+      setApprovingOrder(null);
+      return;
+    }
+
+    // If approved → auto-generate activation codes
+    if (action === 'approved' && order) {
+      try {
+        const prefix = (order.prefix || 'WOL').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const needed = order.quantity;
+        // Map item_name to plan_type
+        const planType = order.item_name.includes('بلا حدود') || order.item_name.includes('unlimited')
+          ? 'unlimited'
+          : '3_days';
+        const batchId = `order_${orderId}_${Date.now()}`;
+
+        // Generate codes with collision detection
+        const genOne = (pfx: string, segLen = 8): string => {
+          const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          const buf = new Uint8Array(segLen);
+          crypto.getRandomValues(buf);
+          return `${pfx}-${Array.from(buf, b => chars[b % chars.length]).join('')}`;
+        };
+
+        let candidates = Array.from({ length: needed + Math.ceil(needed * 0.2) + 10 }, () => genOne(prefix));
+        candidates = [...new Set(candidates)];
+
+        // Check collisions
+        const { data: existing } = await supabase
+          .from('activation_codes').select('code')
+          .in('code', candidates.slice(0, 600));
+        const existingSet = new Set((existing ?? []).map((c: { code: string }) => c.code));
+        let unique = candidates.filter(c => !existingSet.has(c));
+
+        // Retry if short
+        let retries = 0;
+        while (unique.length < needed && retries < 5) {
+          retries++;
+          const extra = Array.from({ length: 20 }, () => genOne(prefix));
+          const { data: extraEx } = await supabase.from('activation_codes').select('code').in('code', extra);
+          const extraSet = new Set((extraEx ?? []).map((c: { code: string }) => c.code));
+          unique.push(...extra.filter(c => !extraSet.has(c) && !unique.includes(c)));
+        }
+        const finalCodes = unique.slice(0, needed);
+
+        // Insert codes
+        const { error: codeErr } = await supabase.from('activation_codes').upsert(
+          finalCodes.map(code => ({
+            code,
+            plan_type: planType,
+            owner_partner_id: order.user_id,
+            batch_id: batchId,
+          })),
+          { onConflict: 'code', ignoreDuplicates: true }
+        );
+
+        if (codeErr) {
+          console.error('[OrderAction] code generation error:', codeErr.message);
+          // Update order with note about failure
+          await supabase.from('partner_orders').update({
+            notes: `${order.notes || ''}\n⚠️ فشل توليد الأكواد: ${codeErr.message}`.trim(),
+          }).eq('id', orderId);
+        } else {
+          // Update order with batch info
+          await supabase.from('partner_orders').update({
+            notes: `${order.notes || ''}\n✅ تم توليد ${finalCodes.length} كود (${batchId})`.trim(),
+          }).eq('id', orderId);
+          // Invalidate codes cache
+          tabLoadedAt.current['codes'] = 0;
+        }
+      } catch (err) {
+        console.error('[OrderAction] auto-generate failed:', err);
+      }
+    }
+
     setPartnerOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: action } : o));
     setApprovingOrder(null);
-  }, []);
+  }, [partnerOrders]);
 
   // ── Analytics loader ──────────────────────────────────────────────────────
   const loadAnalytics = useCallback(async (days?: number) => {
@@ -661,6 +742,22 @@ const AdminDashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   useEffect(() => {
     // Pre-warm partners silently after 800ms — used by Codes + Orders
     setTimeout(() => { if (!isFresh('partners')) loadPartners(); }, 800);
+
+    // Pre-load pending orders count for badge (lightweight query)
+    setTimeout(async () => {
+      const { data } = await supabase
+        .from('partner_orders')
+        .select('id, user_id, item_name, quantity, prefix, status, notes, created_at')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (data && data.length > 0) {
+        setPartnerOrders(prev => {
+          if (prev.length > 0) return prev; // already loaded
+          return data as PartnerOrderRow[];
+        });
+      }
+    }, 1200);
 
     // Page Visibility: refresh stale data when user returns to this tab
     const onVisible = () => {

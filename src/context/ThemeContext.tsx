@@ -99,6 +99,22 @@ export const themes: Record<string, GameTheme> = {
     panelBg: 'rgba(180, 50, 20, 0.2)',
     panelBorder: 'rgba(255, 130, 60, 0.2)',
   },
+  duolingo: {
+    id: 'duolingo',
+    nameAr: 'ديولينجو',
+    emoji: '🦉',
+    bgGradient: 'linear-gradient(135deg, #0d1a0a 0%, #142410 50%, #0a1f12 100%)',
+    cardBg: 'rgba(88, 204, 2, 0.07)',
+    cardBorder: 'rgba(88, 204, 2, 0.25)',
+    accent: '#58CC02',
+    accentSecondary: '#1CB0F6',
+    textPrimary: '#e8f5e0',
+    textSecondary: 'rgba(200, 235, 170, 0.7)',
+    borderRadius: '1rem',
+    shadow: '0 4px 0 rgba(35, 90, 0, 0.7)',
+    panelBg: 'rgba(88, 204, 2, 0.05)',
+    panelBorder: 'rgba(88, 204, 2, 0.2)',
+  },
 };
 
 export const themeList = Object.values(themes);

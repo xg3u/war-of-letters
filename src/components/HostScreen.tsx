@@ -118,7 +118,13 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
   const [isLoadingQuestion, setIsLoadingQuestion] = useState(false); // Loading state for question fetch
   const [questionsReady, setQuestionsReady] = useState(false); // الأسئلة جاهزة في الذاكرة
   const [lockedSeconds, setLockedSeconds] = useState(0); // عداد ثواني القفل لإظهار زر الفك
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(() => {
+    // Auto-fit: on mobile, start with a zoom that fits the grid
+    const w = window.innerWidth;
+    if (w < 420) return 0.78;
+    if (w < 768) return 0.88;
+    return 1;
+  });
   const [cardAnimation, setCardAnimation] = useState<{ type: CardType | 'cardFound', message?: string } | null>(null);
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showRoulette, setShowRoulette] = useState(false);
@@ -1463,17 +1469,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
       position: 'relative',
     }}>
 
-      {/* خلفية متوهجة خلف الشبكة — جوال فقط */}
-      {isMobile && (
-        <div style={{
-          position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
-          background: `
-            radial-gradient(ellipse 90% 55% at 50% 44%, rgba(139,92,246,0.22) 0%, transparent 62%),
-            radial-gradient(ellipse 55% 35% at 20% 85%, rgba(236,72,153,0.1) 0%, transparent 55%),
-            radial-gradient(ellipse 55% 35% at 80% 15%, rgba(99,102,241,0.1) 0%, transparent 55%)
-          `,
-        }} />
-      )}
+      {/* خلفية خلف الشبكة — محذوفة لتجنب التوهج الزائد */}
 
 
 
@@ -1740,8 +1736,7 @@ export const HostScreen: React.FC<HostScreenProps> = ({ settings, onBack }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          height: isMobile ? '360px' : undefined,
-          minHeight: isMobile ? undefined : isTablet ? '400px' : '500px',
+          minHeight: isMobile ? '280px' : isTablet ? '400px' : '500px',
           position: 'relative',
           overflow: 'hidden',
         }}>

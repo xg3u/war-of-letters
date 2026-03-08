@@ -110,7 +110,7 @@ const HexCellInner: React.FC<HexCellProps> = ({
     }
 
     if (isHovered) {
-      return '0 6px 18px rgba(0, 0, 0, 0.15), 0 0 10px rgba(168, 85, 247, 0.2)';
+      return '0 6px 18px rgba(0, 0, 0, 0.15)';
     }
 
     return '0 3px 8px rgba(0, 0, 0, 0.08)';

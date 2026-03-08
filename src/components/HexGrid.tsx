@@ -4,6 +4,7 @@
 import React, { useMemo, useCallback } from 'react';
 import { HexCell } from './HexCell';
 import { useScreenSize } from '../hooks/useScreenSize';
+import { useTheme } from '../context/ThemeContext';
 import type { HexCell as HexCellType } from '../core/types';
 
 interface HexGridProps {
@@ -39,7 +40,18 @@ export const HexGrid: React.FC<HexGridProps> = ({
   colorsSwapped = false,
 }) => {
   const { isMobile, isTablet } = useScreenSize();
-  const responsiveScale = scale * (isMobile ? 0.75 : isTablet ? 0.88 : 1);
+  const { theme } = useTheme();
+
+  // ندمج zoom مع scale مباشرة — الخلايا تتغير حجمها فعلياً بدل transform
+  const responsiveScale = scale * zoom * (isMobile ? 0.75 : isTablet ? 0.88 : 1);
+
+  // تحويل hex إلى rgba
+  const rgba = useCallback((hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }, []);
 
   // الخلايا الزينة: تُحسب فقط عند تغيير colorsSwapped (نادر جداً)
   const decorativeCells = useMemo(() => ({
@@ -99,31 +111,25 @@ export const HexGrid: React.FC<HexGridProps> = ({
   return (
     <div
       style={{
-        padding: isMobile ? '10px' : '15px',
-        background: 'linear-gradient(145deg, rgba(10, 6, 28, 0.98) 0%, rgba(25, 15, 55, 0.95) 50%, rgba(10, 6, 28, 0.98) 100%)',
-        borderRadius: isMobile ? '20px' : '24px',
+        padding: isMobile ? '6px 4px' : '12px 8px',
+        background: theme.bgGradient,
+        borderRadius: isMobile ? '16px' : '24px',
         boxShadow: isMobile ? `
-          0 20px 50px -8px rgba(0, 0, 0, 0.7),
-          0 0 60px rgba(139, 92, 246, 0.3),
-          0 0 120px rgba(139, 92, 246, 0.1),
-          inset 0 1px 0 rgba(255, 255, 255, 0.12)
+          0 12px 30px -6px rgba(0, 0, 0, 0.6),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08)
         ` : `
           0 25px 60px -12px rgba(0, 0, 0, 0.5),
-          0 0 40px rgba(139, 92, 246, 0.15),
-          inset 0 1px 0 rgba(255, 255, 255, 0.1)
+          0 0 30px ${rgba(theme.accent, 0.1)},
+          inset 0 1px 0 rgba(255, 255, 255, 0.06)
         `,
-        maxWidth: '100%',
         margin: '0 auto',
         overflow: 'hidden',
-        display: 'flex',
+        display: 'inline-flex',
         flexDirection: 'column',
         alignItems: 'center',
-        transform: `scale(${zoom})`,
-        transition: 'transform 0.3s ease',
-        backdropFilter: 'blur(10px)',
         border: isMobile
-          ? '2px solid rgba(139, 92, 246, 0.55)'
-          : '2px solid rgba(139, 92, 246, 0.2)',
+          ? `2px solid ${rgba(theme.accent, 0.35)}`
+          : `2px solid ${rgba(theme.accent, 0.15)}`,
       }}
     >
       {fullLayout.map((layoutRow, idx) => (
@@ -136,7 +142,6 @@ export const HexGrid: React.FC<HexGridProps> = ({
             marginTop: idx === 0 ? 0 : `${-20 * responsiveScale}px`,
             marginRight: layoutRow.rowIndex % 2 === 0 ? 0 : `${42 * responsiveScale}px`,
             marginLeft: layoutRow.rowIndex % 2 === 0 ? `${42 * responsiveScale}px` : 0,
-            transition: 'margin 0.3s ease',
           }}
         >
           {layoutRow.row.map((cell, colIdx) => {
